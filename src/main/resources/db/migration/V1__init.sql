@@ -1,0 +1,3 @@
+-- Flyway baseline migration
+-- This file confirms that Flyway migration infrastructure is operational.
+-- Schema objects will be added in subsequent migrations per module.
