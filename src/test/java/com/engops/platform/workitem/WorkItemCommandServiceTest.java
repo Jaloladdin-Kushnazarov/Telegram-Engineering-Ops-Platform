@@ -78,15 +78,33 @@ class WorkItemCommandServiceTest {
                 .thenReturn(new AuditEvent(tenantId, "WORK_ITEM", UUID.randomUUID(), "CREATED", userId));
 
         WorkItem result = commandService.create(tenantId, WorkItemType.BUG, workflowDefId,
-                "Login sahifada xato", "BUGS", userId, "MANUAL");
+                "Login sahifada xato", null, "BUGS", userId, "MANUAL");
 
         assertThat(result.getWorkItemCode()).isEqualTo("BUG-1");
         assertThat(result.getTitle()).isEqualTo("Login sahifada xato");
         assertThat(result.getCurrentStatusCode()).isEqualTo("BUGS");
         assertThat(result.getTypeCode()).isEqualTo(WorkItemType.BUG);
+        assertThat(result.getDescription()).isNull();
 
         verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), any(),
                 eq("CREATED"), eq(userId), eq("MANUAL"), eq(null), eq("BUG-1"));
+    }
+
+    @Test
+    void descriptionBilanWorkItemYaratish() {
+        WorkflowDefinition def = mockWorkflowDef("BUG", "BUGS");
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(codeGenerator.generate(tenantId, WorkItemType.BUG)).thenReturn("BUG-2");
+        when(workItemRepository.save(any(WorkItem.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(auditService.recordEvent(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new AuditEvent(tenantId, "WORK_ITEM", UUID.randomUUID(), "CREATED", userId));
+
+        WorkItem result = commandService.create(tenantId, WorkItemType.BUG, workflowDefId,
+                "Login sahifada xato", "Sahifa 500 xato qaytaradi", "BUGS", userId, "MANUAL");
+
+        assertThat(result.getDescription()).isEqualTo("Sahifa 500 xato qaytaradi");
+        assertThat(result.getWorkItemCode()).isEqualTo("BUG-2");
     }
 
     @Test
@@ -97,7 +115,7 @@ class WorkItemCommandServiceTest {
                 .thenReturn(Optional.of(def));
 
         assertThatThrownBy(() -> commandService.create(tenantId, WorkItemType.BUG, workflowDefId,
-                "Test", "OPEN", userId, "MANUAL"))
+                "Test", null, "OPEN", userId, "MANUAL"))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Mos kelmaydi");
     }
@@ -109,7 +127,7 @@ class WorkItemCommandServiceTest {
                 .thenReturn(Optional.of(def));
 
         assertThatThrownBy(() -> commandService.create(tenantId, WorkItemType.BUG, workflowDefId,
-                "Test", "PROCESSING", userId, "MANUAL"))
+                "Test", null, "PROCESSING", userId, "MANUAL"))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("topilmadi");
     }
@@ -129,7 +147,7 @@ class WorkItemCommandServiceTest {
                 .thenReturn(Optional.of(def));
 
         assertThatThrownBy(() -> commandService.create(tenantId, WorkItemType.BUG, workflowDefId,
-                "Test", "PROCESSING", userId, "MANUAL"))
+                "Test", null, "PROCESSING", userId, "MANUAL"))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("boshlang'ich holat emas");
     }

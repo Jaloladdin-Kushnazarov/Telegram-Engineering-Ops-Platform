@@ -56,6 +56,8 @@ public class WorkItemCommandService {
     /**
      * Yangi work item yaratadi.
      *
+     * @param description ixtiyoriy tavsif (nullable)
+     *
      * Validatsiyalar:
      * 1. Workflow definition tenant ga tegishli bo'lishi kerak
      * 2. Workflow definition work item type ga mos kelishi kerak
@@ -63,8 +65,8 @@ public class WorkItemCommandService {
      * 4. initialStatusCode initial=true deb belgilangan bo'lishi kerak
      */
     public WorkItem create(UUID tenantId, WorkItemType typeCode, UUID workflowDefinitionId,
-                            String title, String initialStatusCode, UUID createdByUserId,
-                            String actionSource) {
+                            String title, String description, String initialStatusCode,
+                            UUID createdByUserId, String actionSource) {
         // Workflow definition tenant-safe tekshiruv (facade orqali)
         WorkflowDefinition definition = tenantConfigQueryService
                 .findWorkflowDefinitionById(tenantId, workflowDefinitionId)
@@ -81,6 +83,10 @@ public class WorkItemCommandService {
 
         WorkItem workItem = new WorkItem(tenantId, code, typeCode, workflowDefinitionId,
                 title, initialStatusCode, createdByUserId);
+
+        if (description != null && !description.isBlank()) {
+            workItem.setDescription(description);
+        }
 
         workItem = workItemRepository.save(workItem);
 
