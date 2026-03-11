@@ -25,8 +25,12 @@ class ModuleBoundaryTest {
 
     @BeforeAll
     static void setUp() {
+        // DO_NOT_INCLUDE_JARS: JDK va kutubxona classlarini import qilmaydi —
+        // Java 24 runtime da class file version 68 xatosini oldini oladi.
+        // Faqat project classlarini tekshiradi.
         classes = new ClassFileImporter()
                 .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_JARS)
                 .importPackages("com.engops.platform");
     }
 

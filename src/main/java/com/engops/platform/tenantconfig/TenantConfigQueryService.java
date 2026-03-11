@@ -59,6 +59,13 @@ public class TenantConfigQueryService {
     }
 
     /**
+     * Tenant va ID bo'yicha workflow ta'rifini topadi (tenant-safe).
+     */
+    public Optional<WorkflowDefinition> findWorkflowDefinitionById(UUID tenantId, UUID definitionId) {
+        return workflowDefinitionRepository.findByTenantIdAndId(tenantId, definitionId);
+    }
+
+    /**
      * Tenant uchun aktiv workflow ta'riflarini qaytaradi.
      */
     public List<WorkflowDefinition> listActiveWorkflowDefinitions(UUID tenantId) {

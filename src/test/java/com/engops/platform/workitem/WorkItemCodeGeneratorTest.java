@@ -8,6 +8,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -33,23 +34,41 @@ class WorkItemCodeGeneratorTest {
 
     @Test
     void birinchiMartaCounterYaratiladi() {
-        // Counter yo'q — yangi yaratiladi
         when(counterRepository.findByTenantIdAndTypeCode(tenantId, WorkItemType.BUG))
                 .thenReturn(Optional.empty());
+        when(counterRepository.saveAndFlush(any(WorkItemCounter.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
         when(counterRepository.save(any(WorkItemCounter.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
 
         String code = codeGenerator.generate(tenantId, WorkItemType.BUG);
 
         assertThat(code).isEqualTo("BUG-1");
-        // save 2 marta chaqiriladi: birinchisi yangi counter yaratish, ikkinchisi increment
-        verify(counterRepository, org.mockito.Mockito.times(2)).save(any(WorkItemCounter.class));
+        verify(counterRepository).saveAndFlush(any(WorkItemCounter.class));
+    }
+
+    @Test
+    void concurrentYaratishdaRecovery() {
+        // Birinchi o'qish — counter yo'q
+        when(counterRepository.findByTenantIdAndTypeCode(tenantId, WorkItemType.BUG))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(new WorkItemCounter(tenantId, WorkItemType.BUG)));
+
+        // INSERT unique constraint bilan muvaffaqiyatsiz
+        when(counterRepository.saveAndFlush(any(WorkItemCounter.class)))
+                .thenThrow(new DataIntegrityViolationException("Unique constraint violation"));
+        when(counterRepository.save(any(WorkItemCounter.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        String code = codeGenerator.generate(tenantId, WorkItemType.BUG);
+
+        // Recovery — mavjud counterni qayta o'qidi va BUG-1 generatsiya qildi
+        assertThat(code).isEqualTo("BUG-1");
     }
 
     @Test
     void mavjudCounterdanKeyingiQiymat() {
         WorkItemCounter counter = new WorkItemCounter(tenantId, WorkItemType.TASK);
-        // Simulate existing counter at value 5
         for (int i = 0; i < 4; i++) {
             counter.incrementAndGet();
         }

@@ -38,8 +38,18 @@ CREATE TABLE work_item (
 CREATE INDEX idx_work_item_tenant_id ON work_item(tenant_id);
 CREATE INDEX idx_work_item_tenant_status ON work_item(tenant_id, current_status_code);
 CREATE INDEX idx_work_item_tenant_type ON work_item(tenant_id, type_code);
-CREATE INDEX idx_work_item_owner ON work_item(current_owner_user_id);
+CREATE INDEX idx_work_item_tenant_owner ON work_item(tenant_id, current_owner_user_id);
 CREATE INDEX idx_work_item_correlation ON work_item(correlation_key) WHERE correlation_key IS NOT NULL;
+
+-- Tenant va type bo'yicha work item kodi generatsiyasi uchun counter
+CREATE TABLE work_item_counter (
+    id          UUID        PRIMARY KEY,
+    tenant_id   UUID        NOT NULL REFERENCES tenant(id),
+    type_code   VARCHAR(50) NOT NULL,
+    next_value  BIGINT      NOT NULL DEFAULT 1,
+    version     BIGINT      NOT NULL DEFAULT 0,
+    UNIQUE (tenant_id, type_code)
+);
 
 -- Tizimli yangilanish — work item'ga qo'shilgan izoh yoki o'zgarish
 CREATE TABLE work_item_update (
@@ -73,8 +83,7 @@ CREATE TABLE work_item_transition (
     created_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_work_item_transition_work_item ON work_item_transition(work_item_id);
-CREATE INDEX idx_work_item_transition_tenant ON work_item_transition(tenant_id);
+CREATE INDEX idx_work_item_transition_tenant_item ON work_item_transition(tenant_id, work_item_id, created_at);
 
 -- =====================================================================
 -- AUDIT MODULE
@@ -96,6 +105,4 @@ CREATE TABLE audit_event (
     created_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_audit_event_tenant ON audit_event(tenant_id);
-CREATE INDEX idx_audit_event_entity ON audit_event(entity_type, entity_id);
-CREATE INDEX idx_audit_event_occurred ON audit_event(occurred_at);
+CREATE INDEX idx_audit_event_tenant_entity ON audit_event(tenant_id, entity_type, entity_id, occurred_at);
