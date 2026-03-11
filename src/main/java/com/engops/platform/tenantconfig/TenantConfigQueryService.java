@@ -80,6 +80,14 @@ public class TenantConfigQueryService {
     }
 
     /**
+     * Tenant va work item turi uchun aktiv workflow ta'riflarini qaytaradi.
+     * Ambiguity tekshiruvi uchun list qaytaradi — caller 0, 1 yoki ko'p natijani o'zi handle qiladi.
+     */
+    public List<WorkflowDefinition> findActiveWorkflowDefinitionsByType(UUID tenantId, String workItemType) {
+        return workflowDefinitionRepository.findByTenantIdAndWorkItemTypeAndActiveTrue(tenantId, workItemType);
+    }
+
+    /**
      * Tenant uchun aktiv Telegram chat bog'lanishlarini qaytaradi.
      */
     public List<TelegramChatBinding> listActiveChatBindings(UUID tenantId) {
