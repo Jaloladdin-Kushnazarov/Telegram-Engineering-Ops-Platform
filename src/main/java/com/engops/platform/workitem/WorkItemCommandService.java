@@ -73,6 +73,13 @@ public class WorkItemCommandService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "WorkflowDefinition", workflowDefinitionId));
 
+        // Workflow active tekshiruvi
+        if (!definition.isActive()) {
+            throw new BusinessRuleException("INACTIVE_WORKFLOW",
+                    "Workflow '" + definition.getName() + "' aktiv emas. "
+                            + "Faqat aktiv workflow bilan work item yaratish mumkin");
+        }
+
         // Workflow type va WorkItem type mosligi tekshiruvi
         validateWorkflowTypeCompatibility(definition, typeCode);
 

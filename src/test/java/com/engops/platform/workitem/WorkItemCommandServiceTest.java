@@ -57,6 +57,7 @@ class WorkItemCommandServiceTest {
     private WorkflowDefinition mockWorkflowDef(String workItemType, String initialStatusName) {
         WorkflowDefinition def = mock(WorkflowDefinition.class);
         when(def.getName()).thenReturn("Bug Workflow");
+        when(def.isActive()).thenReturn(true);
         when(def.getWorkItemType()).thenReturn(workItemType);
 
         WorkflowStatus initialStatus = mock(WorkflowStatus.class);
@@ -108,6 +109,21 @@ class WorkItemCommandServiceTest {
     }
 
     @Test
+    void inactiveWorkflowRadEtilishi() {
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getName()).thenReturn("Old Bug Workflow");
+        when(def.isActive()).thenReturn(false);
+
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+
+        assertThatThrownBy(() -> commandService.create(tenantId, WorkItemType.BUG, workflowDefId,
+                "Test", null, "BUGS", userId, "MANUAL"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("aktiv emas");
+    }
+
+    @Test
     void workflowTypeMismatchRadEtilishi() {
         // Workflow INCIDENT uchun, lekin BUG yaratmoqchi
         WorkflowDefinition def = mockWorkflowDef("INCIDENT", "OPEN");
@@ -136,6 +152,7 @@ class WorkItemCommandServiceTest {
     void initialEmasBoshlangichStatusRadEtilishi() {
         WorkflowDefinition def = mock(WorkflowDefinition.class);
         when(def.getName()).thenReturn("Bug Workflow");
+        when(def.isActive()).thenReturn(true);
         when(def.getWorkItemType()).thenReturn("BUG");
 
         WorkflowStatus nonInitialStatus = mock(WorkflowStatus.class);

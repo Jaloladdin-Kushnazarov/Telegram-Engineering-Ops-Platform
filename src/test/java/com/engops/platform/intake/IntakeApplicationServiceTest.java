@@ -285,6 +285,35 @@ class IntakeApplicationServiceTest {
     }
 
     @Test
+    void explicitInactiveWorkflowDomainDanRadEtilishi() {
+        // Explicit inactive workflow — domain service (WorkItemCommandService) rad etadi
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+
+        when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
+                eq("Test"), eq((String) null), eq("OPEN"), eq(userId), eq("MANUAL")))
+                .thenThrow(new BusinessRuleException("INACTIVE_WORKFLOW",
+                        "Workflow aktiv emas"));
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("Test")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("OPEN")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .build();
+
+        assertThatThrownBy(() -> intakeService.submit(command))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("aktiv emas");
+    }
+
+    @Test
     void autoResolveAktivWorkflowTopilmasa() {
         when(tenantConfigQueryService.findActiveWorkflowDefinitionsByType(tenantId, "TASK"))
                 .thenReturn(List.of());
