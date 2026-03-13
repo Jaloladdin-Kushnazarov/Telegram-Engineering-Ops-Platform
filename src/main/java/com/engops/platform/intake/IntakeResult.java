@@ -3,12 +3,18 @@ package com.engops.platform.intake;
 import java.util.UUID;
 
 /**
- * Intake natijasi — yaratilgan work item va routing preparation haqida structured javob.
+ * Intake natijasi — yaratilgan work item va resolved routing target haqida structured javob.
  * Controller yoki adapter shu natijani o'z formatiga moslashtiradi.
  *
- * Routing preparation:
- * - routingPrepared=true — mos routing rule topildi, targetTopicBindingId aniq
+ * Routing:
+ * - routingPrepared=true — mos routing rule topildi, target validated va resolved
  * - routingPrepared=false — mos rule topilmadi, lekin work item yaratilgan (valid result)
+ *
+ * Resolved target (faqat routingPrepared=true holatda to'ldiriladi):
+ * - matchedRoutingRuleId — tanlangan routing rule
+ * - targetTopicBindingId — tanlangan topic binding
+ * - targetChatBindingId — topic binding'ning chat binding'i
+ * - targetTopicId — Telegram topic ID (delivery target)
  */
 public class IntakeResult {
 
@@ -18,15 +24,18 @@ public class IntakeResult {
     private final UUID workflowDefinitionId;
     private final UUID tenantId;
 
-    // Routing preparation
+    // Resolved routing target
     private final boolean routingPrepared;
     private final UUID matchedRoutingRuleId;
     private final UUID targetTopicBindingId;
+    private final UUID targetChatBindingId;
+    private final Long targetTopicId;
 
     public IntakeResult(UUID workItemId, String workItemCode, String currentStatusCode,
                         UUID workflowDefinitionId, UUID tenantId,
                         boolean routingPrepared, UUID matchedRoutingRuleId,
-                        UUID targetTopicBindingId) {
+                        UUID targetTopicBindingId, UUID targetChatBindingId,
+                        Long targetTopicId) {
         this.workItemId = workItemId;
         this.workItemCode = workItemCode;
         this.currentStatusCode = currentStatusCode;
@@ -35,6 +44,8 @@ public class IntakeResult {
         this.routingPrepared = routingPrepared;
         this.matchedRoutingRuleId = matchedRoutingRuleId;
         this.targetTopicBindingId = targetTopicBindingId;
+        this.targetChatBindingId = targetChatBindingId;
+        this.targetTopicId = targetTopicId;
     }
 
     public UUID getWorkItemId() { return workItemId; }
@@ -45,4 +56,6 @@ public class IntakeResult {
     public boolean isRoutingPrepared() { return routingPrepared; }
     public UUID getMatchedRoutingRuleId() { return matchedRoutingRuleId; }
     public UUID getTargetTopicBindingId() { return targetTopicBindingId; }
+    public UUID getTargetChatBindingId() { return targetChatBindingId; }
+    public Long getTargetTopicId() { return targetTopicId; }
 }

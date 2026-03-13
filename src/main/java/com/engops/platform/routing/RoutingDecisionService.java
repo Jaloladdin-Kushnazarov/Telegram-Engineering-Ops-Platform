@@ -3,6 +3,7 @@ package com.engops.platform.routing;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.RoutingRule;
+import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,8 +12,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Routing decision servisi — work item turi bo'yicha mos unconditional routing rule topadi
- * va tanlangan target'ni validatsiya qiladi.
+ * Routing decision servisi — work item turi bo'yicha mos unconditional routing rule topadi,
+ * tanlangan target'ni validatsiya qiladi va resolved delivery target qaytaradi.
  *
  * Hozirgi phase'da faqat unconditional rule'lar (conditionExpression == null yoki blank)
  * candidate sifatida qatnashadi. Conditional rule'lar evaluate qilinmaydi —
@@ -27,9 +28,13 @@ import java.util.UUID;
  * Target validation (matched rule uchun):
  * - targetTopicBindingId null bo'lmasligi kerak
  * - shu tenant uchun topilishi kerak (cross-tenant himoya)
- * - active bo'lishi kerak
+ * - topic binding active bo'lishi kerak
+ * - chat binding active bo'lishi kerak
  *
- * Side effect yo'q — faqat query, selection va validation.
+ * Resolved target projection:
+ * - matchedRoutingRuleId, targetTopicBindingId, targetChatBindingId, targetTopicId
+ *
+ * Side effect yo'q — faqat query, selection, validation va projection.
  *
  * Cross-module bog'lanishlar:
  * - TenantConfigQueryService — routing rule'larni va topic binding'larni olish uchun (public API)
@@ -80,19 +85,25 @@ public class RoutingDecisionService {
             }
         }
 
-        // Target validation — matched rule'ning target'i valid konfiguratsiya ekanini tekshirish
-        validateRoutingTarget(tenantId, topRule);
+        // Target validation va resolve — matched rule'ning target'i valid va resolved bo'lsin
+        TelegramTopicBinding resolvedTarget = validateAndResolveTarget(tenantId, topRule);
+        TelegramChatBinding chatBinding = resolvedTarget.getChatBinding();
 
-        return RoutingDecision.matched(topRule.getId(), topRule.getTargetTopicBindingId());
+        return RoutingDecision.matched(
+                topRule.getId(),
+                resolvedTarget.getId(),
+                chatBinding.getId(),
+                resolvedTarget.getTopicId());
     }
 
     /**
-     * Matched routing rule'ning targetTopicBindingId'ini validatsiya qiladi:
-     * - null bo'lmasligi kerak
+     * Matched routing rule'ning targetTopicBindingId'ini validatsiya qiladi va resolved target qaytaradi:
+     * - targetTopicBindingId null bo'lmasligi kerak
      * - shu tenant uchun topilishi kerak
-     * - active bo'lishi kerak
+     * - topic binding active bo'lishi kerak
+     * - chat binding active bo'lishi kerak
      */
-    private void validateRoutingTarget(UUID tenantId, RoutingRule rule) {
+    private TelegramTopicBinding validateAndResolveTarget(UUID tenantId, RoutingRule rule) {
         UUID targetId = rule.getTargetTopicBindingId();
 
         if (targetId == null) {
@@ -111,6 +122,15 @@ public class RoutingDecisionService {
                     "'" + rule.getName() + "' routing rule ko'rsatayotgan topic binding (id="
                             + targetId + ") aktiv emas");
         }
+
+        TelegramChatBinding chatBinding = topicBinding.getChatBinding();
+        if (!chatBinding.isActive()) {
+            throw new BusinessRuleException("ROUTING_CHAT_BINDING_INACTIVE",
+                    "'" + rule.getName() + "' routing rule ko'rsatayotgan topic binding'ning "
+                            + "chat binding'i (id=" + chatBinding.getId() + ") aktiv emas");
+        }
+
+        return topicBinding;
     }
 
     private long countRulesWithPriority(List<RoutingRule> rules, int priority) {

@@ -175,8 +175,10 @@ class IntakeApplicationServiceTest {
 
         UUID routingRuleId = UUID.randomUUID();
         UUID topicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        long topicId = 42L;
         when(routingDecisionService.resolve(tenantId, "BUG"))
-                .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId));
+                .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId, chatBindingId, topicId));
 
         IntakeCommand command = IntakeCommand.builder()
                 .tenantId(tenantId)
@@ -193,6 +195,8 @@ class IntakeApplicationServiceTest {
         assertThat(result.isRoutingPrepared()).isTrue();
         assertThat(result.getMatchedRoutingRuleId()).isEqualTo(routingRuleId);
         assertThat(result.getTargetTopicBindingId()).isEqualTo(topicBindingId);
+        assertThat(result.getTargetChatBindingId()).isEqualTo(chatBindingId);
+        assertThat(result.getTargetTopicId()).isEqualTo(topicId);
     }
 
     // --- Validation failures ---

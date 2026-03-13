@@ -86,7 +86,9 @@ public class IntakeApplicationService {
                 workItem.getTenantId(),
                 routing.isPrepared(),
                 routing.getMatchedRoutingRuleId(),
-                routing.getTargetTopicBindingId());
+                routing.getTargetTopicBindingId(),
+                routing.getTargetChatBindingId(),
+                routing.getTargetTopicId());
     }
 
     /**

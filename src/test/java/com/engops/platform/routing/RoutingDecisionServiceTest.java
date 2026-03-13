@@ -3,6 +3,7 @@ package com.engops.platform.routing;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.RoutingRule;
+import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,12 +45,16 @@ class RoutingDecisionServiceTest {
         assertThat(decision.isPrepared()).isFalse();
         assertThat(decision.getMatchedRoutingRuleId()).isNull();
         assertThat(decision.getTargetTopicBindingId()).isNull();
+        assertThat(decision.getTargetChatBindingId()).isNull();
+        assertThat(decision.getTargetTopicId()).isNull();
     }
 
     @Test
-    void bittaUnconditionalRuleValidTargetMatchedQaytaradi() {
+    void bittaUnconditionalRuleResolvedTargetMatchedQaytaradi() {
         UUID ruleId = UUID.randomUUID();
         UUID topicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        long topicId = 42L;
 
         RoutingRule rule = mock(RoutingRule.class);
         when(rule.getId()).thenReturn(ruleId);
@@ -58,8 +63,16 @@ class RoutingDecisionServiceTest {
         when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
                 .thenReturn(List.of(rule));
 
+        TelegramChatBinding chatBinding = mock(TelegramChatBinding.class);
+        when(chatBinding.getId()).thenReturn(chatBindingId);
+        when(chatBinding.isActive()).thenReturn(true);
+
         TelegramTopicBinding topicBinding = mock(TelegramTopicBinding.class);
+        when(topicBinding.getId()).thenReturn(topicBindingId);
         when(topicBinding.isActive()).thenReturn(true);
+        when(topicBinding.getTopicId()).thenReturn(topicId);
+        when(topicBinding.getChatBinding()).thenReturn(chatBinding);
+
         when(tenantConfigQueryService.findTopicBindingById(tenantId, topicBindingId))
                 .thenReturn(Optional.of(topicBinding));
 
@@ -68,17 +81,21 @@ class RoutingDecisionServiceTest {
         assertThat(decision.isPrepared()).isTrue();
         assertThat(decision.getMatchedRoutingRuleId()).isEqualTo(ruleId);
         assertThat(decision.getTargetTopicBindingId()).isEqualTo(topicBindingId);
+        assertThat(decision.getTargetChatBindingId()).isEqualTo(chatBindingId);
+        assertThat(decision.getTargetTopicId()).isEqualTo(topicId);
     }
 
     @Test
     void birNechtaUnconditionalTurliPriorityEngYuqoriTanlanadi() {
         UUID highRuleId = UUID.randomUUID();
-        UUID highTopicId = UUID.randomUUID();
+        UUID highTopicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        long topicId = 99L;
 
         RoutingRule highRule = mock(RoutingRule.class);
         when(highRule.getId()).thenReturn(highRuleId);
         when(highRule.getPriority()).thenReturn(200);
-        when(highRule.getTargetTopicBindingId()).thenReturn(highTopicId);
+        when(highRule.getTargetTopicBindingId()).thenReturn(highTopicBindingId);
 
         RoutingRule lowRule = mock(RoutingRule.class);
         when(lowRule.getPriority()).thenReturn(100);
@@ -86,16 +103,26 @@ class RoutingDecisionServiceTest {
         when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
                 .thenReturn(List.of(highRule, lowRule));
 
+        TelegramChatBinding chatBinding = mock(TelegramChatBinding.class);
+        when(chatBinding.getId()).thenReturn(chatBindingId);
+        when(chatBinding.isActive()).thenReturn(true);
+
         TelegramTopicBinding topicBinding = mock(TelegramTopicBinding.class);
+        when(topicBinding.getId()).thenReturn(highTopicBindingId);
         when(topicBinding.isActive()).thenReturn(true);
-        when(tenantConfigQueryService.findTopicBindingById(tenantId, highTopicId))
+        when(topicBinding.getTopicId()).thenReturn(topicId);
+        when(topicBinding.getChatBinding()).thenReturn(chatBinding);
+
+        when(tenantConfigQueryService.findTopicBindingById(tenantId, highTopicBindingId))
                 .thenReturn(Optional.of(topicBinding));
 
         RoutingDecision decision = routingDecisionService.resolve(tenantId, "BUG");
 
         assertThat(decision.isPrepared()).isTrue();
         assertThat(decision.getMatchedRoutingRuleId()).isEqualTo(highRuleId);
-        assertThat(decision.getTargetTopicBindingId()).isEqualTo(highTopicId);
+        assertThat(decision.getTargetTopicBindingId()).isEqualTo(highTopicBindingId);
+        assertThat(decision.getTargetChatBindingId()).isEqualTo(chatBindingId);
+        assertThat(decision.getTargetTopicId()).isEqualTo(topicId);
     }
 
     @Test
@@ -133,24 +160,37 @@ class RoutingDecisionServiceTest {
         when(conditionalHighRule.getConditionExpression()).thenReturn("severity == 'CRITICAL'");
 
         UUID unconditionalRuleId = UUID.randomUUID();
-        UUID unconditionalTopicId = UUID.randomUUID();
+        UUID unconditionalTopicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        long topicId = 7L;
+
         RoutingRule unconditionalLowRule = mock(RoutingRule.class);
         when(unconditionalLowRule.getId()).thenReturn(unconditionalRuleId);
-        when(unconditionalLowRule.getTargetTopicBindingId()).thenReturn(unconditionalTopicId);
+        when(unconditionalLowRule.getTargetTopicBindingId()).thenReturn(unconditionalTopicBindingId);
 
         when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
                 .thenReturn(List.of(conditionalHighRule, unconditionalLowRule));
 
+        TelegramChatBinding chatBinding = mock(TelegramChatBinding.class);
+        when(chatBinding.getId()).thenReturn(chatBindingId);
+        when(chatBinding.isActive()).thenReturn(true);
+
         TelegramTopicBinding topicBinding = mock(TelegramTopicBinding.class);
+        when(topicBinding.getId()).thenReturn(unconditionalTopicBindingId);
         when(topicBinding.isActive()).thenReturn(true);
-        when(tenantConfigQueryService.findTopicBindingById(tenantId, unconditionalTopicId))
+        when(topicBinding.getTopicId()).thenReturn(topicId);
+        when(topicBinding.getChatBinding()).thenReturn(chatBinding);
+
+        when(tenantConfigQueryService.findTopicBindingById(tenantId, unconditionalTopicBindingId))
                 .thenReturn(Optional.of(topicBinding));
 
         RoutingDecision decision = routingDecisionService.resolve(tenantId, "BUG");
 
         assertThat(decision.isPrepared()).isTrue();
         assertThat(decision.getMatchedRoutingRuleId()).isEqualTo(unconditionalRuleId);
-        assertThat(decision.getTargetTopicBindingId()).isEqualTo(unconditionalTopicId);
+        assertThat(decision.getTargetTopicBindingId()).isEqualTo(unconditionalTopicBindingId);
+        assertThat(decision.getTargetChatBindingId()).isEqualTo(chatBindingId);
+        assertThat(decision.getTargetTopicId()).isEqualTo(topicId);
     }
 
     // ==================== TARGET VALIDATION TESTLARI ====================
@@ -159,7 +199,6 @@ class RoutingDecisionServiceTest {
     void matchedRuleTargetNullBolsaFailFast() {
         RoutingRule rule = mock(RoutingRule.class);
         when(rule.getName()).thenReturn("Bug Default Route");
-        // getTargetTopicBindingId() default null
 
         when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
                 .thenReturn(List.of(rule));
@@ -206,6 +245,35 @@ class RoutingDecisionServiceTest {
 
         assertThatThrownBy(() -> routingDecisionService.resolve(tenantId, "BUG"))
                 .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("aktiv emas");
+    }
+
+    @Test
+    void matchedRuleChatBindingInactiveBolsaFailFast() {
+        UUID topicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+
+        RoutingRule rule = mock(RoutingRule.class);
+        when(rule.getName()).thenReturn("Bug Default Route");
+        when(rule.getTargetTopicBindingId()).thenReturn(topicBindingId);
+
+        when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
+                .thenReturn(List.of(rule));
+
+        TelegramChatBinding inactiveChatBinding = mock(TelegramChatBinding.class);
+        when(inactiveChatBinding.getId()).thenReturn(chatBindingId);
+        when(inactiveChatBinding.isActive()).thenReturn(false);
+
+        TelegramTopicBinding topicBinding = mock(TelegramTopicBinding.class);
+        when(topicBinding.isActive()).thenReturn(true);
+        when(topicBinding.getChatBinding()).thenReturn(inactiveChatBinding);
+
+        when(tenantConfigQueryService.findTopicBindingById(tenantId, topicBindingId))
+                .thenReturn(Optional.of(topicBinding));
+
+        assertThatThrownBy(() -> routingDecisionService.resolve(tenantId, "BUG"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("chat binding")
                 .hasMessageContaining("aktiv emas");
     }
 }
