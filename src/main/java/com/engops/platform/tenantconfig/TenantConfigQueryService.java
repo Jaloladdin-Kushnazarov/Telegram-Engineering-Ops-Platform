@@ -121,4 +121,13 @@ public class TenantConfigQueryService {
     public List<RoutingRule> findRoutingRules(UUID tenantId, String workItemType) {
         return routingRuleRepository.findByTenantIdAndWorkItemType(tenantId, workItemType);
     }
+
+    /**
+     * Tenant va work item turi uchun aktiv yo'naltirish qoidalarini qaytaradi (prioritet bo'yicha DESC).
+     * Routing preparation uchun — faqat aktiv va type-mos rule'lar qaytadi.
+     */
+    public List<RoutingRule> findActiveRoutingRulesByType(UUID tenantId, String workItemType) {
+        return routingRuleRepository.findByTenantIdAndWorkItemTypeAndActiveTrueOrderByPriorityDesc(
+                tenantId, workItemType);
+    }
 }

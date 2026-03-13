@@ -18,4 +18,7 @@ public interface RoutingRuleRepository extends JpaRepository<RoutingRule, UUID> 
     List<RoutingRule> findByTenantIdAndWorkItemType(UUID tenantId, String workItemType);
 
     List<RoutingRule> findByTenantIdAndActiveTrueOrderByPriorityDesc(UUID tenantId);
+
+    List<RoutingRule> findByTenantIdAndWorkItemTypeAndActiveTrueOrderByPriorityDesc(
+            UUID tenantId, String workItemType);
 }
