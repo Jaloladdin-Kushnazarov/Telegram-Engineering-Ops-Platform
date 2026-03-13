@@ -1,9 +1,10 @@
 package com.engops.platform.intake;
 
+import com.engops.platform.routing.RoutingDecision;
+import com.engops.platform.routing.RoutingDecisionService;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
-import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
 import com.engops.platform.workitem.WorkItemCommandService;
@@ -23,12 +24,13 @@ import java.util.UUID;
  * 2. Workflow definitionni aniqlaydi (explicit yoki auto-resolve)
  * 3. Initial statusni aniqlaydi (explicit yoki auto-resolve)
  * 4. WorkItemCommandService orqali work item yaratadi
- * 5. Routing preparation — tenant config asosida mos routing rule topadi
+ * 5. RoutingDecisionService orqali routing qarorini oladi
  * 6. Structured natija qaytaradi (work item + routing info)
  *
  * Cross-module bog'lanishlar:
  * - WorkItemCommandService — work item yaratish uchun (public API)
  * - TenantConfigQueryService — workflow definition olish uchun (public API)
+ * - RoutingDecisionService — routing qarori olish uchun (public API)
  */
 @Service
 @Transactional
@@ -36,11 +38,14 @@ public class IntakeApplicationService {
 
     private final WorkItemCommandService workItemCommandService;
     private final TenantConfigQueryService tenantConfigQueryService;
+    private final RoutingDecisionService routingDecisionService;
 
     public IntakeApplicationService(WorkItemCommandService workItemCommandService,
-                                     TenantConfigQueryService tenantConfigQueryService) {
+                                     TenantConfigQueryService tenantConfigQueryService,
+                                     RoutingDecisionService routingDecisionService) {
         this.workItemCommandService = workItemCommandService;
         this.tenantConfigQueryService = tenantConfigQueryService;
+        this.routingDecisionService = routingDecisionService;
     }
 
     /**
@@ -69,8 +74,8 @@ public class IntakeApplicationService {
                 command.getCreatedByUserId(),
                 command.getActionSource());
 
-        // Routing preparation — mos routing rule topish (side effect yo'q)
-        RoutingPreparation routing = prepareRouting(
+        // Routing decision — RoutingDecisionService orqali (side effect yo'q)
+        RoutingDecision routing = routingDecisionService.resolve(
                 command.getTenantId(), workItem.getTypeCode().name());
 
         return new IntakeResult(
@@ -79,9 +84,9 @@ public class IntakeApplicationService {
                 workItem.getCurrentStatusCode(),
                 workItem.getWorkflowDefinitionId(),
                 workItem.getTenantId(),
-                routing.prepared,
-                routing.routingRuleId,
-                routing.targetTopicBindingId);
+                routing.isPrepared(),
+                routing.getMatchedRoutingRuleId(),
+                routing.getTargetTopicBindingId());
     }
 
     /**
@@ -169,69 +174,5 @@ public class IntakeApplicationService {
         }
 
         return initialStatuses.getFirst().getName();
-    }
-
-    /**
-     * Routing preparation — work item turi bo'yicha mos unconditional routing rule topadi.
-     *
-     * Phase 4.2 da faqat unconditional rule'lar (conditionExpression == null yoki blank)
-     * candidate sifatida qatnashadi. Conditional rule'lar evaluate qilinmaydi —
-     * ular full routing engine phase'da ishga tushiriladi.
-     *
-     * Deterministic selection policy (unconditional candidatelar orasida):
-     * - 0 ta mos rule → routingPrepared=false (valid, faqat rule yo'q)
-     * - 1 ta mos rule → shu ishlatiladi
-     * - N ta mos rule → eng yuqori priority tanlanadi (DESC tartibda birinchi)
-     * - Agar 2+ rule bir xil eng yuqori priority'ga ega → fail-fast (noaniqlik)
-     *
-     * Side effect yo'q — faqat query va selection.
-     */
-    private RoutingPreparation prepareRouting(UUID tenantId, String workItemType) {
-        List<RoutingRule> activeRules = tenantConfigQueryService
-                .findActiveRoutingRulesByType(tenantId, workItemType);
-
-        // Faqat unconditional rule'lar — conditionExpression null yoki blank
-        List<RoutingRule> candidates = activeRules.stream()
-                .filter(rule -> rule.getConditionExpression() == null
-                        || rule.getConditionExpression().isBlank())
-                .toList();
-
-        if (candidates.isEmpty()) {
-            return RoutingPreparation.none();
-        }
-
-        // candidates allaqachon priority DESC tartibda (repository query tartibini saqlab qoladi)
-        RoutingRule topRule = candidates.getFirst();
-
-        // Noaniqlik tekshiruvi: agar 2+ unconditional rule bir xil eng yuqori priority'ga ega bo'lsa
-        if (candidates.size() > 1) {
-            RoutingRule secondRule = candidates.get(1);
-            if (topRule.getPriority() == secondRule.getPriority()) {
-                throw new BusinessRuleException("AMBIGUOUS_ROUTING",
-                        "'" + workItemType + "' turi uchun " + countRulesWithPriority(candidates, topRule.getPriority())
-                                + " ta unconditional routing rule bir xil prioritetga (=" + topRule.getPriority()
-                                + ") ega. Prioritetlarni aniqlashtiring");
-            }
-        }
-
-        return RoutingPreparation.matched(topRule.getId(), topRule.getTargetTopicBindingId());
-    }
-
-    private long countRulesWithPriority(List<RoutingRule> rules, int priority) {
-        return rules.stream().filter(r -> r.getPriority() == priority).count();
-    }
-
-    /**
-     * Routing preparation ichki natijasi — service ichida ishlatiladi.
-     */
-    private record RoutingPreparation(boolean prepared, UUID routingRuleId, UUID targetTopicBindingId) {
-
-        static RoutingPreparation none() {
-            return new RoutingPreparation(false, null, null);
-        }
-
-        static RoutingPreparation matched(UUID routingRuleId, UUID targetTopicBindingId) {
-            return new RoutingPreparation(true, routingRuleId, targetTopicBindingId);
-        }
     }
 }
