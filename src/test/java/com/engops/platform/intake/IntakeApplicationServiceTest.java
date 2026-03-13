@@ -509,6 +509,56 @@ class IntakeApplicationServiceTest {
         verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
+    // --- PreparedDeliveryTarget conversion ---
+
+    @Test
+    void toPreparedDeliveryTargetRoutingPreparedHolatda() {
+        UUID workItemId = UUID.randomUUID();
+        UUID routingRuleId = UUID.randomUUID();
+        UUID topicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        long topicId = 42L;
+
+        IntakeResult result = new IntakeResult(
+                workItemId, "BUG-1", "BUG", "Login xato", "BUGS",
+                workflowDefId, tenantId,
+                true, routingRuleId, topicBindingId, chatBindingId, topicId);
+
+        PreparedDeliveryTarget target = result.toPreparedDeliveryTarget();
+
+        assertThat(target.getTenantId()).isEqualTo(tenantId);
+        assertThat(target.getWorkItemId()).isEqualTo(workItemId);
+        assertThat(target.getWorkItemCode()).isEqualTo("BUG-1");
+        assertThat(target.getWorkItemType()).isEqualTo("BUG");
+        assertThat(target.getTitle()).isEqualTo("Login xato");
+        assertThat(target.getCurrentStatusCode()).isEqualTo("BUGS");
+        assertThat(target.isDeliveryReady()).isTrue();
+        assertThat(target.getTargetChatBindingId()).isEqualTo(chatBindingId);
+        assertThat(target.getTargetTopicId()).isEqualTo(topicId);
+    }
+
+    @Test
+    void toPreparedDeliveryTargetRoutingYoqHolatda() {
+        UUID workItemId = UUID.randomUUID();
+
+        IntakeResult result = new IntakeResult(
+                workItemId, "BUG-2", "BUG", "Server xato", "BUGS",
+                workflowDefId, tenantId,
+                false, null, null, null, null);
+
+        PreparedDeliveryTarget target = result.toPreparedDeliveryTarget();
+
+        assertThat(target.getTenantId()).isEqualTo(tenantId);
+        assertThat(target.getWorkItemId()).isEqualTo(workItemId);
+        assertThat(target.getWorkItemCode()).isEqualTo("BUG-2");
+        assertThat(target.getWorkItemType()).isEqualTo("BUG");
+        assertThat(target.getTitle()).isEqualTo("Server xato");
+        assertThat(target.getCurrentStatusCode()).isEqualTo("BUGS");
+        assertThat(target.isDeliveryReady()).isFalse();
+        assertThat(target.getTargetChatBindingId()).isNull();
+        assertThat(target.getTargetTopicId()).isNull();
+    }
+
     // --- Helper ---
 
     private WorkflowDefinition mockActiveWorkflowWithInitialStatus(UUID defId,

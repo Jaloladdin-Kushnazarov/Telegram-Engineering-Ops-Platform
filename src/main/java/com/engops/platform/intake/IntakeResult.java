@@ -72,4 +72,17 @@ public class IntakeResult {
     public UUID getTargetTopicBindingId() { return targetTopicBindingId; }
     public UUID getTargetChatBindingId() { return targetChatBindingId; }
     public Long getTargetTopicId() { return targetTopicId; }
+
+    /**
+     * Adapter-facing DTO ga konvertatsiya — faqat delivery uchun kerakli ma'lumotlar.
+     * Routing internal details (matchedRoutingRuleId, targetTopicBindingId, workflowDefinitionId)
+     * bu yerda tashlanadi — adapter uchun faqat final delivery target kerak.
+     */
+    public PreparedDeliveryTarget toPreparedDeliveryTarget() {
+        return new PreparedDeliveryTarget(
+                tenantId,
+                workItemId, workItemCode, workItemType, title, currentStatusCode,
+                routingPrepared,
+                targetChatBindingId, targetTopicId);
+    }
 }
