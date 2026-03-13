@@ -6,6 +6,12 @@ import java.util.UUID;
  * Intake natijasi — yaratilgan work item va resolved routing target haqida structured javob.
  * Controller yoki adapter shu natijani o'z formatiga moslashtiradi.
  *
+ * Work item metadata:
+ * - workItemId, workItemCode, workItemType, title — asosiy identifikatorlar
+ * - currentStatusCode — boshlang'ich status
+ * - workflowDefinitionId — ishlatilgan workflow
+ * - tenantId — tenant konteksti
+ *
  * Routing:
  * - routingPrepared=true — mos routing rule topildi, target validated va resolved
  * - routingPrepared=false — mos rule topilmadi, lekin work item yaratilgan (valid result)
@@ -18,8 +24,11 @@ import java.util.UUID;
  */
 public class IntakeResult {
 
+    // Work item metadata
     private final UUID workItemId;
     private final String workItemCode;
+    private final String workItemType;
+    private final String title;
     private final String currentStatusCode;
     private final UUID workflowDefinitionId;
     private final UUID tenantId;
@@ -31,13 +40,16 @@ public class IntakeResult {
     private final UUID targetChatBindingId;
     private final Long targetTopicId;
 
-    public IntakeResult(UUID workItemId, String workItemCode, String currentStatusCode,
+    public IntakeResult(UUID workItemId, String workItemCode, String workItemType,
+                        String title, String currentStatusCode,
                         UUID workflowDefinitionId, UUID tenantId,
                         boolean routingPrepared, UUID matchedRoutingRuleId,
                         UUID targetTopicBindingId, UUID targetChatBindingId,
                         Long targetTopicId) {
         this.workItemId = workItemId;
         this.workItemCode = workItemCode;
+        this.workItemType = workItemType;
+        this.title = title;
         this.currentStatusCode = currentStatusCode;
         this.workflowDefinitionId = workflowDefinitionId;
         this.tenantId = tenantId;
@@ -50,6 +62,8 @@ public class IntakeResult {
 
     public UUID getWorkItemId() { return workItemId; }
     public String getWorkItemCode() { return workItemCode; }
+    public String getWorkItemType() { return workItemType; }
+    public String getTitle() { return title; }
     public String getCurrentStatusCode() { return currentStatusCode; }
     public UUID getWorkflowDefinitionId() { return workflowDefinitionId; }
     public UUID getTenantId() { return tenantId; }

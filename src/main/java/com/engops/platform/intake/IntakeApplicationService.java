@@ -23,9 +23,12 @@ import java.util.UUID;
  * 1. Kiruvchi commandni validatsiya qiladi
  * 2. Workflow definitionni aniqlaydi (explicit yoki auto-resolve)
  * 3. Initial statusni aniqlaydi (explicit yoki auto-resolve)
- * 4. WorkItemCommandService orqali work item yaratadi
- * 5. RoutingDecisionService orqali routing qarorini oladi
- * 6. Structured natija qaytaradi (work item + routing info)
+ * 4. RoutingDecisionService orqali routing qarorini oladi (fail-fast, mutation'dan oldin)
+ * 5. WorkItemCommandService orqali work item yaratadi
+ * 6. Adapter-ready structured natija qaytaradi (work item + resolved routing target)
+ *
+ * Muhim: Routing resolution work item yaratishdan OLDIN bo'ladi.
+ * Bu fail-fast ta'minlaydi — invalid routing config bilan work item yaratilmaydi.
  *
  * Cross-module bog'lanishlar:
  * - WorkItemCommandService — work item yaratish uchun (public API)
@@ -57,13 +60,17 @@ public class IntakeApplicationService {
     public IntakeResult submit(IntakeCommand command) {
         validateCommand(command);
 
-        // Workflow definition aniqlash
+        // 1. Workflow definition aniqlash
         WorkflowDefinition definition = resolveWorkflowDefinition(command);
 
-        // Initial status aniqlash
+        // 2. Initial status aniqlash
         String initialStatusCode = resolveInitialStatus(command, definition);
 
-        // WorkItemCommandService orqali yaratish (domain validatsiya u yerda bo'ladi)
+        // 3. Routing decision — mutation'dan OLDIN (fail-fast: invalid config bilan work item yaratilmaydi)
+        RoutingDecision routing = routingDecisionService.resolve(
+                command.getTenantId(), command.getTypeCode().name());
+
+        // 4. WorkItemCommandService orqali yaratish (domain validatsiya u yerda bo'ladi)
         WorkItem workItem = workItemCommandService.create(
                 command.getTenantId(),
                 command.getTypeCode(),
@@ -74,13 +81,12 @@ public class IntakeApplicationService {
                 command.getCreatedByUserId(),
                 command.getActionSource());
 
-        // Routing decision — RoutingDecisionService orqali (side effect yo'q)
-        RoutingDecision routing = routingDecisionService.resolve(
-                command.getTenantId(), workItem.getTypeCode().name());
-
+        // 5. Adapter-ready result
         return new IntakeResult(
                 workItem.getId(),
                 workItem.getWorkItemCode(),
+                workItem.getTypeCode().name(),
+                workItem.getTitle(),
                 workItem.getCurrentStatusCode(),
                 workItem.getWorkflowDefinitionId(),
                 workItem.getTenantId(),

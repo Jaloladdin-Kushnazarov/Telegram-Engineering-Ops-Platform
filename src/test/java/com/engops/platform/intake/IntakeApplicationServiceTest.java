@@ -33,7 +33,7 @@ import static org.mockito.Mockito.when;
  *
  * Routing policy testlari RoutingDecisionServiceTest ichida.
  * Bu yerda faqat orchestration tekshiriladi:
- * - validate → workflow resolve → status resolve → create → routing decision → result
+ * - validate → workflow resolve → status resolve → routing → create → result
  */
 @ExtendWith(MockitoExtension.class)
 class IntakeApplicationServiceTest {
@@ -59,14 +59,14 @@ class IntakeApplicationServiceTest {
         when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
                 .thenReturn(Optional.of(def));
 
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.none());
+
         WorkItem createdItem = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
                 workflowDefId, "Login xato", "BUGS", userId);
         when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
                 eq("Login xato"), eq((String) null), eq("BUGS"), eq(userId), eq("TELEGRAM")))
                 .thenReturn(createdItem);
-
-        when(routingDecisionService.resolve(tenantId, "BUG"))
-                .thenReturn(RoutingDecision.none());
 
         IntakeCommand command = IntakeCommand.builder()
                 .tenantId(tenantId)
@@ -81,15 +81,19 @@ class IntakeApplicationServiceTest {
         IntakeResult result = intakeService.submit(command);
 
         assertThat(result.getWorkItemCode()).isEqualTo("BUG-1");
+        assertThat(result.getWorkItemType()).isEqualTo("BUG");
+        assertThat(result.getTitle()).isEqualTo("Login xato");
         assertThat(result.getCurrentStatusCode()).isEqualTo("BUGS");
         assertThat(result.getTenantId()).isEqualTo(tenantId);
         assertThat(result.getWorkflowDefinitionId()).isEqualTo(workflowDefId);
         assertThat(result.isRoutingPrepared()).isFalse();
         assertThat(result.getMatchedRoutingRuleId()).isNull();
+        assertThat(result.getTargetChatBindingId()).isNull();
+        assertThat(result.getTargetTopicId()).isNull();
 
+        verify(routingDecisionService).resolve(tenantId, "BUG");
         verify(workItemCommandService).create(tenantId, WorkItemType.BUG, workflowDefId,
                 "Login xato", null, "BUGS", userId, "TELEGRAM");
-        verify(routingDecisionService).resolve(tenantId, "BUG");
     }
 
     @Test
@@ -99,14 +103,14 @@ class IntakeApplicationServiceTest {
         when(tenantConfigQueryService.findActiveWorkflowDefinitionsByType(tenantId, "BUG"))
                 .thenReturn(List.of(def));
 
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.none());
+
         WorkItem createdItem = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
                 workflowDefId, "Server xato", "BUGS", userId);
         when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
                 eq("Server xato"), eq((String) null), eq("BUGS"), eq(userId), eq("API")))
                 .thenReturn(createdItem);
-
-        when(routingDecisionService.resolve(tenantId, "BUG"))
-                .thenReturn(RoutingDecision.none());
 
         IntakeCommand command = IntakeCommand.builder()
                 .tenantId(tenantId)
@@ -119,6 +123,8 @@ class IntakeApplicationServiceTest {
         IntakeResult result = intakeService.submit(command);
 
         assertThat(result.getWorkItemCode()).isEqualTo("BUG-1");
+        assertThat(result.getWorkItemType()).isEqualTo("BUG");
+        assertThat(result.getTitle()).isEqualTo("Server xato");
         assertThat(result.getCurrentStatusCode()).isEqualTo("BUGS");
         assertThat(result.isRoutingPrepared()).isFalse();
     }
@@ -131,14 +137,14 @@ class IntakeApplicationServiceTest {
         when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
                 .thenReturn(Optional.of(def));
 
+        when(routingDecisionService.resolve(tenantId, "INCIDENT"))
+                .thenReturn(RoutingDecision.none());
+
         WorkItem createdItem = new WorkItem(tenantId, "INCIDENT-1", WorkItemType.INCIDENT,
                 workflowDefId, "DB down", "OPEN", userId);
         when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.INCIDENT), eq(workflowDefId),
                 eq("DB down"), eq("PostgreSQL server javob bermayapti"), eq("OPEN"), eq(userId), eq("MANUAL")))
                 .thenReturn(createdItem);
-
-        when(routingDecisionService.resolve(tenantId, "INCIDENT"))
-                .thenReturn(RoutingDecision.none());
 
         IntakeCommand command = IntakeCommand.builder()
                 .tenantId(tenantId)
@@ -154,6 +160,8 @@ class IntakeApplicationServiceTest {
         IntakeResult result = intakeService.submit(command);
 
         assertThat(result.getWorkItemCode()).isEqualTo("INCIDENT-1");
+        assertThat(result.getWorkItemType()).isEqualTo("INCIDENT");
+        assertThat(result.getTitle()).isEqualTo("DB down");
 
         verify(workItemCommandService).create(tenantId, WorkItemType.INCIDENT, workflowDefId,
                 "DB down", "PostgreSQL server javob bermayapti", "OPEN", userId, "MANUAL");
@@ -167,18 +175,18 @@ class IntakeApplicationServiceTest {
         when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
                 .thenReturn(Optional.of(def));
 
-        WorkItem createdItem = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
-                workflowDefId, "Test", "BUGS", userId);
-        when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
-                eq("Test"), eq((String) null), eq("BUGS"), eq(userId), eq("TELEGRAM")))
-                .thenReturn(createdItem);
-
         UUID routingRuleId = UUID.randomUUID();
         UUID topicBindingId = UUID.randomUUID();
         UUID chatBindingId = UUID.randomUUID();
         long topicId = 42L;
         when(routingDecisionService.resolve(tenantId, "BUG"))
                 .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId, chatBindingId, topicId));
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
+                workflowDefId, "Test", "BUGS", userId);
+        when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
+                eq("Test"), eq((String) null), eq("BUGS"), eq(userId), eq("TELEGRAM")))
+                .thenReturn(createdItem);
 
         IntakeCommand command = IntakeCommand.builder()
                 .tenantId(tenantId)
@@ -197,6 +205,38 @@ class IntakeApplicationServiceTest {
         assertThat(result.getTargetTopicBindingId()).isEqualTo(topicBindingId);
         assertThat(result.getTargetChatBindingId()).isEqualTo(chatBindingId);
         assertThat(result.getTargetTopicId()).isEqualTo(topicId);
+        assertThat(result.getWorkItemType()).isEqualTo("BUG");
+        assertThat(result.getTitle()).isEqualTo("Test");
+    }
+
+    // --- Routing fail-fast ---
+
+    @Test
+    void routingFailBolsaWorkItemYaratilmaydi() {
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenThrow(new BusinessRuleException("ROUTING_TARGET_NOT_FOUND",
+                        "topic binding topilmadi"));
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("Test")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("TELEGRAM")
+                .build();
+
+        assertThatThrownBy(() -> intakeService.submit(command))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("topic binding topilmadi");
+
+        verifyNoInteractions(workItemCommandService);
     }
 
     // --- Validation failures ---
@@ -214,7 +254,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("tenantId majburiy");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     @Test
@@ -230,7 +270,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("typeCode majburiy");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     @Test
@@ -247,7 +287,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("title bo'sh");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     @Test
@@ -263,7 +303,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("title bo'sh");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     @Test
@@ -279,7 +319,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("createdByUserId majburiy");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     @Test
@@ -296,7 +336,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("actionSource bo'sh");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     @Test
@@ -312,7 +352,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("actionSource bo'sh");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     // --- Workflow resolution failures ---
@@ -337,7 +377,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("WorkflowDefinition");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     @Test
@@ -347,6 +387,9 @@ class IntakeApplicationServiceTest {
 
         when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
                 .thenReturn(Optional.of(def));
+
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.none());
 
         when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
                 eq("Test"), eq((String) null), eq("OPEN"), eq(userId), eq("MANUAL")))
@@ -385,7 +428,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("aktiv workflow ta'rifi topilmadi");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     @Test
@@ -408,7 +451,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("2 ta aktiv workflow topildi");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     // --- Initial status resolution ---
@@ -434,7 +477,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("boshlang'ich status topilmadi");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     @Test
@@ -463,14 +506,11 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("bir nechta boshlang'ich status");
 
-        verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService);
     }
 
     // --- Helper ---
 
-    /**
-     * Auto-resolve path uchun workflow mock (getId, getStatuses kerak).
-     */
     private WorkflowDefinition mockActiveWorkflowWithInitialStatus(UUID defId,
                                                                      String initialStatusName) {
         WorkflowDefinition def = mock(WorkflowDefinition.class);
