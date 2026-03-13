@@ -123,6 +123,14 @@ public class TenantConfigQueryService {
     }
 
     /**
+     * Tenant-safe lookup: ID va tenant bo'yicha topic bindingni topadi.
+     * Routing target validatsiyasi uchun ishlatiladi.
+     */
+    public Optional<TelegramTopicBinding> findTopicBindingById(UUID tenantId, UUID topicBindingId) {
+        return telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(topicBindingId, tenantId);
+    }
+
+    /**
      * Tenant va work item turi uchun aktiv yo'naltirish qoidalarini qaytaradi (prioritet bo'yicha DESC).
      * Routing preparation uchun — faqat aktiv va type-mos rule'lar qaytadi.
      */

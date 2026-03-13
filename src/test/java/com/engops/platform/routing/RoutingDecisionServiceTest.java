@@ -3,6 +3,7 @@ package com.engops.platform.routing;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.RoutingRule;
+import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -10,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,6 +32,8 @@ class RoutingDecisionServiceTest {
 
     private final UUID tenantId = UUID.randomUUID();
 
+    // ==================== SELECTION POLICY TESTLARI ====================
+
     @Test
     void candidateYoqBolsaNoneQaytaradi() {
         when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
@@ -43,17 +47,21 @@ class RoutingDecisionServiceTest {
     }
 
     @Test
-    void bittaUnconditionalRuleMatchedQaytaradi() {
+    void bittaUnconditionalRuleValidTargetMatchedQaytaradi() {
         UUID ruleId = UUID.randomUUID();
         UUID topicBindingId = UUID.randomUUID();
 
         RoutingRule rule = mock(RoutingRule.class);
         when(rule.getId()).thenReturn(ruleId);
         when(rule.getTargetTopicBindingId()).thenReturn(topicBindingId);
-        // getConditionExpression() default null — unconditional
 
         when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
                 .thenReturn(List.of(rule));
+
+        TelegramTopicBinding topicBinding = mock(TelegramTopicBinding.class);
+        when(topicBinding.isActive()).thenReturn(true);
+        when(tenantConfigQueryService.findTopicBindingById(tenantId, topicBindingId))
+                .thenReturn(Optional.of(topicBinding));
 
         RoutingDecision decision = routingDecisionService.resolve(tenantId, "BUG");
 
@@ -75,9 +83,13 @@ class RoutingDecisionServiceTest {
         RoutingRule lowRule = mock(RoutingRule.class);
         when(lowRule.getPriority()).thenReturn(100);
 
-        // priority DESC tartibda
         when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
                 .thenReturn(List.of(highRule, lowRule));
+
+        TelegramTopicBinding topicBinding = mock(TelegramTopicBinding.class);
+        when(topicBinding.isActive()).thenReturn(true);
+        when(tenantConfigQueryService.findTopicBindingById(tenantId, highTopicId))
+                .thenReturn(Optional.of(topicBinding));
 
         RoutingDecision decision = routingDecisionService.resolve(tenantId, "BUG");
 
@@ -117,25 +129,83 @@ class RoutingDecisionServiceTest {
 
     @Test
     void mixedRulesConditionalChetlatilibUnconditionalTanlanadi() {
-        // Conditional rule — yuqori priority, lekin candidate emas
         RoutingRule conditionalHighRule = mock(RoutingRule.class);
         when(conditionalHighRule.getConditionExpression()).thenReturn("severity == 'CRITICAL'");
 
-        // Unconditional rule — pastroq priority, lekin candidate
         UUID unconditionalRuleId = UUID.randomUUID();
         UUID unconditionalTopicId = UUID.randomUUID();
         RoutingRule unconditionalLowRule = mock(RoutingRule.class);
         when(unconditionalLowRule.getId()).thenReturn(unconditionalRuleId);
         when(unconditionalLowRule.getTargetTopicBindingId()).thenReturn(unconditionalTopicId);
 
-        // priority DESC: conditional(200) birinchi, unconditional(100) ikkinchi
         when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
                 .thenReturn(List.of(conditionalHighRule, unconditionalLowRule));
+
+        TelegramTopicBinding topicBinding = mock(TelegramTopicBinding.class);
+        when(topicBinding.isActive()).thenReturn(true);
+        when(tenantConfigQueryService.findTopicBindingById(tenantId, unconditionalTopicId))
+                .thenReturn(Optional.of(topicBinding));
 
         RoutingDecision decision = routingDecisionService.resolve(tenantId, "BUG");
 
         assertThat(decision.isPrepared()).isTrue();
         assertThat(decision.getMatchedRoutingRuleId()).isEqualTo(unconditionalRuleId);
         assertThat(decision.getTargetTopicBindingId()).isEqualTo(unconditionalTopicId);
+    }
+
+    // ==================== TARGET VALIDATION TESTLARI ====================
+
+    @Test
+    void matchedRuleTargetNullBolsaFailFast() {
+        RoutingRule rule = mock(RoutingRule.class);
+        when(rule.getName()).thenReturn("Bug Default Route");
+        // getTargetTopicBindingId() default null
+
+        when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
+                .thenReturn(List.of(rule));
+
+        assertThatThrownBy(() -> routingDecisionService.resolve(tenantId, "BUG"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("targetTopicBindingId ko'rsatilmagan");
+    }
+
+    @Test
+    void matchedRuleTargetTopilmasaFailFast() {
+        UUID topicBindingId = UUID.randomUUID();
+
+        RoutingRule rule = mock(RoutingRule.class);
+        when(rule.getName()).thenReturn("Bug Default Route");
+        when(rule.getTargetTopicBindingId()).thenReturn(topicBindingId);
+
+        when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
+                .thenReturn(List.of(rule));
+        when(tenantConfigQueryService.findTopicBindingById(tenantId, topicBindingId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> routingDecisionService.resolve(tenantId, "BUG"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("topic binding")
+                .hasMessageContaining("topilmadi");
+    }
+
+    @Test
+    void matchedRuleTargetInactiveBolsaFailFast() {
+        UUID topicBindingId = UUID.randomUUID();
+
+        RoutingRule rule = mock(RoutingRule.class);
+        when(rule.getName()).thenReturn("Bug Default Route");
+        when(rule.getTargetTopicBindingId()).thenReturn(topicBindingId);
+
+        when(tenantConfigQueryService.findActiveRoutingRulesByType(tenantId, "BUG"))
+                .thenReturn(List.of(rule));
+
+        TelegramTopicBinding inactiveBinding = mock(TelegramTopicBinding.class);
+        when(inactiveBinding.isActive()).thenReturn(false);
+        when(tenantConfigQueryService.findTopicBindingById(tenantId, topicBindingId))
+                .thenReturn(Optional.of(inactiveBinding));
+
+        assertThatThrownBy(() -> routingDecisionService.resolve(tenantId, "BUG"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("aktiv emas");
     }
 }

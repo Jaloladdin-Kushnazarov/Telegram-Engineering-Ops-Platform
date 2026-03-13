@@ -19,4 +19,10 @@ public interface TelegramTopicBindingRepository extends JpaRepository<TelegramTo
     Optional<TelegramTopicBinding> findByChatBindingIdAndTopicId(UUID chatBindingId, long topicId);
 
     List<TelegramTopicBinding> findByChatBindingIdAndActiveTrue(UUID chatBindingId);
+
+    /**
+     * Tenant-safe lookup: ID va tenant bo'yicha topic bindingni topadi.
+     * Tenant isolation chatBinding orqali ta'minlanadi.
+     */
+    Optional<TelegramTopicBinding> findByIdAndChatBinding_TenantId(UUID id, UUID tenantId);
 }
