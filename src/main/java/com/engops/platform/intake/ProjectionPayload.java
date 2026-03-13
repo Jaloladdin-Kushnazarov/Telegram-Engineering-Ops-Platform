@@ -33,6 +33,10 @@ public class ProjectionPayload {
     private final String title;
     private final String currentStatusCode;
 
+    // Adapter-neutral display fields (assembler tomonidan computed)
+    private final String displayTitle;
+    private final String displayTypeLabel;
+
     // Delivery readiness
     private final boolean deliveryReady;
 
@@ -44,6 +48,7 @@ public class ProjectionPayload {
                               UUID workItemId, String workItemCode,
                               String workItemType, String title,
                               String currentStatusCode,
+                              String displayTitle, String displayTypeLabel,
                               boolean deliveryReady,
                               UUID targetChatBindingId, Long targetTopicId) {
         this.tenantId = tenantId;
@@ -52,6 +57,8 @@ public class ProjectionPayload {
         this.workItemType = workItemType;
         this.title = title;
         this.currentStatusCode = currentStatusCode;
+        this.displayTitle = displayTitle;
+        this.displayTypeLabel = displayTypeLabel;
         this.deliveryReady = deliveryReady;
         this.targetChatBindingId = targetChatBindingId;
         this.targetTopicId = targetTopicId;
@@ -63,6 +70,8 @@ public class ProjectionPayload {
     public String getWorkItemType() { return workItemType; }
     public String getTitle() { return title; }
     public String getCurrentStatusCode() { return currentStatusCode; }
+    public String getDisplayTitle() { return displayTitle; }
+    public String getDisplayTypeLabel() { return displayTypeLabel; }
     public boolean isDeliveryReady() { return deliveryReady; }
     public UUID getTargetChatBindingId() { return targetChatBindingId; }
     public Long getTargetTopicId() { return targetTopicId; }

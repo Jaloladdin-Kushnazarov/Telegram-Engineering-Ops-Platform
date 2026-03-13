@@ -37,6 +37,8 @@ class ProjectionAssemblerTest {
         assertThat(payload.getWorkItemType()).isEqualTo("BUG");
         assertThat(payload.getTitle()).isEqualTo("Login xato");
         assertThat(payload.getCurrentStatusCode()).isEqualTo("BUGS");
+        assertThat(payload.getDisplayTitle()).isEqualTo("[BUG-1] Login xato");
+        assertThat(payload.getDisplayTypeLabel()).isEqualTo("Bug");
         assertThat(payload.isDeliveryReady()).isTrue();
         assertThat(payload.getTargetChatBindingId()).isEqualTo(chatBindingId);
         assertThat(payload.getTargetTopicId()).isEqualTo(topicId);
@@ -61,9 +63,25 @@ class ProjectionAssemblerTest {
         assertThat(payload.getWorkItemType()).isEqualTo("INCIDENT");
         assertThat(payload.getTitle()).isEqualTo("DB down");
         assertThat(payload.getCurrentStatusCode()).isEqualTo("OPEN");
+        assertThat(payload.getDisplayTitle()).isEqualTo("[INCIDENT-1] DB down");
+        assertThat(payload.getDisplayTypeLabel()).isEqualTo("Incident");
         assertThat(payload.isDeliveryReady()).isFalse();
         assertThat(payload.getTargetChatBindingId()).isNull();
         assertThat(payload.getTargetTopicId()).isNull();
+    }
+
+    @Test
+    void taskTypeLabelCorrectlyFormatted() {
+        PreparedDeliveryTarget target = new PreparedDeliveryTarget(
+                UUID.randomUUID(),
+                UUID.randomUUID(), "TASK-5", "TASK", "Deploy script", "TODO",
+                false,
+                null, null);
+
+        ProjectionPayload payload = assembler.assemble(target);
+
+        assertThat(payload.getDisplayTypeLabel()).isEqualTo("Task");
+        assertThat(payload.getDisplayTitle()).isEqualTo("[TASK-5] Deploy script");
     }
 
     @Test

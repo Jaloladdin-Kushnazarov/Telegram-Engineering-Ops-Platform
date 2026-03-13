@@ -35,6 +35,9 @@ public class ProjectionAssembler {
             throw new IllegalArgumentException("PreparedDeliveryTarget null bo'lishi mumkin emas");
         }
 
+        String displayTitle = buildDisplayTitle(target.getWorkItemCode(), target.getTitle());
+        String displayTypeLabel = buildDisplayTypeLabel(target.getWorkItemType());
+
         return new ProjectionPayload(
                 target.getTenantId(),
                 target.getWorkItemId(),
@@ -42,8 +45,29 @@ public class ProjectionAssembler {
                 target.getWorkItemType(),
                 target.getTitle(),
                 target.getCurrentStatusCode(),
+                displayTitle,
+                displayTypeLabel,
                 target.isDeliveryReady(),
                 target.getTargetChatBindingId(),
                 target.getTargetTopicId());
+    }
+
+    /**
+     * "[BUG-1] Login xato" formatida display title hosil qiladi.
+     */
+    private String buildDisplayTitle(String workItemCode, String title) {
+        return "[" + workItemCode + "] " + title;
+    }
+
+    /**
+     * "BUG" → "Bug", "INCIDENT" → "Incident", "TASK" → "Task".
+     * WorkItemType enum nomidan odam o'qiydigan label hosil qiladi.
+     */
+    private String buildDisplayTypeLabel(String workItemType) {
+        if (workItemType == null || workItemType.isEmpty()) {
+            return workItemType;
+        }
+        return workItemType.substring(0, 1).toUpperCase()
+                + workItemType.substring(1).toLowerCase();
     }
 }
