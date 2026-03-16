@@ -45,6 +45,7 @@ public class TelegramCardDispatchService {
      * @param cardView render payload + action'lar
      * @return application-level delivery natijasi
      * @throws IllegalArgumentException agar cardView null bo'lsa
+     * @throws IllegalStateException agar collaborator null qaytarsa
      */
     public TelegramDeliveryResult dispatch(TelegramCardView cardView) {
         if (cardView == null) {
@@ -52,9 +53,20 @@ public class TelegramCardDispatchService {
         }
 
         TelegramMessage message = renderer.render(cardView);
+        if (message == null) {
+            throw new IllegalStateException("TelegramMessageRenderer null qaytardi");
+        }
 
         TelegramDeliveryCommand command = commandAssembler.assembleSend(message);
+        if (command == null) {
+            throw new IllegalStateException("TelegramDeliveryCommandAssembler null qaytardi");
+        }
 
-        return outboundDispatchService.dispatch(command);
+        TelegramDeliveryResult result = outboundDispatchService.dispatch(command);
+        if (result == null) {
+            throw new IllegalStateException("TelegramOutboundDispatchService null qaytardi");
+        }
+
+        return result;
     }
 }

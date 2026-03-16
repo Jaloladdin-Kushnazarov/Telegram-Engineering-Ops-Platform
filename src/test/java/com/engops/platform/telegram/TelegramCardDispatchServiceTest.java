@@ -137,6 +137,49 @@ class TelegramCardDispatchServiceTest {
         order.verifyNoMoreInteractions();
     }
 
+    @Test
+    void nullRendererResultFailsFast() {
+        TelegramCardView cardView = buildCardView();
+
+        when(renderer.render(cardView)).thenReturn(null);
+
+        assertThatThrownBy(() -> cardDispatchService.dispatch(cardView))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("TelegramMessageRenderer null");
+
+        verifyNoInteractions(commandAssembler, outboundDispatchService);
+    }
+
+    @Test
+    void nullAssemblerResultFailsFast() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(null);
+
+        assertThatThrownBy(() -> cardDispatchService.dispatch(cardView))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("TelegramDeliveryCommandAssembler null");
+
+        verifyNoInteractions(outboundDispatchService);
+    }
+
+    @Test
+    void nullDispatchResultFailsFast() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(null);
+
+        assertThatThrownBy(() -> cardDispatchService.dispatch(cardView))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("TelegramOutboundDispatchService null");
+    }
+
     private TelegramCardView buildCardView() {
         TelegramRenderPayload renderPayload = new TelegramRenderPayload(
                 UUID.randomUUID(),
