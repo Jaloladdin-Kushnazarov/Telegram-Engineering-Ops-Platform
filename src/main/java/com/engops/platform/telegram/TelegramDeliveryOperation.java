@@ -17,5 +17,11 @@ package com.engops.platform.telegram;
  */
 public enum TelegramDeliveryOperation {
 
-    SEND_NEW_MESSAGE
+    SEND_NEW_MESSAGE,
+
+    /**
+     * Mavjud message'ni yangilash — hali implement qilinmagan.
+     * Keyingi phase'larda qo'llab-quvvatlanadi.
+     */
+    EDIT_MESSAGE
 }
