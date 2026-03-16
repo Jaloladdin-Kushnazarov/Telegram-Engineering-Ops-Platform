@@ -23,4 +23,15 @@ public interface TelegramOutboundGateway {
      * @return execution natijasi (success yoki failure)
      */
     TelegramDeliveryResult dispatch(TelegramDeliveryCommand command);
+
+    /**
+     * Transport-level request'ni tashqi tizimga yuboradi.
+     *
+     * Bu method Phase 11 dan kelgan TelegramSendMessageRequest'ni
+     * qabul qilib, transport-level natija qaytaradi.
+     *
+     * @param request transport-oriented send message request
+     * @return gateway execution natijasi
+     */
+    TelegramGatewayResult execute(TelegramSendMessageRequest request);
 }

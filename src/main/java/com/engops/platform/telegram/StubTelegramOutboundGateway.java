@@ -24,4 +24,10 @@ public class StubTelegramOutboundGateway implements TelegramOutboundGateway {
     public TelegramDeliveryResult dispatch(TelegramDeliveryCommand command) {
         return TelegramDeliveryResult.failure(command, FAILURE_CODE, FAILURE_REASON);
     }
+
+    @Override
+    public TelegramGatewayResult execute(TelegramSendMessageRequest request) {
+        return TelegramGatewayResult.failed(
+                TelegramGatewayError.UNKNOWN_ERROR, FAILURE_REASON);
+    }
 }

@@ -43,4 +43,22 @@ class StubTelegramOutboundGatewayTest {
         assertThat(result.getTargetTopicId()).isEqualTo(topicId);
         assertThat(result.getExternalMessageId()).isNull();
     }
+
+    @Test
+    void executeReturnsControlledFailure() {
+        TelegramSendMessageRequest request = new TelegramSendMessageRequest(
+                UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), 42L,
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS",
+                List.of());
+
+        TelegramGatewayResult result = gateway.execute(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getResultType()).isEqualTo(TelegramGatewayResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.UNKNOWN_ERROR);
+        assertThat(result.getErrorMessage()).isEqualTo(
+                "Telegram outbound gateway hali implement qilinmagan");
+        assertThat(result.getTelegramMessageId()).isNull();
+    }
 }
