@@ -3,19 +3,21 @@ package com.engops.platform.telegram;
 import org.springframework.stereotype.Service;
 
 /**
- * Telegram outbound dispatch uchun application service.
+ * Telegram outbound dispatch uchun application-level orchestration service.
  *
  * Bu servis telegram module'ning outbound execution uchun public entry point'i.
- * TelegramDeliveryCommand'ni qabul qilib, TelegramOutboundGateway orqali
- * tashqi tizimga yuboradi.
+ * TelegramDeliveryCommand'ni qabul qilib, transport-level request'ga assemble qiladi,
+ * gateway orqali execute qiladi, va gateway natijasini application-level result'ga
+ * tarjima qiladi.
  *
- * Thin delegation:
- * - Null guard
- * - Gateway'ga delegate
- * - Natijani qaytarish
+ * Orchestration flow:
+ * TelegramDeliveryCommand
+ *   -> TelegramSendMessageRequestAssembler.assemble(command)
+ *   -> TelegramOutboundGateway.execute(request)
+ *   -> TelegramGatewayResult -> TelegramDeliveryResult mapping
  *
  * Muhim:
- * - Business rule yo'q — faqat delegation
+ * - Business rule yo'q — faqat orchestration
  * - Rendering yo'q — command allaqachon tayyor
  * - HTTP yo'q — gateway abstraktsiya orqali
  * - Retry yo'q — keyingi phase
@@ -26,23 +28,49 @@ import org.springframework.stereotype.Service;
 public class TelegramOutboundDispatchService {
 
     private final TelegramOutboundGateway gateway;
+    private final TelegramSendMessageRequestAssembler assembler;
 
-    public TelegramOutboundDispatchService(TelegramOutboundGateway gateway) {
+    public TelegramOutboundDispatchService(TelegramOutboundGateway gateway,
+                                           TelegramSendMessageRequestAssembler assembler) {
         this.gateway = gateway;
+        this.assembler = assembler;
     }
 
     /**
-     * TelegramDeliveryCommand'ni outbound gateway orqali dispatch qiladi.
+     * TelegramDeliveryCommand'ni orchestrate qiladi:
+     * command -> transport request -> gateway execute -> delivery result.
      *
      * @param command outbound delivery command
-     * @return execution natijasi
+     * @return application-level delivery natijasi
      * @throws IllegalArgumentException agar command null bo'lsa
+     * @throws IllegalStateException agar gateway null result qaytarsa
      */
     public TelegramDeliveryResult dispatch(TelegramDeliveryCommand command) {
         if (command == null) {
             throw new IllegalArgumentException("TelegramDeliveryCommand null bo'lishi mumkin emas");
         }
 
-        return gateway.dispatch(command);
+        TelegramSendMessageRequest request = assembler.assemble(command);
+
+        TelegramGatewayResult gatewayResult = gateway.execute(request);
+
+        if (gatewayResult == null) {
+            throw new IllegalStateException(
+                    "TelegramOutboundGateway.execute() null qaytardi — bu hech qachon sodir bo'lmasligi kerak");
+        }
+
+        return mapToDeliveryResult(command, gatewayResult);
+    }
+
+    private TelegramDeliveryResult mapToDeliveryResult(TelegramDeliveryCommand command,
+                                                        TelegramGatewayResult gatewayResult) {
+        if (gatewayResult.isSuccess()) {
+            return TelegramDeliveryResult.success(command, gatewayResult.getTelegramMessageId());
+        }
+
+        return TelegramDeliveryResult.failure(
+                command,
+                gatewayResult.getError().name(),
+                gatewayResult.getErrorMessage());
     }
 }
