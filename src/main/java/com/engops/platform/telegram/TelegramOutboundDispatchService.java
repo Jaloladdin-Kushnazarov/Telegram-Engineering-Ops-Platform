@@ -64,13 +64,17 @@ public class TelegramOutboundDispatchService {
 
     private TelegramDeliveryResult mapToDeliveryResult(TelegramDeliveryCommand command,
                                                         TelegramGatewayResult gatewayResult) {
-        if (gatewayResult.isSuccess()) {
-            return TelegramDeliveryResult.success(command, gatewayResult.getTelegramMessageId());
-        }
-
-        return TelegramDeliveryResult.failure(
-                command,
-                gatewayResult.getError().name(),
-                gatewayResult.getErrorMessage());
+        return switch (gatewayResult.getResultType()) {
+            case SUCCESS -> TelegramDeliveryResult.success(
+                    command, gatewayResult.getTelegramMessageId());
+            case REJECTED -> TelegramDeliveryResult.rejected(
+                    command,
+                    gatewayResult.getError().name(),
+                    gatewayResult.getErrorMessage());
+            case FAILED -> TelegramDeliveryResult.failed(
+                    command,
+                    gatewayResult.getError().name(),
+                    gatewayResult.getErrorMessage());
+        };
     }
 }

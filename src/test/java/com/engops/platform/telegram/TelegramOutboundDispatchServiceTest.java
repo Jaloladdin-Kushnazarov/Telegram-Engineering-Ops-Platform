@@ -13,7 +13,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -23,7 +22,7 @@ import static org.mockito.Mockito.when;
  *
  * Orchestration flow tekshiruvi:
  * - command -> assembler -> gateway.execute -> result mapping
- * - success/rejected/failed gateway result'larni to'g'ri mapping
+ * - SUCCESS -> DELIVERED, REJECTED -> REJECTED, FAILED -> FAILED
  * - null guard
  * - null gateway result fail-fast
  * - InOrder: assembler keyin gateway
@@ -41,7 +40,7 @@ class TelegramOutboundDispatchServiceTest {
     private TelegramOutboundDispatchService dispatchService;
 
     @Test
-    void successGatewayResultMappedToDeliverySuccess() {
+    void successGatewayResultMappedToDelivered() {
         TelegramDeliveryCommand command = buildCommand();
         TelegramSendMessageRequest request = buildRequest(command);
         long telegramMessageId = 98765L;
@@ -52,19 +51,21 @@ class TelegramOutboundDispatchServiceTest {
 
         TelegramDeliveryResult result = dispatchService.dispatch(command);
 
+        assertThat(result.getDeliveryOutcome()).isEqualTo(
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED);
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getExternalMessageId()).isEqualTo(telegramMessageId);
         assertThat(result.getOperation()).isEqualTo(command.getOperation());
         assertThat(result.getTenantId()).isEqualTo(command.getTenantId());
         assertThat(result.getWorkItemId()).isEqualTo(command.getWorkItemId());
+        assertThat(result.getFailureCode()).isNull();
+        assertThat(result.getFailureReason()).isNull();
 
-        verify(assembler).assemble(command);
-        verify(gateway).execute(request);
         verifyNoMoreInteractions(assembler, gateway);
     }
 
     @Test
-    void rejectedGatewayResultMappedToDeliveryFailure() {
+    void rejectedGatewayResultMappedToRejected() {
         TelegramDeliveryCommand command = buildCommand();
         TelegramSendMessageRequest request = buildRequest(command);
         TelegramGatewayResult gatewayResult = TelegramGatewayResult.rejected(
@@ -75,6 +76,8 @@ class TelegramOutboundDispatchServiceTest {
 
         TelegramDeliveryResult result = dispatchService.dispatch(command);
 
+        assertThat(result.getDeliveryOutcome()).isEqualTo(
+                TelegramDeliveryResult.DeliveryOutcome.REJECTED);
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getFailureCode()).isEqualTo("INVALID_REQUEST");
         assertThat(result.getFailureReason()).isEqualTo("Chat not found");
@@ -82,7 +85,7 @@ class TelegramOutboundDispatchServiceTest {
     }
 
     @Test
-    void failedGatewayResultMappedToDeliveryFailure() {
+    void failedGatewayResultMappedToFailed() {
         TelegramDeliveryCommand command = buildCommand();
         TelegramSendMessageRequest request = buildRequest(command);
         TelegramGatewayResult gatewayResult = TelegramGatewayResult.failed(
@@ -93,6 +96,8 @@ class TelegramOutboundDispatchServiceTest {
 
         TelegramDeliveryResult result = dispatchService.dispatch(command);
 
+        assertThat(result.getDeliveryOutcome()).isEqualTo(
+                TelegramDeliveryResult.DeliveryOutcome.FAILED);
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getFailureCode()).isEqualTo("NETWORK_ERROR");
         assertThat(result.getFailureReason()).isEqualTo("Connection timeout");

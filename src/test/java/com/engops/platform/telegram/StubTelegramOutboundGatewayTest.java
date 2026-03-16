@@ -33,6 +33,8 @@ class StubTelegramOutboundGatewayTest {
         TelegramDeliveryResult result = gateway.dispatch(command);
 
         assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getDeliveryOutcome()).isEqualTo(
+                TelegramDeliveryResult.DeliveryOutcome.FAILED);
         assertThat(result.getFailureCode()).isEqualTo("TELEGRAM_GATEWAY_NOT_IMPLEMENTED");
         assertThat(result.getFailureReason()).isEqualTo(
                 "Telegram outbound gateway hali implement qilinmagan");

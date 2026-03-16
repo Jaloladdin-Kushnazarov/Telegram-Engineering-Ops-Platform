@@ -22,7 +22,7 @@ public class StubTelegramOutboundGateway implements TelegramOutboundGateway {
 
     @Override
     public TelegramDeliveryResult dispatch(TelegramDeliveryCommand command) {
-        return TelegramDeliveryResult.failure(command, FAILURE_CODE, FAILURE_REASON);
+        return TelegramDeliveryResult.failed(command, FAILURE_CODE, FAILURE_REASON);
     }
 
     @Override
