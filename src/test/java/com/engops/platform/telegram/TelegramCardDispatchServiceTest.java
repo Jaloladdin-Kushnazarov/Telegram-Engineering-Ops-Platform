@@ -21,10 +21,11 @@ import static org.mockito.Mockito.when;
 /**
  * TelegramCardDispatchService unit testlari.
  *
- * Orchestration flow tekshiruvi:
- * cardView -> renderer -> commandAssembler -> outboundDispatchService
- * DELIVERED / REJECTED / FAILED natijalar to'g'ri qaytishi
- * null guard va InOrder tekshiruvi
+ * Ikki public API tekshiruvi:
+ * - dispatch(cardView) -> TelegramDeliveryResult (business facade)
+ * - dispatchAttempt(cardView) -> TelegramDeliveryAttempt (observability facade)
+ *
+ * Orchestration flow, null guard, InOrder, va fail-fast tekshiruvi.
  */
 @ExtendWith(MockitoExtension.class)
 class TelegramCardDispatchServiceTest {
@@ -41,8 +42,10 @@ class TelegramCardDispatchServiceTest {
     @InjectMocks
     private TelegramCardDispatchService cardDispatchService;
 
+    // ========== dispatch() -> TelegramDeliveryResult ==========
+
     @Test
-    void deliveredResultReturnedCorrectly() {
+    void dispatchReturnsDeliveryResult() {
         TelegramCardView cardView = buildCardView();
         TelegramMessage message = buildMessage();
         TelegramDeliveryCommand command = buildCommand(message);
@@ -67,7 +70,7 @@ class TelegramCardDispatchServiceTest {
     }
 
     @Test
-    void rejectedResultReturnedCorrectly() {
+    void dispatchRejectedResult() {
         TelegramCardView cardView = buildCardView();
         TelegramMessage message = buildMessage();
         TelegramDeliveryCommand command = buildCommand(message);
@@ -88,7 +91,7 @@ class TelegramCardDispatchServiceTest {
     }
 
     @Test
-    void failedResultReturnedCorrectly() {
+    void dispatchFailedResult() {
         TelegramCardView cardView = buildCardView();
         TelegramMessage message = buildMessage();
         TelegramDeliveryCommand command = buildCommand(message);
@@ -109,7 +112,7 @@ class TelegramCardDispatchServiceTest {
     }
 
     @Test
-    void nullCardViewRejected() {
+    void dispatchNullCardViewRejected() {
         assertThatThrownBy(() -> cardDispatchService.dispatch(null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("TelegramCardView null");
@@ -118,15 +121,15 @@ class TelegramCardDispatchServiceTest {
     }
 
     @Test
-    void orchestrationOrderIsCorrect() {
+    void dispatchOrchestrationOrder() {
         TelegramCardView cardView = buildCardView();
         TelegramMessage message = buildMessage();
         TelegramDeliveryCommand command = buildCommand(message);
-        TelegramDeliveryResult expectedResult = TelegramDeliveryResult.success(command, 111L);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.success(command, 111L);
 
         when(renderer.render(cardView)).thenReturn(message);
         when(commandAssembler.assembleSend(message)).thenReturn(command);
-        when(outboundDispatchService.dispatch(command)).thenReturn(expectedResult);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
 
         cardDispatchService.dispatch(cardView);
 
@@ -138,7 +141,7 @@ class TelegramCardDispatchServiceTest {
     }
 
     @Test
-    void nullRendererResultFailsFast() {
+    void dispatchNullRendererResultFailsFast() {
         TelegramCardView cardView = buildCardView();
 
         when(renderer.render(cardView)).thenReturn(null);
@@ -151,7 +154,7 @@ class TelegramCardDispatchServiceTest {
     }
 
     @Test
-    void nullAssemblerResultFailsFast() {
+    void dispatchNullAssemblerResultFailsFast() {
         TelegramCardView cardView = buildCardView();
         TelegramMessage message = buildMessage();
 
@@ -166,7 +169,7 @@ class TelegramCardDispatchServiceTest {
     }
 
     @Test
-    void nullDispatchResultFailsFast() {
+    void dispatchNullDispatchResultFailsFast() {
         TelegramCardView cardView = buildCardView();
         TelegramMessage message = buildMessage();
         TelegramDeliveryCommand command = buildCommand(message);
@@ -179,6 +182,109 @@ class TelegramCardDispatchServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("TelegramOutboundDispatchService null");
     }
+
+    // ========== dispatchAttempt() -> TelegramDeliveryAttempt ==========
+
+    @Test
+    void dispatchAttemptReturnsDeliveredAttempt() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.success(command, 77777L);
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+
+        TelegramDeliveryAttempt attempt = cardDispatchService.dispatchAttempt(cardView);
+
+        assertThat(attempt.getAttemptId()).isNotNull();
+        assertThat(attempt.getAttemptedAt()).isNotNull();
+        assertThat(attempt.getDeliveryOutcome()).isEqualTo(
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED);
+        assertThat(attempt.isSuccess()).isTrue();
+        assertThat(attempt.getExternalMessageId()).isEqualTo(77777L);
+        assertThat(attempt.getTenantId()).isEqualTo(command.getTenantId());
+        assertThat(attempt.getWorkItemId()).isEqualTo(command.getWorkItemId());
+        assertThat(attempt.getOperation()).isEqualTo(command.getOperation());
+        assertThat(attempt.getTargetChatBindingId()).isEqualTo(command.getTargetChatBindingId());
+        assertThat(attempt.getTargetTopicId()).isEqualTo(command.getTargetTopicId());
+        assertThat(attempt.getFailureCode()).isNull();
+        assertThat(attempt.getFailureReason()).isNull();
+
+        verify(renderer).render(cardView);
+        verify(commandAssembler).assembleSend(message);
+        verify(outboundDispatchService).dispatch(command);
+        verifyNoMoreInteractions(renderer, commandAssembler, outboundDispatchService);
+    }
+
+    @Test
+    void dispatchAttemptReturnsRejectedAttempt() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.rejected(
+                command, "RATE_LIMIT", "Too many requests");
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+
+        TelegramDeliveryAttempt attempt = cardDispatchService.dispatchAttempt(cardView);
+
+        assertThat(attempt.getDeliveryOutcome()).isEqualTo(
+                TelegramDeliveryResult.DeliveryOutcome.REJECTED);
+        assertThat(attempt.isSuccess()).isFalse();
+        assertThat(attempt.getFailureCode()).isEqualTo("RATE_LIMIT");
+        assertThat(attempt.getFailureReason()).isEqualTo("Too many requests");
+        assertThat(attempt.getExternalMessageId()).isNull();
+        assertThat(attempt.getAttemptId()).isNotNull();
+    }
+
+    @Test
+    void dispatchAttemptReturnsFailedAttempt() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.failed(
+                command, "UNKNOWN_ERROR", "Gateway unavailable");
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+
+        TelegramDeliveryAttempt attempt = cardDispatchService.dispatchAttempt(cardView);
+
+        assertThat(attempt.getDeliveryOutcome()).isEqualTo(
+                TelegramDeliveryResult.DeliveryOutcome.FAILED);
+        assertThat(attempt.isSuccess()).isFalse();
+        assertThat(attempt.getFailureCode()).isEqualTo("UNKNOWN_ERROR");
+        assertThat(attempt.getFailureReason()).isEqualTo("Gateway unavailable");
+        assertThat(attempt.getExternalMessageId()).isNull();
+        assertThat(attempt.getAttemptId()).isNotNull();
+    }
+
+    @Test
+    void dispatchAttemptOrchestrationOrder() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.success(command, 222L);
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+
+        cardDispatchService.dispatchAttempt(cardView);
+
+        InOrder order = inOrder(renderer, commandAssembler, outboundDispatchService);
+        order.verify(renderer).render(cardView);
+        order.verify(commandAssembler).assembleSend(message);
+        order.verify(outboundDispatchService).dispatch(command);
+        order.verifyNoMoreInteractions();
+    }
+
+    // ========== Helpers ==========
 
     private TelegramCardView buildCardView() {
         TelegramRenderPayload renderPayload = new TelegramRenderPayload(
