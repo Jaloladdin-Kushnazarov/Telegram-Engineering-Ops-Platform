@@ -1,5 +1,6 @@
 package com.engops.platform.telegram;
 
+import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.workitem.WorkItemQueryService;
 import com.engops.platform.workitem.model.WorkItem;
 import org.springframework.stereotype.Service;
@@ -60,8 +61,8 @@ public class TelegramDeliveryObservabilityDetailsFacade {
      * @return enriched details view (work item metadata + observability data)
      * @throws IllegalArgumentException agar tenantId null bo'lsa,
      *         workItemCode null/blank bo'lsa,
-     *         workItemCode berilgan tenant uchun topilmasa,
      *         yoki historyLimit noto'g'ri bo'lsa
+     * @throws ResourceNotFoundException agar workItemCode berilgan tenant uchun topilmasa
      */
     public TelegramDeliveryObservabilityDetailsView getDetails(UUID tenantId,
                                                                 String workItemCode,
@@ -74,8 +75,7 @@ public class TelegramDeliveryObservabilityDetailsFacade {
         }
 
         WorkItem workItem = workItemQueryService.findByTenantAndCode(tenantId, workItemCode)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "WorkItem topilmadi: tenantId=" + tenantId + ", workItemCode=" + workItemCode));
+                .orElseThrow(() -> new ResourceNotFoundException("WorkItem", workItemCode));
 
         TelegramDeliveryObservabilityView observability =
                 observabilityFacade.getObservabilityView(tenantId, workItem.getId(), historyLimit);

@@ -1,5 +1,6 @@
 package com.engops.platform.telegram;
 
+import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.workitem.WorkItemQueryService;
 import com.engops.platform.workitem.model.WorkItem;
 import com.engops.platform.workitem.model.WorkItemType;
@@ -23,7 +24,7 @@ import static org.mockito.Mockito.*;
  * - observability data to'g'ri qaytariladi
  * - null tenantId rad etiladi
  * - null/blank workItemCode rad etiladi
- * - topilmagan workItemCode uchun IllegalArgumentException
+ * - topilmagan workItemCode uchun ResourceNotFoundException
  * - invalid historyLimit propagatsiya qilinadi
  * - mavjud work item + bo'sh observability data = valid view
  */
@@ -132,13 +133,13 @@ class TelegramDeliveryObservabilityDetailsFacadeTest {
     }
 
     @Test
-    void workItemNotFoundThrowsIllegalArgument() {
+    void workItemNotFoundThrowsResourceNotFoundException() {
         when(workItemQueryService.findByTenantAndCode(TENANT_ID, "NONEXISTENT-99"))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> facade.getDetails(TENANT_ID, "NONEXISTENT-99", 5))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("WorkItem topilmadi")
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("WorkItem")
                 .hasMessageContaining("NONEXISTENT-99");
 
         verify(workItemQueryService).findByTenantAndCode(TENANT_ID, "NONEXISTENT-99");

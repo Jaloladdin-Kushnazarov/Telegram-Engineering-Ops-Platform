@@ -10,8 +10,10 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * Platformadagi barcha xatoliklarni markaziy qayta ishlovchi.
@@ -88,6 +90,52 @@ public class GlobalExceptionHandler {
                                                                     HttpServletRequest request) {
         log.warn("Platforma xatoligi: {}", ex.getMessage());
         return buildResponse(HttpStatus.BAD_REQUEST, ex, request);
+    }
+
+    /**
+     * So'rov parametri yetishmayotgan yoki turi noto'g'ri bo'lganda qayta ishlaydi.
+     *
+     * @param ex yuz bergan exception
+     * @param request HTTP so'rov ob'ekti
+     * @return 400 statusli standart xatolik javobi
+     */
+    @ExceptionHandler({MissingServletRequestParameterException.class,
+                        MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<ApiErrorResponse> handleRequestBinding(Exception ex,
+                                                                  HttpServletRequest request) {
+        log.warn("So'rov parametri xatosi: {}", ex.getMessage());
+
+        ApiErrorResponse body = ApiErrorResponse.of(
+                "BAD_REQUEST",
+                ex.getMessage(),
+                MDC.get(CorrelationIdFilter.CORRELATION_ID_MDC_KEY),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * Noto'g'ri argument xatoliklarini qayta ishlaydi.
+     *
+     * Facade/service qatlamidagi IllegalArgumentException'lar shu yerda
+     * 400 Bad Request sifatida qaytariladi.
+     *
+     * @param ex yuz bergan exception
+     * @param request HTTP so'rov ob'ekti
+     * @return 400 statusli standart xatolik javobi
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException ex,
+                                                                   HttpServletRequest request) {
+        log.warn("Noto'g'ri argument: {}", ex.getMessage());
+
+        ApiErrorResponse body = ApiErrorResponse.of(
+                "BAD_REQUEST",
+                ex.getMessage(),
+                MDC.get(CorrelationIdFilter.CORRELATION_ID_MDC_KEY),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
     /**
