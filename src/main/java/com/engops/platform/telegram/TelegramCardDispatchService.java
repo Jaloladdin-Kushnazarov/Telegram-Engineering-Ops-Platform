@@ -23,9 +23,12 @@ import java.time.Instant;
  *
  * dispatchAttempt qo'shimcha ravishda TelegramDeliveryAttempt trace record yaratadi.
  *
+ * Har bir dispatch natijasi TelegramDeliveryAttempt sifatida bazaga saqlanadi
+ * (append-only). Agar DB save muvaffaqiyatsiz bo'lsa, exception propagatsiya
+ * qilinadi — delivery muvaffaqiyatli bo'lgan lekin yozilmagan holat ko'rinmaydi.
+ *
  * Muhim:
- * - Pure orchestration — rendering, assembly, dispatch logikasi bu yerda yo'q
- * - Repository access yo'q
+ * - Orchestration + attempt persistence
  * - HTTP yo'q
  * - Business rule yo'q — faqat null guard
  * - Retry yo'q
@@ -37,19 +40,23 @@ public class TelegramCardDispatchService {
     private final TelegramMessageRenderer renderer;
     private final TelegramDeliveryCommandAssembler commandAssembler;
     private final TelegramOutboundDispatchService outboundDispatchService;
+    private final TelegramDeliveryAttemptPersistence attemptPersistence;
 
     public TelegramCardDispatchService(TelegramMessageRenderer renderer,
                                        TelegramDeliveryCommandAssembler commandAssembler,
-                                       TelegramOutboundDispatchService outboundDispatchService) {
+                                       TelegramOutboundDispatchService outboundDispatchService,
+                                       TelegramDeliveryAttemptPersistence attemptPersistence) {
         this.renderer = renderer;
         this.commandAssembler = commandAssembler;
         this.outboundDispatchService = outboundDispatchService;
+        this.attemptPersistence = attemptPersistence;
     }
 
     /**
      * TelegramCardView'ni render, assemble va dispatch qiladi.
      *
      * Business/application-level facade — TelegramDeliveryResult qaytaradi.
+     * Attempt avtomatik bazaga saqlanadi (append-only).
      *
      * @param cardView render payload + action'lar
      * @return application-level delivery natijasi
@@ -57,14 +64,14 @@ public class TelegramCardDispatchService {
      * @throws IllegalStateException agar collaborator null qaytarsa
      */
     public TelegramDeliveryResult dispatch(TelegramCardView cardView) {
-        return executeOrchestration(cardView).result();
+        return executeAndPersist(cardView).result();
     }
 
     /**
      * TelegramCardView'ni render, assemble, dispatch qiladi va trace record yaratadi.
      *
      * Observability/traceability-level facade — TelegramDeliveryAttempt qaytaradi.
-     * Ichki orchestration dispatch(...) bilan bir xil.
+     * Attempt avtomatik bazaga saqlanadi (append-only).
      *
      * @param cardView render payload + action'lar
      * @return delivery attempt trace record
@@ -72,15 +79,17 @@ public class TelegramCardDispatchService {
      * @throws IllegalStateException agar collaborator null qaytarsa
      */
     public TelegramDeliveryAttempt dispatchAttempt(TelegramCardView cardView) {
-        DispatchOutcome outcome = executeOrchestration(cardView);
-        return TelegramDeliveryAttempt.of(outcome.command(), outcome.result(), Instant.now());
+        return executeAndPersist(cardView).attempt();
     }
 
     /**
-     * Ichki orchestration — duplication oldini oladi.
+     * Ichki orchestration + persistence — duplication oldini oladi.
      * dispatch() va dispatchAttempt() ikkisi ham shu method'ni chaqiradi.
+     *
+     * Attempt yaratilgandan keyin bazaga saqlanadi.
+     * DB save muvaffaqiyatsiz bo'lsa exception propagatsiya qilinadi.
      */
-    private DispatchOutcome executeOrchestration(TelegramCardView cardView) {
+    private DispatchOutcome executeAndPersist(TelegramCardView cardView) {
         if (cardView == null) {
             throw new IllegalArgumentException("TelegramCardView null bo'lishi mumkin emas");
         }
@@ -100,12 +109,17 @@ public class TelegramCardDispatchService {
             throw new IllegalStateException("TelegramOutboundDispatchService null qaytardi");
         }
 
-        return new DispatchOutcome(command, result);
+        TelegramDeliveryAttempt attempt = TelegramDeliveryAttempt.of(command, result, Instant.now());
+        attemptPersistence.save(attempt);
+
+        return new DispatchOutcome(command, result, attempt);
     }
 
     /**
-     * Ichki orchestration natijasi — command va result juftligini tashiydi.
+     * Ichki orchestration natijasi — command, result va attempt uchligini tashiydi.
      * Faqat service ichida ishlatiladi — public API emas.
      */
-    private record DispatchOutcome(TelegramDeliveryCommand command, TelegramDeliveryResult result) {}
+    private record DispatchOutcome(TelegramDeliveryCommand command,
+                                    TelegramDeliveryResult result,
+                                    TelegramDeliveryAttempt attempt) {}
 }

@@ -2,6 +2,7 @@ package com.engops.platform.telegram;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -12,7 +13,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -38,6 +42,9 @@ class TelegramCardDispatchServiceTest {
 
     @Mock
     private TelegramOutboundDispatchService outboundDispatchService;
+
+    @Mock
+    private TelegramDeliveryAttemptPersistence attemptPersistence;
 
     @InjectMocks
     private TelegramCardDispatchService cardDispatchService;
@@ -282,6 +289,178 @@ class TelegramCardDispatchServiceTest {
         order.verify(commandAssembler).assembleSend(message);
         order.verify(outboundDispatchService).dispatch(command);
         order.verifyNoMoreInteractions();
+    }
+
+    // ========== Persistence side-effect verification ==========
+
+    @Test
+    void dispatchPersistsAttemptOnSuccess() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.success(command, 55555L);
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+
+        cardDispatchService.dispatch(cardView);
+
+        ArgumentCaptor<TelegramDeliveryAttempt> captor =
+                ArgumentCaptor.forClass(TelegramDeliveryAttempt.class);
+        verify(attemptPersistence).save(captor.capture());
+        verifyNoMoreInteractions(attemptPersistence);
+
+        TelegramDeliveryAttempt saved = captor.getValue();
+        assertThat(saved.getAttemptId()).isNotNull();
+        assertThat(saved.getDeliveryOutcome()).isEqualTo(
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED);
+        assertThat(saved.isSuccess()).isTrue();
+        assertThat(saved.getExternalMessageId()).isEqualTo(55555L);
+        assertThat(saved.getTenantId()).isEqualTo(command.getTenantId());
+        assertThat(saved.getWorkItemId()).isEqualTo(command.getWorkItemId());
+        assertThat(saved.getOperation()).isEqualTo(command.getOperation());
+        assertThat(saved.getAttemptedAt()).isNotNull();
+    }
+
+    @Test
+    void dispatchAttemptPersistsAndReturnsSameAttempt() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.success(command, 88888L);
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+
+        TelegramDeliveryAttempt returned = cardDispatchService.dispatchAttempt(cardView);
+
+        ArgumentCaptor<TelegramDeliveryAttempt> captor =
+                ArgumentCaptor.forClass(TelegramDeliveryAttempt.class);
+        verify(attemptPersistence).save(captor.capture());
+        verifyNoMoreInteractions(attemptPersistence);
+
+        TelegramDeliveryAttempt persisted = captor.getValue();
+        assertThat(returned).isSameAs(persisted);
+    }
+
+    @Test
+    void dispatchPersistsAttemptOnFailedOutcome() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.failed(
+                command, "NETWORK_ERROR", "Connection timeout");
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+
+        cardDispatchService.dispatch(cardView);
+
+        ArgumentCaptor<TelegramDeliveryAttempt> captor =
+                ArgumentCaptor.forClass(TelegramDeliveryAttempt.class);
+        verify(attemptPersistence).save(captor.capture());
+
+        TelegramDeliveryAttempt saved = captor.getValue();
+        assertThat(saved.getDeliveryOutcome()).isEqualTo(
+                TelegramDeliveryResult.DeliveryOutcome.FAILED);
+        assertThat(saved.isSuccess()).isFalse();
+        assertThat(saved.getFailureCode()).isEqualTo("NETWORK_ERROR");
+        assertThat(saved.getFailureReason()).isEqualTo("Connection timeout");
+    }
+
+    @Test
+    void dispatchPersistsAttemptOnRejectedOutcome() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.rejected(
+                command, "INVALID_REQUEST", "Chat not found");
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+
+        cardDispatchService.dispatch(cardView);
+
+        ArgumentCaptor<TelegramDeliveryAttempt> captor =
+                ArgumentCaptor.forClass(TelegramDeliveryAttempt.class);
+        verify(attemptPersistence).save(captor.capture());
+
+        TelegramDeliveryAttempt saved = captor.getValue();
+        assertThat(saved.getDeliveryOutcome()).isEqualTo(
+                TelegramDeliveryResult.DeliveryOutcome.REJECTED);
+        assertThat(saved.isSuccess()).isFalse();
+        assertThat(saved.getFailureCode()).isEqualTo("INVALID_REQUEST");
+        assertThat(saved.getFailureReason()).isEqualTo("Chat not found");
+    }
+
+    @Test
+    void dispatchPropagatesPersistenceFailure() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.success(command, 99999L);
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+        doThrow(new RuntimeException("DB connection lost"))
+                .when(attemptPersistence).save(any(TelegramDeliveryAttempt.class));
+
+        assertThatThrownBy(() -> cardDispatchService.dispatch(cardView))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("DB connection lost");
+
+        verify(outboundDispatchService).dispatch(command);
+        verify(attemptPersistence).save(any(TelegramDeliveryAttempt.class));
+    }
+
+    @Test
+    void dispatchAttemptPropagatesPersistenceFailure() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.success(command, 99999L);
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+        doThrow(new RuntimeException("DB connection lost"))
+                .when(attemptPersistence).save(any(TelegramDeliveryAttempt.class));
+
+        assertThatThrownBy(() -> cardDispatchService.dispatchAttempt(cardView))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("DB connection lost");
+    }
+
+    @Test
+    void dispatchPersistenceHappensAfterOutboundDispatch() {
+        TelegramCardView cardView = buildCardView();
+        TelegramMessage message = buildMessage();
+        TelegramDeliveryCommand command = buildCommand(message);
+        TelegramDeliveryResult deliveryResult = TelegramDeliveryResult.success(command, 333L);
+
+        when(renderer.render(cardView)).thenReturn(message);
+        when(commandAssembler.assembleSend(message)).thenReturn(command);
+        when(outboundDispatchService.dispatch(command)).thenReturn(deliveryResult);
+
+        cardDispatchService.dispatch(cardView);
+
+        InOrder order = inOrder(outboundDispatchService, attemptPersistence);
+        order.verify(outboundDispatchService).dispatch(command);
+        order.verify(attemptPersistence).save(any(TelegramDeliveryAttempt.class));
+        order.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void dispatchNullCardViewDoesNotPersist() {
+        assertThatThrownBy(() -> cardDispatchService.dispatch(null))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(attemptPersistence, never()).save(any());
     }
 
     // ========== Helpers ==========
