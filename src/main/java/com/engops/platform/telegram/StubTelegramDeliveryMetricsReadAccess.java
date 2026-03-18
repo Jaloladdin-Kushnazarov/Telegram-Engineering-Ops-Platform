@@ -1,28 +1,16 @@
 package com.engops.platform.telegram;
 
-import org.springframework.stereotype.Component;
-
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Vaqtinchalik stub read access — real persistence integration yo'q.
+ * O'chirilgan stub read access — Phase 21'da JpaTelegramDeliveryMetricsReadAccess
+ * bilan almashtirildi.
  *
- * Bu bean TelegramDeliveryMetricsReadAccess port'ining placeholder implementation'i.
- * Keyingi phase'da real repository adapter shu bean'ni almashtiradi.
- * Almashtirishda shu stub'ni o'chirib, yangi @Component qo'yiladi —
- * StubTelegramOutboundGateway bilan bir xil pattern.
- *
- * Hozirgi holat:
- * - Har doim Optional.empty() qaytaradi (hech qanday attempt topilmadi)
- * - App startup va autowiring muammosini bartaraf etadi
- * - Exception tashlamaydi
- *
- * Eslatma: @ConditionalOnMissingBean ishlatilmaydi chunki mavjud
- * stub pattern (StubTelegramOutboundGateway) shu yondashuvni qo'llamaydi.
- * Loyiha bo'ylab bir xillik saqlanadi.
+ * @Component olib tashlandi — real adapter endi faol.
+ * Test'larda mock sifatida ishlatish mumkin.
+ * Klass saqlab qolindi chunki test reference uchun foydali.
  */
-@Component
 public class StubTelegramDeliveryMetricsReadAccess implements TelegramDeliveryMetricsReadAccess {
 
     @Override

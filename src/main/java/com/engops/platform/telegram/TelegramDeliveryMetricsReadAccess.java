@@ -10,9 +10,8 @@ import java.util.UUID;
  * Hozirgi Phase 19 scope'da faqat eng so'nggi bitta attempt qaytaradi —
  * to'liq aggregatsiya yoki tarixiy ro'yxat bu phase'da yo'q.
  *
- * Hozir stub implementatsiya ishlatiladi (StubTelegramDeliveryMetricsReadAccess).
- * Keyingi phase'da real repository adapter shu interface'ni implement qiladi
- * va stub'ni almashtiradi.
+ * Real implementatsiya: JpaTelegramDeliveryMetricsReadAccess (Phase 21).
+ * Stub (StubTelegramDeliveryMetricsReadAccess) o'chirildi — faqat test uchun qoldi.
  *
  * Muhim:
  * - Faqat read operatsiyalar

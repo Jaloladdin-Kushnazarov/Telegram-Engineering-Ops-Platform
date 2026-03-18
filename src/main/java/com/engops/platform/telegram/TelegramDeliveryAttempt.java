@@ -25,6 +25,10 @@ import java.util.UUID;
  * - Clock bean kerak emas — factory Instant parametr qabul qiladi,
  *   caller (service) Instant.now() beradi, testlar deterministic Instant beradi.
  *   Persistence/audit qo'shilganda Clock o'sha qatlamda inject qilinadi.
+ *
+ * Factory method'lar:
+ * - of(command, result, attemptedAt): yangi attempt yaratish (dispatch paytida)
+ * - reconstruct(...): persistence'dan o'qilgan attempt'ni qayta tiklash
  */
 public class TelegramDeliveryAttempt {
 
@@ -149,4 +153,51 @@ public class TelegramDeliveryAttempt {
     public String getFailureReason() { return failureReason; }
 
     public boolean isSuccess() { return deliveryOutcome == TelegramDeliveryResult.DeliveryOutcome.DELIVERED; }
+
+    /**
+     * Persistence'dan o'qilgan attempt'ni qayta tiklaydi.
+     *
+     * Bu method faqat JPA adapter tomonidan ishlatiladi —
+     * yangi attempt yaratish uchun of(command, result, attemptedAt) ishlatiladi.
+     * Consistency tekshiruvi yo'q chunki ma'lumot allaqachon validatsiyadan o'tgan
+     * va persistence'da saqlangan.
+     *
+     * @return immutable delivery attempt
+     * @throws IllegalArgumentException agar majburiy field'lar null bo'lsa
+     */
+    public static TelegramDeliveryAttempt reconstruct(UUID attemptId,
+                                                        Instant attemptedAt,
+                                                        UUID tenantId,
+                                                        UUID workItemId,
+                                                        TelegramDeliveryOperation operation,
+                                                        UUID targetChatBindingId,
+                                                        Long targetTopicId,
+                                                        TelegramDeliveryResult.DeliveryOutcome deliveryOutcome,
+                                                        Long externalMessageId,
+                                                        String failureCode,
+                                                        String failureReason) {
+        if (attemptId == null) {
+            throw new IllegalArgumentException("attemptId null bo'lishi mumkin emas");
+        }
+        if (attemptedAt == null) {
+            throw new IllegalArgumentException("attemptedAt null bo'lishi mumkin emas");
+        }
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (workItemId == null) {
+            throw new IllegalArgumentException("workItemId null bo'lishi mumkin emas");
+        }
+        if (operation == null) {
+            throw new IllegalArgumentException("operation null bo'lishi mumkin emas");
+        }
+        if (deliveryOutcome == null) {
+            throw new IllegalArgumentException("deliveryOutcome null bo'lishi mumkin emas");
+        }
+
+        return new TelegramDeliveryAttempt(
+                attemptId, attemptedAt, tenantId, workItemId,
+                operation, targetChatBindingId, targetTopicId,
+                deliveryOutcome, externalMessageId, failureCode, failureReason);
+    }
 }
