@@ -18,6 +18,7 @@ import java.util.UUID;
  * - failed == (deliveryOutcome == FAILED)
  * - DELIVERED uchun failureCode null bo'lishi mumkin
  * - REJECTED va FAILED uchun failureCode majburiy (non-null, non-blank)
+ * - empty snapshot — hech qanday attempt topilmaganda qaytariladi
  *
  * Immutable, factory method orqali yaratiladi.
  */
@@ -32,6 +33,7 @@ public class TelegramDeliveryMetricsSnapshot {
     private final boolean failed;
     private final String failureCode;
     private final boolean hasExternalMessageId;
+    private final boolean empty;
 
     private TelegramDeliveryMetricsSnapshot(UUID tenantId,
                                              UUID workItemId,
@@ -41,7 +43,8 @@ public class TelegramDeliveryMetricsSnapshot {
                                              boolean rejected,
                                              boolean failed,
                                              String failureCode,
-                                             boolean hasExternalMessageId) {
+                                             boolean hasExternalMessageId,
+                                             boolean empty) {
         this.tenantId = tenantId;
         this.workItemId = workItemId;
         this.operation = operation;
@@ -51,6 +54,7 @@ public class TelegramDeliveryMetricsSnapshot {
         this.failed = failed;
         this.failureCode = failureCode;
         this.hasExternalMessageId = hasExternalMessageId;
+        this.empty = empty;
     }
 
     /**
@@ -113,7 +117,31 @@ public class TelegramDeliveryMetricsSnapshot {
         return new TelegramDeliveryMetricsSnapshot(
                 tenantId, workItemId, operation, deliveryOutcome,
                 isSuccess, isRejected, isFailed,
-                failureCode, hasExternalMessageId);
+                failureCode, hasExternalMessageId, false);
+    }
+
+    /**
+     * Hech qanday delivery attempt topilmaganda qaytariladigan bo'sh snapshot.
+     *
+     * Empty snapshot faqat tenant va work item kontekstini saqlaydi.
+     * Operation, outcome va boshqa dimension'lar null/false bo'ladi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param workItemId work item identifikatori
+     * @return bo'sh metrics snapshot
+     * @throws IllegalArgumentException agar tenantId yoki workItemId null bo'lsa
+     */
+    public static TelegramDeliveryMetricsSnapshot empty(UUID tenantId, UUID workItemId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (workItemId == null) {
+            throw new IllegalArgumentException("workItemId null bo'lishi mumkin emas");
+        }
+        return new TelegramDeliveryMetricsSnapshot(
+                tenantId, workItemId, null, null,
+                false, false, false,
+                null, false, true);
     }
 
     public UUID getTenantId() { return tenantId; }
@@ -125,4 +153,5 @@ public class TelegramDeliveryMetricsSnapshot {
     public boolean isFailed() { return failed; }
     public String getFailureCode() { return failureCode; }
     public boolean hasExternalMessageId() { return hasExternalMessageId; }
+    public boolean isEmpty() { return empty; }
 }

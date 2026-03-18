@@ -23,6 +23,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * - null deliveryOutcome rad etiladi
  * - REJECTED + blank failureCode rad etiladi
  * - FAILED + blank failureCode rad etiladi
+ * - empty snapshot flag'lari to'g'ri
+ * - empty snapshot null tenantId rad etiladi
+ * - empty snapshot null workItemId rad etiladi
+ * - of() snapshot isEmpty false
  */
 class TelegramDeliveryMetricsSnapshotTest {
 
@@ -169,5 +173,46 @@ class TelegramDeliveryMetricsSnapshotTest {
                 "", false))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("FAILED");
+    }
+
+    @Test
+    void emptySnapshotFlagsCorrect() {
+        TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.empty(
+                TENANT_ID, WORK_ITEM_ID);
+
+        assertThat(snapshot.getTenantId()).isEqualTo(TENANT_ID);
+        assertThat(snapshot.getWorkItemId()).isEqualTo(WORK_ITEM_ID);
+        assertThat(snapshot.getOperation()).isNull();
+        assertThat(snapshot.getDeliveryOutcome()).isNull();
+        assertThat(snapshot.isSuccess()).isFalse();
+        assertThat(snapshot.isRejected()).isFalse();
+        assertThat(snapshot.isFailed()).isFalse();
+        assertThat(snapshot.getFailureCode()).isNull();
+        assertThat(snapshot.hasExternalMessageId()).isFalse();
+        assertThat(snapshot.isEmpty()).isTrue();
+    }
+
+    @Test
+    void emptySnapshotNullTenantIdRejected() {
+        assertThatThrownBy(() -> TelegramDeliveryMetricsSnapshot.empty(null, WORK_ITEM_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId null");
+    }
+
+    @Test
+    void emptySnapshotNullWorkItemIdRejected() {
+        assertThatThrownBy(() -> TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("workItemId null");
+    }
+
+    @Test
+    void populatedSnapshotIsNotEmpty() {
+        TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.of(
+                TENANT_ID, WORK_ITEM_ID, OPERATION,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                null, true);
+
+        assertThat(snapshot.isEmpty()).isFalse();
     }
 }
