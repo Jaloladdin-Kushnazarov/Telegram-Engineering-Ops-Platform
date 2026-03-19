@@ -70,6 +70,6 @@ public class WorkItemQueryService {
     }
 
     public List<WorkItemUpdate> listUpdates(UUID tenantId, UUID workItemId) {
-        return workItemUpdateRepository.findByTenantIdAndWorkItemId(tenantId, workItemId);
+        return workItemUpdateRepository.findByTenantIdAndWorkItemIdOrderByCreatedAtAscIdAsc(tenantId, workItemId);
     }
 }

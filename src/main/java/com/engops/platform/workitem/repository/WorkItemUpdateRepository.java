@@ -16,4 +16,17 @@ public interface WorkItemUpdateRepository extends JpaRepository<WorkItemUpdate, 
     List<WorkItemUpdate> findByWorkItemIdOrderByCreatedAtAsc(UUID workItemId);
 
     List<WorkItemUpdate> findByTenantIdAndWorkItemId(UUID tenantId, UUID workItemId);
+
+    /**
+     * Tenant va work item uchun update'larni deterministic tartibda qaytaradi.
+     *
+     * Ordering: createdAt ASC, id ASC.
+     * - createdAt ASC: xronologik (eng eski birinchi)
+     * - id ASC: bir xil createdAt bo'lganda deterministic tie-breaker
+     *
+     * @param tenantId tenant identifikatori
+     * @param workItemId work item identifikatori
+     * @return tartibdagi update'lar ro'yxati
+     */
+    List<WorkItemUpdate> findByTenantIdAndWorkItemIdOrderByCreatedAtAscIdAsc(UUID tenantId, UUID workItemId);
 }
