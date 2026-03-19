@@ -46,6 +46,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - support-details missing tenantId: 400 qaytariladi
  * - support-details missing workItemCode: 400 qaytariladi
  * - support-details default historyLimit: 10 ishlatiladi
+ * - support-summary success path: combined summary ro'yxat qaytariladi
+ * - support-summary default limit: 20 ishlatiladi
+ * - support-summary bo'sh ro'yxat: 200 qaytariladi
+ * - support-summary invalid limit: 400 qaytariladi
+ * - support-summary missing tenantId: 400 qaytariladi
  */
 @WebMvcTest(WorkItemDetailsController.class)
 class WorkItemDetailsControllerTest {
@@ -68,6 +73,9 @@ class WorkItemDetailsControllerTest {
 
     @MockBean
     private WorkItemSupportDetailsFacade supportDetailsFacade;
+
+    @MockBean
+    private WorkItemSupportSummaryFacade supportSummaryFacade;
 
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
@@ -410,6 +418,100 @@ class WorkItemDetailsControllerTest {
     void supportDetailsMissingWorkItemCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== Support summary endpoint tests ==========
+
+    @Test
+    void supportSummaryReturnsCorrectCombinedResponse() throws Exception {
+        var wiSummary = new WorkItemSummaryItem(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                "HIGH", "CRITICAL", OWNER_USER_ID,
+                Instant.parse("2026-03-18T10:00:00Z"),
+                Instant.parse("2026-03-18T11:00:00Z"),
+                null, 0, false);
+
+        TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.of(
+                TENANT_ID, WORK_ITEM_ID,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                null, true);
+
+        var delSummary = new DeliveryObservabilitySummaryItem(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                snapshot);
+
+        var composedItem = new WorkItemSupportSummaryItem(wiSummary, delSummary);
+
+        when(supportSummaryFacade.getSummaryList(TENANT_ID, 20))
+                .thenReturn(List.of(composedItem));
+
+        mockMvc.perform(get("/api/admin/work-items/support-summary")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                // workItem section
+                .andExpect(jsonPath("$.items[0].workItem.workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.items[0].workItem.workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.items[0].workItem.title").value("Login xato"))
+                .andExpect(jsonPath("$.items[0].workItem.typeCode").value("BUG"))
+                .andExpect(jsonPath("$.items[0].workItem.currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.items[0].workItem.priorityCode").value("HIGH"))
+                .andExpect(jsonPath("$.items[0].workItem.severityCode").value("CRITICAL"))
+                .andExpect(jsonPath("$.items[0].workItem.currentOwnerUserId").value(OWNER_USER_ID.toString()))
+                .andExpect(jsonPath("$.items[0].workItem.reopenedCount").value(0))
+                .andExpect(jsonPath("$.items[0].workItem.archived").value(false))
+                // deliveryObservability section
+                .andExpect(jsonPath("$.items[0].deliveryObservability.workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.items[0].deliveryObservability.workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.items[0].deliveryObservability.latestMetrics.success").value(true))
+                .andExpect(jsonPath("$.items[0].deliveryObservability.latestMetrics.deliveryOutcome").value("DELIVERED"))
+                .andExpect(jsonPath("$.items[0].deliveryObservability.latestMetrics.empty").value(false));
+    }
+
+    @Test
+    void supportSummaryDefaultLimitIsUsed() throws Exception {
+        when(supportSummaryFacade.getSummaryList(TENANT_ID, 20))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/work-items/support-summary")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void supportSummaryEmptyListReturns200() throws Exception {
+        when(supportSummaryFacade.getSummaryList(TENANT_ID, 10))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/work-items/support-summary")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void supportSummaryInvalidLimitReturns400() throws Exception {
+        when(supportSummaryFacade.getSummaryList(TENANT_ID, 0))
+                .thenThrow(new IllegalArgumentException(
+                        "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
+
+        mockMvc.perform(get("/api/admin/work-items/support-summary")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void supportSummaryMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/support-summary"))
                 .andExpect(status().isBadRequest());
     }
 }

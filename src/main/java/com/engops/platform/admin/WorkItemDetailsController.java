@@ -19,6 +19,7 @@ import java.util.UUID;
  * Endpoint'lar:
  * - GET /summary — tenant-scoped kompakt work item ro'yxat
  * - GET /details — tenant-scoped work item details + update history
+ * - GET /support-summary — combined work item + delivery observability summary ro'yxat
  * - GET /support-details — combined work item details + delivery observability
  *
  * Faqat GET — write operatsiya yo'q.
@@ -36,13 +37,16 @@ public class WorkItemDetailsController {
     private final WorkItemDetailsFacade detailsFacade;
     private final WorkItemSummaryFacade summaryFacade;
     private final WorkItemSupportDetailsFacade supportDetailsFacade;
+    private final WorkItemSupportSummaryFacade supportSummaryFacade;
 
     public WorkItemDetailsController(WorkItemDetailsFacade detailsFacade,
                                      WorkItemSummaryFacade summaryFacade,
-                                     WorkItemSupportDetailsFacade supportDetailsFacade) {
+                                     WorkItemSupportDetailsFacade supportDetailsFacade,
+                                     WorkItemSupportSummaryFacade supportSummaryFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
         this.supportDetailsFacade = supportDetailsFacade;
+        this.supportSummaryFacade = supportSummaryFacade;
     }
 
     /**
@@ -64,6 +68,28 @@ public class WorkItemDetailsController {
                 .toList();
 
         return ResponseEntity.ok(new WorkItemSummaryResponse(responseItems));
+    }
+
+    /**
+     * Tenant uchun combined support summary ro'yxatini qaytaradi:
+     * work item metadata + delivery observability summary.
+     *
+     * @param tenantId tenant identifikatori
+     * @param limit maksimal natija soni (1..50, default 20)
+     * @return combined support summary ro'yxat
+     */
+    @GetMapping("/support-summary")
+    public ResponseEntity<WorkItemSupportSummaryResponse> getSupportSummary(
+            @RequestParam UUID tenantId,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        var items = supportSummaryFacade.getSummaryList(tenantId, limit);
+
+        var responseItems = items.stream()
+                .map(this::toSupportSummaryItemResponse)
+                .toList();
+
+        return ResponseEntity.ok(new WorkItemSupportSummaryResponse(responseItems));
     }
 
     /**
@@ -214,5 +240,55 @@ public class WorkItemDetailsController {
                 attempt.getFailureCode(),
                 attempt.getFailureReason(),
                 attempt.isSuccess());
+    }
+
+    // ========== Support summary mapping ==========
+
+    private WorkItemSupportSummaryResponse.SupportSummaryItemResponse toSupportSummaryItemResponse(
+            WorkItemSupportSummaryItem item) {
+        return new WorkItemSupportSummaryResponse.SupportSummaryItemResponse(
+                toWorkItemSectionResponse(item.workItem()),
+                toDeliveryObservabilitySectionResponse(item.deliveryObservability()));
+    }
+
+    private WorkItemSupportSummaryResponse.WorkItemSectionResponse toWorkItemSectionResponse(
+            WorkItemSummaryItem item) {
+        return new WorkItemSupportSummaryResponse.WorkItemSectionResponse(
+                item.workItemId(),
+                item.workItemCode(),
+                item.title(),
+                item.typeCode().name(),
+                item.currentStatusCode(),
+                item.priorityCode(),
+                item.severityCode(),
+                item.currentOwnerUserId(),
+                item.openedAt(),
+                item.lastTransitionAt(),
+                item.resolvedAt(),
+                item.reopenedCount(),
+                item.archived());
+    }
+
+    private WorkItemSupportSummaryResponse.DeliveryObservabilitySectionResponse toDeliveryObservabilitySectionResponse(
+            DeliveryObservabilitySummaryItem item) {
+        return new WorkItemSupportSummaryResponse.DeliveryObservabilitySectionResponse(
+                item.workItemId(),
+                item.workItemCode(),
+                item.title(),
+                item.typeCode().name(),
+                item.currentStatusCode(),
+                toSummaryMetricsResponse(item.latestMetrics()));
+    }
+
+    private WorkItemSupportSummaryResponse.MetricsSummaryResponse toSummaryMetricsResponse(
+            TelegramDeliveryMetricsSnapshot snapshot) {
+        return new WorkItemSupportSummaryResponse.MetricsSummaryResponse(
+                snapshot.getDeliveryOutcome() != null ? snapshot.getDeliveryOutcome().name() : null,
+                snapshot.isSuccess(),
+                snapshot.isRejected(),
+                snapshot.isFailed(),
+                snapshot.getFailureCode(),
+                snapshot.hasExternalMessageId(),
+                snapshot.isEmpty());
     }
 }
