@@ -1,6 +1,11 @@
 package com.engops.platform.admin;
 
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
+import com.engops.platform.telegram.TelegramDeliveryAttempt;
+import com.engops.platform.telegram.TelegramDeliveryMetricsSnapshot;
+import com.engops.platform.telegram.TelegramDeliveryObservabilityDetailsView;
+import com.engops.platform.telegram.TelegramDeliveryOperation;
+import com.engops.platform.telegram.TelegramDeliveryResult;
 import com.engops.platform.workitem.model.UpdateType;
 import com.engops.platform.workitem.model.Visibility;
 import com.engops.platform.workitem.model.WorkItem;
@@ -12,6 +17,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +40,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - summary bo'sh ro'yxat: 200 qaytariladi
  * - summary invalid limit: 400 qaytariladi
  * - summary missing tenantId: 400 qaytariladi
+ * - support-details success path: combined payload qaytariladi
+ * - support-details not-found: 404 qaytariladi
+ * - support-details invalid historyLimit: 400 qaytariladi
+ * - support-details missing tenantId: 400 qaytariladi
+ * - support-details missing workItemCode: 400 qaytariladi
+ * - support-details default historyLimit: 10 ishlatiladi
  */
 @WebMvcTest(WorkItemDetailsController.class)
 class WorkItemDetailsControllerTest {
@@ -53,6 +65,9 @@ class WorkItemDetailsControllerTest {
 
     @MockBean
     private WorkItemSummaryFacade summaryFacade;
+
+    @MockBean
+    private WorkItemSupportDetailsFacade supportDetailsFacade;
 
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
@@ -253,6 +268,148 @@ class WorkItemDetailsControllerTest {
     @Test
     void summaryMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/summary"))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== Support details endpoint tests ==========
+
+    @Test
+    void supportDetailsReturnsCorrectCombinedResponse() throws Exception {
+        WorkItem workItem = new WorkItem(
+                TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Login xato", "BUGS", OWNER_USER_ID);
+        workItem.setPriorityCode("HIGH");
+        workItem.assignOwner(OWNER_USER_ID);
+
+        WorkItemUpdate update = new WorkItemUpdate(
+                TENANT_ID, workItem.getId(), AUTHOR_USER_ID,
+                UpdateType.COMMENT, "Tekshirilmoqda");
+
+        var workItemView = new WorkItemDetailsFacade.WorkItemDetailsView(
+                workItem, List.of(update));
+
+        UUID attemptId = UUID.fromString("66666666-6666-6666-6666-666666666666");
+        UUID chatBindingId = UUID.fromString("77777777-7777-7777-7777-777777777777");
+        Instant attemptTime = Instant.parse("2026-03-18T10:00:00Z");
+
+        TelegramDeliveryAttempt attempt = TelegramDeliveryAttempt.reconstruct(
+                attemptId, attemptTime, TENANT_ID, WORK_ITEM_ID,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                chatBindingId, 42L,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                99001L, null, null);
+
+        TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.of(
+                TENANT_ID, WORK_ITEM_ID,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                null, true);
+
+        var observabilityView = new TelegramDeliveryObservabilityDetailsView(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                snapshot, List.of(attempt));
+
+        var supportView = new WorkItemSupportDetailsFacade.WorkItemSupportDetailsView(
+                workItemView, observabilityView);
+
+        when(supportDetailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, 10))
+                .thenReturn(supportView);
+
+        mockMvc.perform(get("/api/admin/work-items/support-details")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemCode", WORK_ITEM_CODE))
+                .andExpect(status().isOk())
+                // workItem section
+                .andExpect(jsonPath("$.workItem.workItemId").value(workItem.getId().toString()))
+                .andExpect(jsonPath("$.workItem.workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.workItem.title").value("Login xato"))
+                .andExpect(jsonPath("$.workItem.typeCode").value("BUG"))
+                .andExpect(jsonPath("$.workItem.currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.workItem.priorityCode").value("HIGH"))
+                .andExpect(jsonPath("$.workItem.currentOwnerUserId").value(OWNER_USER_ID.toString()))
+                .andExpect(jsonPath("$.workItem.updates", hasSize(1)))
+                .andExpect(jsonPath("$.workItem.updates[0].updateTypeCode").value("COMMENT"))
+                .andExpect(jsonPath("$.workItem.updates[0].body").value("Tekshirilmoqda"))
+                // deliveryObservability section
+                .andExpect(jsonPath("$.deliveryObservability.workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.deliveryObservability.workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.deliveryObservability.latestMetrics.success").value(true))
+                .andExpect(jsonPath("$.deliveryObservability.latestMetrics.deliveryOutcome").value("DELIVERED"))
+                .andExpect(jsonPath("$.deliveryObservability.recentAttempts", hasSize(1)))
+                .andExpect(jsonPath("$.deliveryObservability.recentAttempts[0].attemptId").value(attemptId.toString()))
+                .andExpect(jsonPath("$.deliveryObservability.recentAttempts[0].operation").value("SEND_NEW_MESSAGE"))
+                .andExpect(jsonPath("$.deliveryObservability.recentAttempts[0].deliveryOutcome").value("DELIVERED"))
+                .andExpect(jsonPath("$.deliveryObservability.recentAttempts[0].success").value(true));
+    }
+
+    @Test
+    void supportDetailsDefaultHistoryLimitIsUsed() throws Exception {
+        WorkItem workItem = new WorkItem(
+                TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Login xato", "BUGS", OWNER_USER_ID);
+
+        var workItemView = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of());
+
+        TelegramDeliveryMetricsSnapshot snapshot =
+                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, WORK_ITEM_ID);
+        var observabilityView = new TelegramDeliveryObservabilityDetailsView(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                snapshot, List.of());
+
+        var supportView = new WorkItemSupportDetailsFacade.WorkItemSupportDetailsView(
+                workItemView, observabilityView);
+
+        // default historyLimit=10 ishlatilishi kerak
+        when(supportDetailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, 10))
+                .thenReturn(supportView);
+
+        mockMvc.perform(get("/api/admin/work-items/support-details")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemCode", WORK_ITEM_CODE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workItem.workItemId").value(workItem.getId().toString()))
+                .andExpect(jsonPath("$.deliveryObservability.latestMetrics.empty").value(true));
+    }
+
+    @Test
+    void supportDetailsNotFoundReturns404() throws Exception {
+        when(supportDetailsFacade.getDetails(TENANT_ID, "NONEXISTENT-99", 10))
+                .thenThrow(new ResourceNotFoundException("WorkItem", "NONEXISTENT-99"));
+
+        mockMvc.perform(get("/api/admin/work-items/support-details")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemCode", "NONEXISTENT-99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void supportDetailsInvalidHistoryLimitReturns400() throws Exception {
+        when(supportDetailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, 0))
+                .thenThrow(new IllegalArgumentException(
+                        "historyLimit 1..50 oralig'ida bo'lishi kerak"));
+
+        mockMvc.perform(get("/api/admin/work-items/support-details")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemCode", WORK_ITEM_CODE)
+                        .param("historyLimit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void supportDetailsMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/support-details")
+                        .param("workItemCode", WORK_ITEM_CODE))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void supportDetailsMissingWorkItemCodeReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/support-details")
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 }

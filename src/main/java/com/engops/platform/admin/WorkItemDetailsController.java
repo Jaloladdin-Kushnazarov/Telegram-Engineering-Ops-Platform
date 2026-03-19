@@ -1,5 +1,8 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.telegram.TelegramDeliveryAttempt;
+import com.engops.platform.telegram.TelegramDeliveryMetricsSnapshot;
+import com.engops.platform.telegram.TelegramDeliveryObservabilityDetailsView;
 import com.engops.platform.workitem.model.WorkItem;
 import com.engops.platform.workitem.model.WorkItemUpdate;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +19,7 @@ import java.util.UUID;
  * Endpoint'lar:
  * - GET /summary — tenant-scoped kompakt work item ro'yxat
  * - GET /details — tenant-scoped work item details + update history
+ * - GET /support-details — combined work item details + delivery observability
  *
  * Faqat GET — write operatsiya yo'q.
  *
@@ -31,11 +35,14 @@ public class WorkItemDetailsController {
 
     private final WorkItemDetailsFacade detailsFacade;
     private final WorkItemSummaryFacade summaryFacade;
+    private final WorkItemSupportDetailsFacade supportDetailsFacade;
 
     public WorkItemDetailsController(WorkItemDetailsFacade detailsFacade,
-                                     WorkItemSummaryFacade summaryFacade) {
+                                     WorkItemSummaryFacade summaryFacade,
+                                     WorkItemSupportDetailsFacade supportDetailsFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
+        this.supportDetailsFacade = supportDetailsFacade;
     }
 
     /**
@@ -57,6 +64,27 @@ public class WorkItemDetailsController {
                 .toList();
 
         return ResponseEntity.ok(new WorkItemSummaryResponse(responseItems));
+    }
+
+    /**
+     * Bitta work item uchun combined support details qaytaradi:
+     * work item metadata + update history + delivery observability.
+     *
+     * @param tenantId tenant identifikatori
+     * @param workItemCode work item kodi (masalan "BUG-1")
+     * @param historyLimit so'nggi delivery attempt'lar soni (1..50, default 10)
+     * @return combined support details
+     */
+    @GetMapping("/support-details")
+    public ResponseEntity<WorkItemSupportDetailsResponse> getSupportDetails(
+            @RequestParam UUID tenantId,
+            @RequestParam String workItemCode,
+            @RequestParam(defaultValue = "10") int historyLimit) {
+
+        WorkItemSupportDetailsFacade.WorkItemSupportDetailsView view =
+                supportDetailsFacade.getDetails(tenantId, workItemCode, historyLimit);
+
+        return ResponseEntity.ok(toSupportDetailsResponse(view));
     }
 
     /**
@@ -131,5 +159,60 @@ public class WorkItemDetailsController {
                 item.resolvedAt(),
                 item.reopenedCount(),
                 item.archived());
+    }
+
+    // ========== Support details mapping ==========
+
+    private WorkItemSupportDetailsResponse toSupportDetailsResponse(
+            WorkItemSupportDetailsFacade.WorkItemSupportDetailsView view) {
+        return new WorkItemSupportDetailsResponse(
+                toResponse(view.workItemDetails()),
+                toObservabilityResponse(view.observabilityDetails()));
+    }
+
+    private DeliveryObservabilityDetailsResponse toObservabilityResponse(
+            TelegramDeliveryObservabilityDetailsView details) {
+        return new DeliveryObservabilityDetailsResponse(
+                details.workItemId(),
+                details.workItemCode(),
+                details.title(),
+                details.typeCode().name(),
+                details.currentStatusCode(),
+                toMetricsResponse(details.latestMetrics()),
+                details.recentAttempts().stream()
+                        .map(this::toAttemptResponse)
+                        .toList());
+    }
+
+    private DeliveryObservabilityDetailsResponse.LatestMetricsResponse toMetricsResponse(
+            TelegramDeliveryMetricsSnapshot snapshot) {
+        return new DeliveryObservabilityDetailsResponse.LatestMetricsResponse(
+                snapshot.getTenantId(),
+                snapshot.getWorkItemId(),
+                snapshot.getOperation() != null ? snapshot.getOperation().name() : null,
+                snapshot.getDeliveryOutcome() != null ? snapshot.getDeliveryOutcome().name() : null,
+                snapshot.isSuccess(),
+                snapshot.isRejected(),
+                snapshot.isFailed(),
+                snapshot.getFailureCode(),
+                snapshot.hasExternalMessageId(),
+                snapshot.isEmpty());
+    }
+
+    private DeliveryObservabilityDetailsResponse.DeliveryAttemptResponse toAttemptResponse(
+            TelegramDeliveryAttempt attempt) {
+        return new DeliveryObservabilityDetailsResponse.DeliveryAttemptResponse(
+                attempt.getAttemptId(),
+                attempt.getAttemptedAt(),
+                attempt.getTenantId(),
+                attempt.getWorkItemId(),
+                attempt.getOperation().name(),
+                attempt.getTargetChatBindingId(),
+                attempt.getTargetTopicId(),
+                attempt.getDeliveryOutcome().name(),
+                attempt.getExternalMessageId(),
+                attempt.getFailureCode(),
+                attempt.getFailureReason(),
+                attempt.isSuccess());
     }
 }
