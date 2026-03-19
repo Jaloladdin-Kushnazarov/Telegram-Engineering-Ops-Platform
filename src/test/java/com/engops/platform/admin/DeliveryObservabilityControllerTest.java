@@ -48,6 +48,9 @@ class DeliveryObservabilityControllerTest {
     @MockBean
     private TelegramDeliveryObservabilityDetailsFacade detailsFacade;
 
+    @MockBean
+    private DeliveryObservabilitySummaryFacade summaryFacade;
+
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
         UUID attemptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
@@ -190,6 +193,76 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("historyLimit", "10"))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== Summary endpoint tests ==========
+
+    @Test
+    void summaryReturnsCorrectResponse() throws Exception {
+        TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.of(
+                TENANT_ID, WORK_ITEM_ID,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                null, true);
+
+        var item = new DeliveryObservabilitySummaryItem(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                com.engops.platform.workitem.model.WorkItemType.BUG, "BUGS",
+                snapshot);
+
+        when(summaryFacade.getSummaryList(TENANT_ID, 20)).thenReturn(List.of(item));
+
+        mockMvc.perform(get("/api/admin/delivery-observability/summary")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.items[0].workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.items[0].title").value("Login xato"))
+                .andExpect(jsonPath("$.items[0].typeCode").value("BUG"))
+                .andExpect(jsonPath("$.items[0].currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.items[0].latestMetrics.deliveryOutcome").value("DELIVERED"))
+                .andExpect(jsonPath("$.items[0].latestMetrics.success").value(true))
+                .andExpect(jsonPath("$.items[0].latestMetrics.hasExternalMessageId").value(true))
+                .andExpect(jsonPath("$.items[0].latestMetrics.empty").value(false));
+    }
+
+    @Test
+    void summaryEmptyListReturns200() throws Exception {
+        when(summaryFacade.getSummaryList(TENANT_ID, 20)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/delivery-observability/summary")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void summaryDefaultLimitIsUsed() throws Exception {
+        when(summaryFacade.getSummaryList(TENANT_ID, 20)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/delivery-observability/summary")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void summaryInvalidLimitReturns400() throws Exception {
+        when(summaryFacade.getSummaryList(TENANT_ID, 0))
+                .thenThrow(new IllegalArgumentException("limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
+
+        mockMvc.perform(get("/api/admin/delivery-observability/summary")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void summaryMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/delivery-observability/summary"))
                 .andExpect(status().isBadRequest());
     }
 }

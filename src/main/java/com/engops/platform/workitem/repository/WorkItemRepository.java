@@ -1,6 +1,7 @@
 package com.engops.platform.workitem.repository;
 
 import com.engops.platform.workitem.model.WorkItem;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -26,6 +27,22 @@ public interface WorkItemRepository extends JpaRepository<WorkItem, UUID> {
     List<WorkItem> findByTenantIdAndCurrentOwnerUserId(UUID tenantId, UUID ownerUserId);
 
     List<WorkItem> findByTenantIdAndArchivedFalse(UUID tenantId);
+
+    /**
+     * Tenant uchun aktiv work item'larni openedAt DESC, id DESC tartibda qaytaradi.
+     *
+     * Deterministic ordering:
+     * - openedAt DESC: eng yangi ochilgan birinchi
+     * - id DESC: bir xil openedAt bo'lganda deterministic tie-breaker
+     *
+     * Pageable orqali natija soni cheklanadi (limit).
+     *
+     * @param tenantId tenant identifikatori
+     * @param pageable limit uchun PageRequest
+     * @return aktiv work item'lar, openedAt DESC, id DESC
+     */
+    List<WorkItem> findByTenantIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+            UUID tenantId, Pageable pageable);
 
     /**
      * Tenant ichida berilgan turdagi work item'lar sonini qaytaradi.

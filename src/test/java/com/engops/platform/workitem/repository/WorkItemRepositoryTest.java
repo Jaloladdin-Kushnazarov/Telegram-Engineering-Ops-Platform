@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
@@ -93,6 +94,77 @@ class WorkItemRepositoryTest {
                 tenant.getId(), WorkItemType.BUG);
 
         assertThat(count).isEqualTo(2);
+    }
+
+    @Test
+    void cappedActiveListOrderedByOpenedAtDescIdDesc() {
+        // openedAt constructor ichida Instant.now() bilan set bo'ladi,
+        // shuning uchun yaratish tartibi = openedAt tartibi
+        WorkItem oldest = workItemRepository.save(new WorkItem(tenant.getId(), "BUG-1",
+                WorkItemType.BUG, workflowDef.getId(), "Oldest", "BUGS", null));
+        WorkItem middle = workItemRepository.save(new WorkItem(tenant.getId(), "BUG-2",
+                WorkItemType.BUG, workflowDef.getId(), "Middle", "BUGS", null));
+        WorkItem newest = workItemRepository.save(new WorkItem(tenant.getId(), "BUG-3",
+                WorkItemType.BUG, workflowDef.getId(), "Newest", "BUGS", null));
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), PageRequest.of(0, 2));
+
+        assertThat(result).hasSize(2);
+        // openedAt DESC — newest birinchi
+        assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-3");
+        assertThat(result.get(1).getWorkItemCode()).isEqualTo("BUG-2");
+        // oldest chiqarib tashlangan (limit=2)
+    }
+
+    @Test
+    void cappedActiveListTieBreakerByIdDesc() {
+        // Bir xil openedAt uchun id DESC tie-breaker tekshiruvi.
+        // Ikki work item'ni tez ketma-ket yaratamiz (openedAt deyarli bir xil),
+        // lekin determinism id DESC orqali ta'minlanadi.
+        WorkItem wi1 = workItemRepository.save(new WorkItem(tenant.getId(), "BUG-A",
+                WorkItemType.BUG, workflowDef.getId(), "First", "BUGS", null));
+        WorkItem wi2 = workItemRepository.save(new WorkItem(tenant.getId(), "BUG-B",
+                WorkItemType.BUG, workflowDef.getId(), "Second", "BUGS", null));
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), PageRequest.of(0, 10));
+
+        assertThat(result).hasSize(2);
+        // Agar openedAt bir xil bo'lsa, id DESC bo'yicha tartiblanadi
+        // Agar openedAt farqli bo'lsa, openedAt DESC ishlaydi
+        // Ikkalasida ham natija deterministic
+        assertThat(result.get(0).getId()).isNotNull();
+        assertThat(result.get(1).getId()).isNotNull();
+        assertThat(result.get(0).getId()).isNotEqualTo(result.get(1).getId());
+
+        // Ordering deterministic ekanini tekshirish:
+        // birinchi element ikkinchidan katta openedAt ga ega
+        // YOKI bir xil openedAt da kattaroq id ga ega bo'lishi kerak
+        if (result.get(0).getOpenedAt().equals(result.get(1).getOpenedAt())) {
+            assertThat(result.get(0).getId().compareTo(result.get(1).getId())).isGreaterThan(0);
+        } else {
+            assertThat(result.get(0).getOpenedAt()).isAfterOrEqualTo(result.get(1).getOpenedAt());
+        }
+    }
+
+    @Test
+    void cappedActiveListExcludesArchived() {
+        WorkItem active = workItemRepository.save(new WorkItem(tenant.getId(), "BUG-1",
+                WorkItemType.BUG, workflowDef.getId(), "Active", "BUGS", null));
+        WorkItem archived = new WorkItem(tenant.getId(), "BUG-2",
+                WorkItemType.BUG, workflowDef.getId(), "Archived", "BUGS", null);
+        archived.archive();
+        workItemRepository.save(archived);
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), PageRequest.of(0, 10));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-1");
     }
 
     @Test

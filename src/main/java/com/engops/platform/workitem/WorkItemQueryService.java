@@ -5,6 +5,7 @@ import com.engops.platform.workitem.model.WorkItemType;
 import com.engops.platform.workitem.model.WorkItemUpdate;
 import com.engops.platform.workitem.repository.WorkItemRepository;
 import com.engops.platform.workitem.repository.WorkItemUpdateRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +52,21 @@ public class WorkItemQueryService {
 
     public List<WorkItem> listActiveByTenant(UUID tenantId) {
         return workItemRepository.findByTenantIdAndArchivedFalse(tenantId);
+    }
+
+    /**
+     * Tenant uchun aktiv work item'larni cheklangan sonda qaytaradi.
+     *
+     * Deterministic ordering: openedAt DESC, id DESC.
+     * Eng yangi ochilgan work item'lar birinchi qaytadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param limit maksimal natija soni
+     * @return aktiv work item'lar, newest-opened-first
+     */
+    public List<WorkItem> listActiveByTenant(UUID tenantId, int limit) {
+        return workItemRepository.findByTenantIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                tenantId, PageRequest.of(0, limit));
     }
 
     public List<WorkItemUpdate> listUpdates(UUID tenantId, UUID workItemId) {

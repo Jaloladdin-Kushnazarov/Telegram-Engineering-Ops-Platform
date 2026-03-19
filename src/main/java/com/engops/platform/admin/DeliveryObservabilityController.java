@@ -13,29 +13,52 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * Delivery observability details uchun read-only admin endpoint.
+ * Delivery observability uchun read-only admin endpoint'lar.
  *
- * TelegramDeliveryObservabilityDetailsFacade'ni HTTP orqali expose qiladi.
+ * Ikki endpoint:
+ * - GET /summary — tenant-scoped kompakt summary ro'yxat
+ * - GET /details — bitta work item uchun to'liq details (recentAttempts bilan)
+ *
  * Faqat GET — write operatsiya yo'q.
  *
  * Bu controller thin adapter:
- * - HTTP request parametrlarini facade'ga uzatadi
- * - Facade natijasini response DTO'ga map qiladi
+ * - HTTP request parametrlarini facade'larga uzatadi
+ * - Facade natijalarini response DTO'larga map qiladi
  * - ResourceNotFoundException (404) va IllegalArgumentException (400)
  *   GlobalExceptionHandler tomonidan qayta ishlanadi
- *
- * Mapping:
- * TelegramDeliveryObservabilityDetailsView -> DeliveryObservabilityDetailsResponse
- * Bu mapping shu controller ichida — alohida mapper kerak emas (trivial).
  */
 @RestController
 @RequestMapping("/api/admin/delivery-observability")
 public class DeliveryObservabilityController {
 
     private final TelegramDeliveryObservabilityDetailsFacade detailsFacade;
+    private final DeliveryObservabilitySummaryFacade summaryFacade;
 
-    public DeliveryObservabilityController(TelegramDeliveryObservabilityDetailsFacade detailsFacade) {
+    public DeliveryObservabilityController(TelegramDeliveryObservabilityDetailsFacade detailsFacade,
+                                           DeliveryObservabilitySummaryFacade summaryFacade) {
         this.detailsFacade = detailsFacade;
+        this.summaryFacade = summaryFacade;
+    }
+
+    /**
+     * Tenant uchun aktiv work item'larning delivery observability summary ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param limit maksimal natija soni (1..50, default 20)
+     * @return kompakt summary ro'yxat
+     */
+    @GetMapping("/summary")
+    public ResponseEntity<DeliveryObservabilitySummaryResponse> getSummary(
+            @RequestParam UUID tenantId,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        var items = summaryFacade.getSummaryList(tenantId, limit);
+
+        var responseItems = items.stream()
+                .map(this::toSummaryItemResponse)
+                .toList();
+
+        return ResponseEntity.ok(new DeliveryObservabilitySummaryResponse(responseItems));
     }
 
     /**
@@ -102,5 +125,30 @@ public class DeliveryObservabilityController {
                 attempt.getFailureCode(),
                 attempt.getFailureReason(),
                 attempt.isSuccess());
+    }
+
+    // ========== Summary mapping ==========
+
+    private DeliveryObservabilitySummaryResponse.SummaryItemResponse toSummaryItemResponse(
+            DeliveryObservabilitySummaryItem item) {
+        return new DeliveryObservabilitySummaryResponse.SummaryItemResponse(
+                item.workItemId(),
+                item.workItemCode(),
+                item.title(),
+                item.typeCode().name(),
+                item.currentStatusCode(),
+                toMetricsSummaryResponse(item.latestMetrics()));
+    }
+
+    private DeliveryObservabilitySummaryResponse.MetricsSummaryResponse toMetricsSummaryResponse(
+            TelegramDeliveryMetricsSnapshot snapshot) {
+        return new DeliveryObservabilitySummaryResponse.MetricsSummaryResponse(
+                snapshot.getDeliveryOutcome() != null ? snapshot.getDeliveryOutcome().name() : null,
+                snapshot.isSuccess(),
+                snapshot.isRejected(),
+                snapshot.isFailed(),
+                snapshot.getFailureCode(),
+                snapshot.hasExternalMessageId(),
+                snapshot.isEmpty());
     }
 }
