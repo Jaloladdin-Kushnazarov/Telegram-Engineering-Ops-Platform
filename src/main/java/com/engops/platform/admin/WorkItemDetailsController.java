@@ -11,16 +11,17 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * WorkItem details uchun read-only admin endpoint.
+ * WorkItem uchun read-only admin endpoint'lar.
  *
- * Bitta endpoint:
+ * Endpoint'lar:
+ * - GET /summary — tenant-scoped kompakt work item ro'yxat
  * - GET /details — tenant-scoped work item details + update history
  *
  * Faqat GET — write operatsiya yo'q.
  *
  * Bu controller thin adapter:
- * - HTTP request parametrlarini facade'ga uzatadi
- * - Facade natijasini response DTO'ga map qiladi
+ * - HTTP request parametrlarini facade'larga uzatadi
+ * - Facade natijalarini response DTO'larga map qiladi
  * - ResourceNotFoundException (404) va IllegalArgumentException (400)
  *   GlobalExceptionHandler tomonidan qayta ishlanadi
  */
@@ -29,9 +30,33 @@ import java.util.UUID;
 public class WorkItemDetailsController {
 
     private final WorkItemDetailsFacade detailsFacade;
+    private final WorkItemSummaryFacade summaryFacade;
 
-    public WorkItemDetailsController(WorkItemDetailsFacade detailsFacade) {
+    public WorkItemDetailsController(WorkItemDetailsFacade detailsFacade,
+                                     WorkItemSummaryFacade summaryFacade) {
         this.detailsFacade = detailsFacade;
+        this.summaryFacade = summaryFacade;
+    }
+
+    /**
+     * Tenant uchun aktiv work item'larning kompakt summary ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param limit maksimal natija soni (1..50, default 20)
+     * @return kompakt summary ro'yxat
+     */
+    @GetMapping("/summary")
+    public ResponseEntity<WorkItemSummaryResponse> getSummary(
+            @RequestParam UUID tenantId,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        var items = summaryFacade.getSummaryList(tenantId, limit);
+
+        var responseItems = items.stream()
+                .map(this::toSummaryItemResponse)
+                .toList();
+
+        return ResponseEntity.ok(new WorkItemSummaryResponse(responseItems));
     }
 
     /**
@@ -86,5 +111,25 @@ public class WorkItemDetailsController {
                 update.getBody(),
                 update.getVisibilityCode().name(),
                 update.getCreatedAt());
+    }
+
+    // ========== Summary mapping ==========
+
+    private WorkItemSummaryResponse.SummaryItemResponse toSummaryItemResponse(
+            WorkItemSummaryItem item) {
+        return new WorkItemSummaryResponse.SummaryItemResponse(
+                item.workItemId(),
+                item.workItemCode(),
+                item.title(),
+                item.typeCode().name(),
+                item.currentStatusCode(),
+                item.priorityCode(),
+                item.severityCode(),
+                item.currentOwnerUserId(),
+                item.openedAt(),
+                item.lastTransitionAt(),
+                item.resolvedAt(),
+                item.reopenedCount(),
+                item.archived());
     }
 }

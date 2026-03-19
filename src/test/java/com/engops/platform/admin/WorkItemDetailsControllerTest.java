@@ -24,11 +24,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * WorkItemDetailsController @WebMvcTest testlari.
  *
  * Tekshiruvlar:
- * - success path: to'g'ri HTTP status va response body
- * - update history ordering: createdAt ASC tartibda
- * - not-found: 404 qaytariladi
- * - invalid input: 400 qaytariladi
- * - missing required parameter: 400 qaytariladi
+ * - details success path: to'g'ri HTTP status va response body
+ * - details update history ordering: createdAt ASC tartibda
+ * - details not-found: 404 qaytariladi
+ * - details invalid input: 400 qaytariladi
+ * - details missing required parameter: 400 qaytariladi
+ * - summary success path: kompakt ro'yxat qaytariladi
+ * - summary default limit: 20 ishlatiladi
+ * - summary bo'sh ro'yxat: 200 qaytariladi
+ * - summary invalid limit: 400 qaytariladi
+ * - summary missing tenantId: 400 qaytariladi
  */
 @WebMvcTest(WorkItemDetailsController.class)
 class WorkItemDetailsControllerTest {
@@ -45,6 +50,9 @@ class WorkItemDetailsControllerTest {
 
     @MockBean
     private WorkItemDetailsFacade detailsFacade;
+
+    @MockBean
+    private WorkItemSummaryFacade summaryFacade;
 
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
@@ -172,6 +180,79 @@ class WorkItemDetailsControllerTest {
     void missingWorkItemCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== Summary endpoint tests ==========
+
+    @Test
+    void summaryReturnsCorrectResponse() throws Exception {
+        var item = new WorkItemSummaryItem(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                "HIGH", "CRITICAL", OWNER_USER_ID,
+                java.time.Instant.parse("2026-03-18T10:00:00Z"),
+                java.time.Instant.parse("2026-03-18T11:00:00Z"),
+                null, 0, false);
+
+        when(summaryFacade.getSummaryList(TENANT_ID, 20)).thenReturn(List.of(item));
+
+        mockMvc.perform(get("/api/admin/work-items/summary")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.items[0].workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.items[0].title").value("Login xato"))
+                .andExpect(jsonPath("$.items[0].typeCode").value("BUG"))
+                .andExpect(jsonPath("$.items[0].currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.items[0].priorityCode").value("HIGH"))
+                .andExpect(jsonPath("$.items[0].severityCode").value("CRITICAL"))
+                .andExpect(jsonPath("$.items[0].currentOwnerUserId").value(OWNER_USER_ID.toString()))
+                .andExpect(jsonPath("$.items[0].openedAt").value("2026-03-18T10:00:00Z"))
+                .andExpect(jsonPath("$.items[0].lastTransitionAt").value("2026-03-18T11:00:00Z"))
+                .andExpect(jsonPath("$.items[0].reopenedCount").value(0))
+                .andExpect(jsonPath("$.items[0].archived").value(false));
+    }
+
+    @Test
+    void summaryDefaultLimitIsUsed() throws Exception {
+        when(summaryFacade.getSummaryList(TENANT_ID, 20)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/work-items/summary")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void summaryEmptyListReturns200() throws Exception {
+        when(summaryFacade.getSummaryList(TENANT_ID, 10)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/work-items/summary")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void summaryInvalidLimitReturns400() throws Exception {
+        when(summaryFacade.getSummaryList(TENANT_ID, 0))
+                .thenThrow(new IllegalArgumentException(
+                        "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
+
+        mockMvc.perform(get("/api/admin/work-items/summary")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void summaryMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/summary"))
                 .andExpect(status().isBadRequest());
     }
 }
