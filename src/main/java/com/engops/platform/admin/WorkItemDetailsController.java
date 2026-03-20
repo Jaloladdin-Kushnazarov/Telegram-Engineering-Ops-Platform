@@ -24,6 +24,7 @@ import java.util.UUID;
  * - GET /details/by-id — tenant-scoped work item details + update history (by UUID)
  * - GET /support-summary — combined work item + delivery observability summary ro'yxat
  * - GET /support-summary/by-status — status bo'yicha combined support summary ro'yxat
+ * - GET /support-summary/by-owner — owner bo'yicha combined support summary ro'yxat
  * - GET /support-details — combined work item details + delivery observability (by code)
  * - GET /support-details/by-id — combined work item details + delivery observability (by UUID)
  *
@@ -48,6 +49,7 @@ public class WorkItemDetailsController {
     private final WorkItemSummaryByStatusFacade summaryByStatusFacade;
     private final WorkItemSummaryByOwnerFacade summaryByOwnerFacade;
     private final WorkItemSupportSummaryByStatusFacade supportSummaryByStatusFacade;
+    private final WorkItemSupportSummaryByOwnerFacade supportSummaryByOwnerFacade;
 
     public WorkItemDetailsController(WorkItemDetailsFacade detailsFacade,
                                      WorkItemSummaryFacade summaryFacade,
@@ -57,7 +59,8 @@ public class WorkItemDetailsController {
                                      WorkItemDetailsByIdFacade detailsByIdFacade,
                                      WorkItemSummaryByStatusFacade summaryByStatusFacade,
                                      WorkItemSummaryByOwnerFacade summaryByOwnerFacade,
-                                     WorkItemSupportSummaryByStatusFacade supportSummaryByStatusFacade) {
+                                     WorkItemSupportSummaryByStatusFacade supportSummaryByStatusFacade,
+                                     WorkItemSupportSummaryByOwnerFacade supportSummaryByOwnerFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
         this.supportDetailsFacade = supportDetailsFacade;
@@ -67,6 +70,7 @@ public class WorkItemDetailsController {
         this.summaryByStatusFacade = summaryByStatusFacade;
         this.summaryByOwnerFacade = summaryByOwnerFacade;
         this.supportSummaryByStatusFacade = supportSummaryByStatusFacade;
+        this.supportSummaryByOwnerFacade = supportSummaryByOwnerFacade;
     }
 
     /**
@@ -173,6 +177,29 @@ public class WorkItemDetailsController {
             @RequestParam(defaultValue = "20") int limit) {
 
         var items = supportSummaryByStatusFacade.getSummaryList(tenantId, statusCode, limit);
+
+        var responseItems = items.stream()
+                .map(this::toSupportSummaryItemResponse)
+                .toList();
+
+        return ResponseEntity.ok(new WorkItemSupportSummaryResponse(responseItems));
+    }
+
+    /**
+     * Tenant + ownerUserId bo'yicha aktiv work item'larning combined support summary qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ownerUserId owner user identifikatori
+     * @param limit maksimal natija soni (1..50, default 20)
+     * @return combined support summary ro'yxat
+     */
+    @GetMapping("/support-summary/by-owner")
+    public ResponseEntity<WorkItemSupportSummaryResponse> getSupportSummaryByOwner(
+            @RequestParam UUID tenantId,
+            @RequestParam UUID ownerUserId,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        var items = supportSummaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit);
 
         var responseItems = items.stream()
                 .map(this::toSupportSummaryItemResponse)

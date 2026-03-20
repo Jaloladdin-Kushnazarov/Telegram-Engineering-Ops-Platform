@@ -108,6 +108,9 @@ class WorkItemDetailsControllerTest {
     @MockBean
     private WorkItemSupportSummaryByStatusFacade supportSummaryByStatusFacade;
 
+    @MockBean
+    private WorkItemSupportSummaryByOwnerFacade supportSummaryByOwnerFacade;
+
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
         WorkItem workItem = new WorkItem(
@@ -1006,6 +1009,104 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportSummaryByStatusMissingStatusCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-status")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== Support summary by-owner endpoint tests ==========
+
+    @Test
+    void supportSummaryByOwnerReturnsCorrectCombinedResponse() throws Exception {
+        var wiSummary = new WorkItemSummaryItem(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                "HIGH", "CRITICAL", OWNER_USER_ID,
+                Instant.parse("2026-03-18T10:00:00Z"),
+                Instant.parse("2026-03-18T11:00:00Z"),
+                null, 0, false);
+
+        TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.of(
+                TENANT_ID, WORK_ITEM_ID,
+                com.engops.platform.telegram.TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                com.engops.platform.telegram.TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                null, true);
+
+        var delSummary = new DeliveryObservabilitySummaryItem(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                snapshot);
+
+        var composedItem = new WorkItemSupportSummaryItem(wiSummary, delSummary);
+
+        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20))
+                .thenReturn(List.of(composedItem));
+
+        mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].workItem.workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.items[0].workItem.workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.items[0].workItem.typeCode").value("BUG"))
+                .andExpect(jsonPath("$.items[0].workItem.currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.items[0].workItem.currentOwnerUserId").value(OWNER_USER_ID.toString()))
+                .andExpect(jsonPath("$.items[0].deliveryObservability.workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.items[0].deliveryObservability.latestMetrics.success").value(true))
+                .andExpect(jsonPath("$.items[0].deliveryObservability.latestMetrics.deliveryOutcome").value("DELIVERED"))
+                .andExpect(jsonPath("$.items[0].deliveryObservability.latestMetrics.empty").value(false));
+    }
+
+    @Test
+    void supportSummaryByOwnerDefaultLimitIsUsed() throws Exception {
+        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void supportSummaryByOwnerEmptyListReturns200() throws Exception {
+        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 10))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void supportSummaryByOwnerInvalidLimitReturns400() throws Exception {
+        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 0))
+                .thenThrow(new IllegalArgumentException(
+                        "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
+
+        mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void supportSummaryByOwnerMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
+                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void supportSummaryByOwnerMissingOwnerUserIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
                         .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
