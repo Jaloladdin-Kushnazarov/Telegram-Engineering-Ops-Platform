@@ -15,8 +15,9 @@ import java.util.UUID;
 /**
  * Delivery observability uchun read-only admin endpoint'lar.
  *
- * Uch endpoint:
+ * To'rt endpoint:
  * - GET /summary — tenant-scoped kompakt summary ro'yxat
+ * - GET /summary/by-status — status bo'yicha filtrlangan delivery summary ro'yxat
  * - GET /details — bitta work item uchun to'liq details (workItemCode bo'yicha)
  * - GET /details/by-id — bitta work item uchun to'liq details (workItemId bo'yicha)
  *
@@ -35,13 +36,16 @@ public class DeliveryObservabilityController {
     private final TelegramDeliveryObservabilityDetailsFacade detailsFacade;
     private final DeliveryObservabilitySummaryFacade summaryFacade;
     private final DeliveryObservabilityDetailsByIdFacade detailsByIdFacade;
+    private final DeliveryObservabilitySummaryByStatusFacade summaryByStatusFacade;
 
     public DeliveryObservabilityController(TelegramDeliveryObservabilityDetailsFacade detailsFacade,
                                            DeliveryObservabilitySummaryFacade summaryFacade,
-                                           DeliveryObservabilityDetailsByIdFacade detailsByIdFacade) {
+                                           DeliveryObservabilityDetailsByIdFacade detailsByIdFacade,
+                                           DeliveryObservabilitySummaryByStatusFacade summaryByStatusFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
         this.detailsByIdFacade = detailsByIdFacade;
+        this.summaryByStatusFacade = summaryByStatusFacade;
     }
 
     /**
@@ -57,6 +61,29 @@ public class DeliveryObservabilityController {
             @RequestParam(defaultValue = "20") int limit) {
 
         var items = summaryFacade.getSummaryList(tenantId, limit);
+
+        var responseItems = items.stream()
+                .map(this::toSummaryItemResponse)
+                .toList();
+
+        return ResponseEntity.ok(new DeliveryObservabilitySummaryResponse(responseItems));
+    }
+
+    /**
+     * Tenant + statusCode bo'yicha aktiv work item'larning delivery summary ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param statusCode holat kodi (masalan "BUGS", "PROCESSING")
+     * @param limit maksimal natija soni (1..50, default 20)
+     * @return status-filtered delivery summary ro'yxat
+     */
+    @GetMapping("/summary/by-status")
+    public ResponseEntity<DeliveryObservabilitySummaryResponse> getSummaryByStatus(
+            @RequestParam UUID tenantId,
+            @RequestParam String statusCode,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        var items = summaryByStatusFacade.getSummaryList(tenantId, statusCode, limit);
 
         var responseItems = items.stream()
                 .map(this::toSummaryItemResponse)
