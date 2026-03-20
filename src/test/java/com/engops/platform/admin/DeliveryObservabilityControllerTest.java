@@ -57,6 +57,9 @@ class DeliveryObservabilityControllerTest {
     @MockBean
     private DeliveryObservabilitySummaryByStatusFacade summaryByStatusFacade;
 
+    @MockBean
+    private DeliveryObservabilitySummaryByOwnerFacade summaryByOwnerFacade;
+
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
         UUID attemptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
@@ -461,6 +464,95 @@ class DeliveryObservabilityControllerTest {
     @Test
     void summaryByStatusMissingStatusCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/summary/by-status")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== Summary by-owner endpoint tests ==========
+
+    private static final UUID OWNER_USER_ID = UUID.fromString("88888888-8888-8888-8888-888888888888");
+
+    @Test
+    void summaryByOwnerReturnsCorrectResponse() throws Exception {
+        TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.of(
+                TENANT_ID, WORK_ITEM_ID,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                null, true);
+
+        var item = new DeliveryObservabilitySummaryItem(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                snapshot);
+
+        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20))
+                .thenReturn(List.of(item));
+
+        mockMvc.perform(get("/api/admin/delivery-observability/summary/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.items[0].workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.items[0].title").value("Login xato"))
+                .andExpect(jsonPath("$.items[0].typeCode").value("BUG"))
+                .andExpect(jsonPath("$.items[0].currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.items[0].latestMetrics.deliveryOutcome").value("DELIVERED"))
+                .andExpect(jsonPath("$.items[0].latestMetrics.success").value(true))
+                .andExpect(jsonPath("$.items[0].latestMetrics.empty").value(false));
+    }
+
+    @Test
+    void summaryByOwnerDefaultLimitIsUsed() throws Exception {
+        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/delivery-observability/summary/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void summaryByOwnerEmptyListReturns200() throws Exception {
+        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 10))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/delivery-observability/summary/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void summaryByOwnerInvalidLimitReturns400() throws Exception {
+        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 0))
+                .thenThrow(new IllegalArgumentException(
+                        "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
+
+        mockMvc.perform(get("/api/admin/delivery-observability/summary/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void summaryByOwnerMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/delivery-observability/summary/by-owner")
+                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void summaryByOwnerMissingOwnerUserIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/delivery-observability/summary/by-owner")
                         .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isBadRequest());
     }

@@ -15,9 +15,10 @@ import java.util.UUID;
 /**
  * Delivery observability uchun read-only admin endpoint'lar.
  *
- * To'rt endpoint:
+ * Besh endpoint:
  * - GET /summary — tenant-scoped kompakt summary ro'yxat
  * - GET /summary/by-status — status bo'yicha filtrlangan delivery summary ro'yxat
+ * - GET /summary/by-owner — owner bo'yicha filtrlangan delivery summary ro'yxat
  * - GET /details — bitta work item uchun to'liq details (workItemCode bo'yicha)
  * - GET /details/by-id — bitta work item uchun to'liq details (workItemId bo'yicha)
  *
@@ -37,15 +38,18 @@ public class DeliveryObservabilityController {
     private final DeliveryObservabilitySummaryFacade summaryFacade;
     private final DeliveryObservabilityDetailsByIdFacade detailsByIdFacade;
     private final DeliveryObservabilitySummaryByStatusFacade summaryByStatusFacade;
+    private final DeliveryObservabilitySummaryByOwnerFacade summaryByOwnerFacade;
 
     public DeliveryObservabilityController(TelegramDeliveryObservabilityDetailsFacade detailsFacade,
                                            DeliveryObservabilitySummaryFacade summaryFacade,
                                            DeliveryObservabilityDetailsByIdFacade detailsByIdFacade,
-                                           DeliveryObservabilitySummaryByStatusFacade summaryByStatusFacade) {
+                                           DeliveryObservabilitySummaryByStatusFacade summaryByStatusFacade,
+                                           DeliveryObservabilitySummaryByOwnerFacade summaryByOwnerFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
         this.detailsByIdFacade = detailsByIdFacade;
         this.summaryByStatusFacade = summaryByStatusFacade;
+        this.summaryByOwnerFacade = summaryByOwnerFacade;
     }
 
     /**
@@ -84,6 +88,29 @@ public class DeliveryObservabilityController {
             @RequestParam(defaultValue = "20") int limit) {
 
         var items = summaryByStatusFacade.getSummaryList(tenantId, statusCode, limit);
+
+        var responseItems = items.stream()
+                .map(this::toSummaryItemResponse)
+                .toList();
+
+        return ResponseEntity.ok(new DeliveryObservabilitySummaryResponse(responseItems));
+    }
+
+    /**
+     * Tenant + ownerUserId bo'yicha aktiv work item'larning delivery summary ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ownerUserId owner user identifikatori
+     * @param limit maksimal natija soni (1..50, default 20)
+     * @return owner-filtered delivery summary ro'yxat
+     */
+    @GetMapping("/summary/by-owner")
+    public ResponseEntity<DeliveryObservabilitySummaryResponse> getSummaryByOwner(
+            @RequestParam UUID tenantId,
+            @RequestParam UUID ownerUserId,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        var items = summaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit);
 
         var responseItems = items.stream()
                 .map(this::toSummaryItemResponse)
