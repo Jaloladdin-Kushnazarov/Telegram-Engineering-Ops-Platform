@@ -69,6 +69,36 @@ public class WorkItemQueryService {
                 tenantId, PageRequest.of(0, limit));
     }
 
+    /**
+     * Tenant uchun berilgan statusdagi aktiv work item'larni cheklangan sonda qaytaradi.
+     *
+     * Deterministic ordering: openedAt DESC, id DESC.
+     *
+     * @param tenantId tenant identifikatori
+     * @param statusCode holat kodi (masalan "BUGS", "PROCESSING")
+     * @param limit maksimal natija soni
+     * @return aktiv work item'lar, newest-opened-first
+     */
+    public List<WorkItem> listActiveByTenantAndStatus(UUID tenantId, String statusCode, int limit) {
+        return workItemRepository.findByTenantIdAndCurrentStatusCodeAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                tenantId, statusCode, PageRequest.of(0, limit));
+    }
+
+    /**
+     * Tenant uchun berilgan owner'dagi aktiv work item'larni cheklangan sonda qaytaradi.
+     *
+     * Deterministic ordering: openedAt DESC, id DESC.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ownerUserId owner user identifikatori
+     * @param limit maksimal natija soni
+     * @return aktiv work item'lar, newest-opened-first
+     */
+    public List<WorkItem> listActiveByTenantAndOwner(UUID tenantId, UUID ownerUserId, int limit) {
+        return workItemRepository.findByTenantIdAndCurrentOwnerUserIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                tenantId, ownerUserId, PageRequest.of(0, limit));
+    }
+
     public List<WorkItemUpdate> listUpdates(UUID tenantId, UUID workItemId) {
         return workItemUpdateRepository.findByTenantIdAndWorkItemIdOrderByCreatedAtAscIdAsc(tenantId, workItemId);
     }

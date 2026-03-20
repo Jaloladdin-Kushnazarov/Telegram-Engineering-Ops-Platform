@@ -179,4 +179,197 @@ class WorkItemRepositoryTest {
 
         assertThat(otherItems).isEmpty();
     }
+
+    // ========== By-status capped query tests ==========
+
+    @Test
+    void byStatusReturnsOnlyMatchingStatusAndTenant() {
+        workItemRepository.save(new WorkItem(tenant.getId(), "BUG-1", WorkItemType.BUG,
+                workflowDef.getId(), "Bug in BUGS", "BUGS", null));
+        workItemRepository.save(new WorkItem(tenant.getId(), "BUG-2", WorkItemType.BUG,
+                workflowDef.getId(), "Bug in PROCESSING", "PROCESSING", null));
+
+        Tenant otherTenant = tenantRepository.save(new Tenant("Other Co", "other-co"));
+        WorkflowDefinition otherWf = workflowDefinitionRepository.save(
+                new WorkflowDefinition(otherTenant.getId(), "Other Workflow", "BUG"));
+        workItemRepository.save(new WorkItem(otherTenant.getId(), "BUG-3", WorkItemType.BUG,
+                otherWf.getId(), "Other tenant bug", "BUGS", null));
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndCurrentStatusCodeAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), "BUGS", PageRequest.of(0, 10));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-1");
+    }
+
+    @Test
+    void byStatusExcludesArchivedItems() {
+        workItemRepository.save(new WorkItem(tenant.getId(), "BUG-1", WorkItemType.BUG,
+                workflowDef.getId(), "Active", "BUGS", null));
+        WorkItem archived = new WorkItem(tenant.getId(), "BUG-2", WorkItemType.BUG,
+                workflowDef.getId(), "Archived", "BUGS", null);
+        archived.archive();
+        workItemRepository.save(archived);
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndCurrentStatusCodeAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), "BUGS", PageRequest.of(0, 10));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-1");
+    }
+
+    @Test
+    void byStatusAppliesDeterministicOrdering() {
+        WorkItem oldest = workItemRepository.save(new WorkItem(tenant.getId(), "BUG-1",
+                WorkItemType.BUG, workflowDef.getId(), "Oldest", "BUGS", null));
+        WorkItem middle = workItemRepository.save(new WorkItem(tenant.getId(), "BUG-2",
+                WorkItemType.BUG, workflowDef.getId(), "Middle", "BUGS", null));
+        WorkItem newest = workItemRepository.save(new WorkItem(tenant.getId(), "BUG-3",
+                WorkItemType.BUG, workflowDef.getId(), "Newest", "BUGS", null));
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndCurrentStatusCodeAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), "BUGS", PageRequest.of(0, 10));
+
+        assertThat(result).hasSize(3);
+        // openedAt DESC — newest birinchi
+        assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-3");
+        assertThat(result.get(1).getWorkItemCode()).isEqualTo("BUG-2");
+        assertThat(result.get(2).getWorkItemCode()).isEqualTo("BUG-1");
+    }
+
+    @Test
+    void byStatusRespectsLimitViaPageable() {
+        workItemRepository.save(new WorkItem(tenant.getId(), "BUG-1", WorkItemType.BUG,
+                workflowDef.getId(), "First", "BUGS", null));
+        workItemRepository.save(new WorkItem(tenant.getId(), "BUG-2", WorkItemType.BUG,
+                workflowDef.getId(), "Second", "BUGS", null));
+        workItemRepository.save(new WorkItem(tenant.getId(), "BUG-3", WorkItemType.BUG,
+                workflowDef.getId(), "Third", "BUGS", null));
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndCurrentStatusCodeAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), "BUGS", PageRequest.of(0, 2));
+
+        assertThat(result).hasSize(2);
+        // newest first, oldest excluded by limit
+        assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-3");
+        assertThat(result.get(1).getWorkItemCode()).isEqualTo("BUG-2");
+    }
+
+    // ========== By-owner capped query tests ==========
+
+    @Test
+    void byOwnerReturnsOnlyMatchingTenantAndOwner() {
+        java.util.UUID owner1 = java.util.UUID.fromString("aaaa1111-1111-1111-1111-111111111111");
+        java.util.UUID owner2 = java.util.UUID.fromString("bbbb2222-2222-2222-2222-222222222222");
+
+        WorkItem wi1 = new WorkItem(tenant.getId(), "BUG-1", WorkItemType.BUG,
+                workflowDef.getId(), "Owner1 bug", "BUGS", null);
+        wi1.assignOwner(owner1);
+        workItemRepository.save(wi1);
+
+        WorkItem wi2 = new WorkItem(tenant.getId(), "BUG-2", WorkItemType.BUG,
+                workflowDef.getId(), "Owner2 bug", "BUGS", null);
+        wi2.assignOwner(owner2);
+        workItemRepository.save(wi2);
+
+        // Boshqa tenant, bir xil owner
+        Tenant otherTenant = tenantRepository.save(new Tenant("Other Co", "other-co"));
+        WorkflowDefinition otherWf = workflowDefinitionRepository.save(
+                new WorkflowDefinition(otherTenant.getId(), "Other Workflow", "BUG"));
+        WorkItem wi3 = new WorkItem(otherTenant.getId(), "BUG-3", WorkItemType.BUG,
+                otherWf.getId(), "Other tenant", "BUGS", null);
+        wi3.assignOwner(owner1);
+        workItemRepository.save(wi3);
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndCurrentOwnerUserIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), owner1, PageRequest.of(0, 10));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-1");
+    }
+
+    @Test
+    void byOwnerExcludesArchivedItems() {
+        java.util.UUID owner = java.util.UUID.fromString("aaaa1111-1111-1111-1111-111111111111");
+
+        WorkItem active = new WorkItem(tenant.getId(), "BUG-1", WorkItemType.BUG,
+                workflowDef.getId(), "Active", "BUGS", null);
+        active.assignOwner(owner);
+        workItemRepository.save(active);
+
+        WorkItem archived = new WorkItem(tenant.getId(), "BUG-2", WorkItemType.BUG,
+                workflowDef.getId(), "Archived", "BUGS", null);
+        archived.assignOwner(owner);
+        archived.archive();
+        workItemRepository.save(archived);
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndCurrentOwnerUserIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), owner, PageRequest.of(0, 10));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-1");
+    }
+
+    @Test
+    void byOwnerAppliesDeterministicOrdering() {
+        java.util.UUID owner = java.util.UUID.fromString("aaaa1111-1111-1111-1111-111111111111");
+
+        WorkItem oldest = new WorkItem(tenant.getId(), "BUG-1", WorkItemType.BUG,
+                workflowDef.getId(), "Oldest", "BUGS", null);
+        oldest.assignOwner(owner);
+        workItemRepository.save(oldest);
+
+        WorkItem middle = new WorkItem(tenant.getId(), "BUG-2", WorkItemType.BUG,
+                workflowDef.getId(), "Middle", "BUGS", null);
+        middle.assignOwner(owner);
+        workItemRepository.save(middle);
+
+        WorkItem newest = new WorkItem(tenant.getId(), "BUG-3", WorkItemType.BUG,
+                workflowDef.getId(), "Newest", "BUGS", null);
+        newest.assignOwner(owner);
+        workItemRepository.save(newest);
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndCurrentOwnerUserIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), owner, PageRequest.of(0, 10));
+
+        assertThat(result).hasSize(3);
+        assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-3");
+        assertThat(result.get(1).getWorkItemCode()).isEqualTo("BUG-2");
+        assertThat(result.get(2).getWorkItemCode()).isEqualTo("BUG-1");
+    }
+
+    @Test
+    void byOwnerRespectsLimitViaPageable() {
+        java.util.UUID owner = java.util.UUID.fromString("aaaa1111-1111-1111-1111-111111111111");
+
+        WorkItem wi1 = new WorkItem(tenant.getId(), "BUG-1", WorkItemType.BUG,
+                workflowDef.getId(), "First", "BUGS", null);
+        wi1.assignOwner(owner);
+        workItemRepository.save(wi1);
+
+        WorkItem wi2 = new WorkItem(tenant.getId(), "BUG-2", WorkItemType.BUG,
+                workflowDef.getId(), "Second", "BUGS", null);
+        wi2.assignOwner(owner);
+        workItemRepository.save(wi2);
+
+        WorkItem wi3 = new WorkItem(tenant.getId(), "BUG-3", WorkItemType.BUG,
+                workflowDef.getId(), "Third", "BUGS", null);
+        wi3.assignOwner(owner);
+        workItemRepository.save(wi3);
+
+        List<WorkItem> result = workItemRepository
+                .findByTenantIdAndCurrentOwnerUserIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+                        tenant.getId(), owner, PageRequest.of(0, 2));
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-3");
+        assertThat(result.get(1).getWorkItemCode()).isEqualTo("BUG-2");
+    }
 }

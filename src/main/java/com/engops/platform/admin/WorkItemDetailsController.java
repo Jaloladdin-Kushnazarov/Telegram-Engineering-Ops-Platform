@@ -18,6 +18,8 @@ import java.util.UUID;
  *
  * Endpoint'lar:
  * - GET /summary — tenant-scoped kompakt work item ro'yxat
+ * - GET /by-status — tenant-scoped status bo'yicha aktiv work item ro'yxat
+ * - GET /by-owner — tenant-scoped owner bo'yicha aktiv work item ro'yxat
  * - GET /details — tenant-scoped work item details + update history (by code)
  * - GET /details/by-id — tenant-scoped work item details + update history (by UUID)
  * - GET /support-summary — combined work item + delivery observability summary ro'yxat
@@ -42,19 +44,25 @@ public class WorkItemDetailsController {
     private final WorkItemSupportSummaryFacade supportSummaryFacade;
     private final WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade;
     private final WorkItemDetailsByIdFacade detailsByIdFacade;
+    private final WorkItemSummaryByStatusFacade summaryByStatusFacade;
+    private final WorkItemSummaryByOwnerFacade summaryByOwnerFacade;
 
     public WorkItemDetailsController(WorkItemDetailsFacade detailsFacade,
                                      WorkItemSummaryFacade summaryFacade,
                                      WorkItemSupportDetailsFacade supportDetailsFacade,
                                      WorkItemSupportSummaryFacade supportSummaryFacade,
                                      WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade,
-                                     WorkItemDetailsByIdFacade detailsByIdFacade) {
+                                     WorkItemDetailsByIdFacade detailsByIdFacade,
+                                     WorkItemSummaryByStatusFacade summaryByStatusFacade,
+                                     WorkItemSummaryByOwnerFacade summaryByOwnerFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
         this.supportDetailsFacade = supportDetailsFacade;
         this.supportSummaryFacade = supportSummaryFacade;
         this.supportDetailsByIdFacade = supportDetailsByIdFacade;
         this.detailsByIdFacade = detailsByIdFacade;
+        this.summaryByStatusFacade = summaryByStatusFacade;
+        this.summaryByOwnerFacade = summaryByOwnerFacade;
     }
 
     /**
@@ -70,6 +78,52 @@ public class WorkItemDetailsController {
             @RequestParam(defaultValue = "20") int limit) {
 
         var items = summaryFacade.getSummaryList(tenantId, limit);
+
+        var responseItems = items.stream()
+                .map(this::toSummaryItemResponse)
+                .toList();
+
+        return ResponseEntity.ok(new WorkItemSummaryResponse(responseItems));
+    }
+
+    /**
+     * Tenant + statusCode bo'yicha aktiv work item'larning kompakt summary ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param statusCode holat kodi (masalan "BUGS", "PROCESSING")
+     * @param limit maksimal natija soni (1..50, default 20)
+     * @return kompakt summary ro'yxat
+     */
+    @GetMapping("/by-status")
+    public ResponseEntity<WorkItemSummaryResponse> getByStatus(
+            @RequestParam UUID tenantId,
+            @RequestParam String statusCode,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        var items = summaryByStatusFacade.getSummaryList(tenantId, statusCode, limit);
+
+        var responseItems = items.stream()
+                .map(this::toSummaryItemResponse)
+                .toList();
+
+        return ResponseEntity.ok(new WorkItemSummaryResponse(responseItems));
+    }
+
+    /**
+     * Tenant + ownerUserId bo'yicha aktiv work item'larning kompakt summary ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ownerUserId owner user identifikatori
+     * @param limit maksimal natija soni (1..50, default 20)
+     * @return kompakt summary ro'yxat
+     */
+    @GetMapping("/by-owner")
+    public ResponseEntity<WorkItemSummaryResponse> getByOwner(
+            @RequestParam UUID tenantId,
+            @RequestParam UUID ownerUserId,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        var items = summaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit);
 
         var responseItems = items.stream()
                 .map(this::toSummaryItemResponse)

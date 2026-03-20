@@ -61,6 +61,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - details/by-id not-found: 404 qaytariladi
  * - details/by-id missing tenantId: 400 qaytariladi
  * - details/by-id missing workItemId: 400 qaytariladi
+ * - by-status success path: status bo'yicha kompakt ro'yxat qaytariladi
+ * - by-status default limit: 20 ishlatiladi
+ * - by-status bo'sh ro'yxat: 200 qaytariladi
+ * - by-status invalid limit: 400 qaytariladi
+ * - by-status missing tenantId: 400 qaytariladi
+ * - by-status missing statusCode: 400 qaytariladi
  */
 @WebMvcTest(WorkItemDetailsController.class)
 class WorkItemDetailsControllerTest {
@@ -92,6 +98,12 @@ class WorkItemDetailsControllerTest {
 
     @MockBean
     private WorkItemDetailsByIdFacade detailsByIdFacade;
+
+    @MockBean
+    private WorkItemSummaryByStatusFacade summaryByStatusFacade;
+
+    @MockBean
+    private WorkItemSummaryByOwnerFacade summaryByOwnerFacade;
 
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
@@ -726,6 +738,173 @@ class WorkItemDetailsControllerTest {
     @Test
     void detailsByIdMissingWorkItemIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/details/by-id")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== By-status endpoint tests ==========
+
+    @Test
+    void byStatusReturnsCorrectResponse() throws Exception {
+        var item = new WorkItemSummaryItem(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                "HIGH", "CRITICAL", OWNER_USER_ID,
+                Instant.parse("2026-03-18T10:00:00Z"),
+                Instant.parse("2026-03-18T11:00:00Z"),
+                null, 0, false);
+
+        when(summaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 20))
+                .thenReturn(List.of(item));
+
+        mockMvc.perform(get("/api/admin/work-items/by-status")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("statusCode", "BUGS")
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.items[0].workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.items[0].title").value("Login xato"))
+                .andExpect(jsonPath("$.items[0].typeCode").value("BUG"))
+                .andExpect(jsonPath("$.items[0].currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.items[0].priorityCode").value("HIGH"))
+                .andExpect(jsonPath("$.items[0].severityCode").value("CRITICAL"))
+                .andExpect(jsonPath("$.items[0].currentOwnerUserId").value(OWNER_USER_ID.toString()));
+    }
+
+    @Test
+    void byStatusDefaultLimitIsUsed() throws Exception {
+        when(summaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 20))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/work-items/by-status")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("statusCode", "BUGS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void byStatusEmptyListReturns200() throws Exception {
+        when(summaryByStatusFacade.getSummaryList(TENANT_ID, "PROCESSING", 10))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/work-items/by-status")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("statusCode", "PROCESSING")
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void byStatusInvalidLimitReturns400() throws Exception {
+        when(summaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 0))
+                .thenThrow(new IllegalArgumentException(
+                        "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
+
+        mockMvc.perform(get("/api/admin/work-items/by-status")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("statusCode", "BUGS")
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void byStatusMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/by-status")
+                        .param("statusCode", "BUGS"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void byStatusMissingStatusCodeReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/by-status")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== By-owner endpoint tests ==========
+
+    @Test
+    void byOwnerReturnsCorrectResponse() throws Exception {
+        var item = new WorkItemSummaryItem(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                "HIGH", "CRITICAL", OWNER_USER_ID,
+                Instant.parse("2026-03-18T10:00:00Z"),
+                Instant.parse("2026-03-18T11:00:00Z"),
+                null, 0, false);
+
+        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20))
+                .thenReturn(List.of(item));
+
+        mockMvc.perform(get("/api/admin/work-items/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.items[0].workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.items[0].title").value("Login xato"))
+                .andExpect(jsonPath("$.items[0].typeCode").value("BUG"))
+                .andExpect(jsonPath("$.items[0].currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.items[0].priorityCode").value("HIGH"))
+                .andExpect(jsonPath("$.items[0].currentOwnerUserId").value(OWNER_USER_ID.toString()));
+    }
+
+    @Test
+    void byOwnerDefaultLimitIsUsed() throws Exception {
+        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/work-items/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void byOwnerEmptyListReturns200() throws Exception {
+        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 10))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/work-items/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void byOwnerInvalidLimitReturns400() throws Exception {
+        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 0))
+                .thenThrow(new IllegalArgumentException(
+                        "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
+
+        mockMvc.perform(get("/api/admin/work-items/by-owner")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void byOwnerMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/by-owner")
+                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void byOwnerMissingOwnerUserIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/by-owner")
                         .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isBadRequest());
     }

@@ -45,6 +45,31 @@ public interface WorkItemRepository extends JpaRepository<WorkItem, UUID> {
             UUID tenantId, Pageable pageable);
 
     /**
+     * Tenant uchun berilgan statusdagi aktiv work item'larni deterministic tartibda qaytaradi.
+     *
+     * Filtering: tenantId + currentStatusCode + archived=false
+     * Ordering: openedAt DESC, id DESC
+     * Pageable orqali natija soni cheklanadi (limit).
+     *
+     * @param tenantId tenant identifikatori
+     * @param statusCode holat kodi (masalan "BUGS", "PROCESSING")
+     * @param pageable limit uchun PageRequest
+     * @return aktiv work item'lar, openedAt DESC, id DESC
+     */
+    List<WorkItem> findByTenantIdAndCurrentStatusCodeAndArchivedFalseOrderByOpenedAtDescIdDesc(
+            UUID tenantId, String statusCode, Pageable pageable);
+
+    /**
+     * Tenant uchun berilgan owner'dagi aktiv work item'larni deterministic tartibda qaytaradi.
+     *
+     * Filtering: tenantId + currentOwnerUserId + archived=false
+     * Ordering: openedAt DESC, id DESC
+     * Pageable orqali natija soni cheklanadi (limit).
+     */
+    List<WorkItem> findByTenantIdAndCurrentOwnerUserIdAndArchivedFalseOrderByOpenedAtDescIdDesc(
+            UUID tenantId, UUID ownerUserId, Pageable pageable);
+
+    /**
      * Tenant ichida berilgan turdagi work item'lar sonini qaytaradi.
      * Code generatsiya uchun ishlatiladi.
      */
