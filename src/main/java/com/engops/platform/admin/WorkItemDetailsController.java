@@ -18,7 +18,8 @@ import java.util.UUID;
  *
  * Endpoint'lar:
  * - GET /summary — tenant-scoped kompakt work item ro'yxat
- * - GET /details — tenant-scoped work item details + update history
+ * - GET /details — tenant-scoped work item details + update history (by code)
+ * - GET /details/by-id — tenant-scoped work item details + update history (by UUID)
  * - GET /support-summary — combined work item + delivery observability summary ro'yxat
  * - GET /support-details — combined work item details + delivery observability (by code)
  * - GET /support-details/by-id — combined work item details + delivery observability (by UUID)
@@ -40,17 +41,20 @@ public class WorkItemDetailsController {
     private final WorkItemSupportDetailsFacade supportDetailsFacade;
     private final WorkItemSupportSummaryFacade supportSummaryFacade;
     private final WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade;
+    private final WorkItemDetailsByIdFacade detailsByIdFacade;
 
     public WorkItemDetailsController(WorkItemDetailsFacade detailsFacade,
                                      WorkItemSummaryFacade summaryFacade,
                                      WorkItemSupportDetailsFacade supportDetailsFacade,
                                      WorkItemSupportSummaryFacade supportSummaryFacade,
-                                     WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade) {
+                                     WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade,
+                                     WorkItemDetailsByIdFacade detailsByIdFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
         this.supportDetailsFacade = supportDetailsFacade;
         this.supportSummaryFacade = supportSummaryFacade;
         this.supportDetailsByIdFacade = supportDetailsByIdFacade;
+        this.detailsByIdFacade = detailsByIdFacade;
     }
 
     /**
@@ -151,6 +155,24 @@ public class WorkItemDetailsController {
 
         WorkItemDetailsFacade.WorkItemDetailsView view =
                 detailsFacade.getDetails(tenantId, workItemCode);
+
+        return ResponseEntity.ok(toResponse(view));
+    }
+
+    /**
+     * Bitta work item uchun details va update history qaytaradi (UUID bo'yicha).
+     *
+     * @param tenantId tenant identifikatori
+     * @param workItemId work item UUID identifikatori
+     * @return work item details + ordered update history
+     */
+    @GetMapping("/details/by-id")
+    public ResponseEntity<WorkItemDetailsResponse> getDetailsById(
+            @RequestParam UUID tenantId,
+            @RequestParam UUID workItemId) {
+
+        WorkItemDetailsFacade.WorkItemDetailsView view =
+                detailsByIdFacade.getDetails(tenantId, workItemId);
 
         return ResponseEntity.ok(toResponse(view));
     }

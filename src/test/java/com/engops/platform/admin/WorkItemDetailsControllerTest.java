@@ -57,6 +57,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - support-details/by-id invalid historyLimit: 400 qaytariladi
  * - support-details/by-id missing tenantId: 400 qaytariladi
  * - support-details/by-id missing workItemId: 400 qaytariladi
+ * - details/by-id success path: work item details qaytariladi
+ * - details/by-id not-found: 404 qaytariladi
+ * - details/by-id missing tenantId: 400 qaytariladi
+ * - details/by-id missing workItemId: 400 qaytariladi
  */
 @WebMvcTest(WorkItemDetailsController.class)
 class WorkItemDetailsControllerTest {
@@ -85,6 +89,9 @@ class WorkItemDetailsControllerTest {
 
     @MockBean
     private WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade;
+
+    @MockBean
+    private WorkItemDetailsByIdFacade detailsByIdFacade;
 
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
@@ -651,6 +658,74 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportDetailsByIdMissingWorkItemIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== Details by-id endpoint tests ==========
+
+    @Test
+    void detailsByIdReturnsCorrectResponse() throws Exception {
+        WorkItem workItem = new WorkItem(
+                TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Login xato", "BUGS", OWNER_USER_ID);
+        workItem.setPriorityCode("HIGH");
+        workItem.setSeverityCode("CRITICAL");
+        workItem.assignOwner(OWNER_USER_ID);
+
+        UUID consistentId = workItem.getId();
+
+        WorkItemUpdate update = new WorkItemUpdate(
+                TENANT_ID, consistentId, AUTHOR_USER_ID,
+                UpdateType.COMMENT, "Tekshirilmoqda");
+
+        var view = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of(update));
+
+        when(detailsByIdFacade.getDetails(TENANT_ID, consistentId))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/work-items/details/by-id")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemId", consistentId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workItemId").value(consistentId.toString()))
+                .andExpect(jsonPath("$.workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.title").value("Login xato"))
+                .andExpect(jsonPath("$.typeCode").value("BUG"))
+                .andExpect(jsonPath("$.currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.priorityCode").value("HIGH"))
+                .andExpect(jsonPath("$.severityCode").value("CRITICAL"))
+                .andExpect(jsonPath("$.currentOwnerUserId").value(OWNER_USER_ID.toString()))
+                .andExpect(jsonPath("$.reopenedCount").value(0))
+                .andExpect(jsonPath("$.archived").value(false))
+                .andExpect(jsonPath("$.updates", hasSize(1)))
+                .andExpect(jsonPath("$.updates[0].updateTypeCode").value("COMMENT"))
+                .andExpect(jsonPath("$.updates[0].body").value("Tekshirilmoqda"));
+    }
+
+    @Test
+    void detailsByIdNotFoundReturns404() throws Exception {
+        UUID unknownId = UUID.fromString("99999999-9999-9999-9999-999999999999");
+        when(detailsByIdFacade.getDetails(TENANT_ID, unknownId))
+                .thenThrow(new ResourceNotFoundException("WorkItem", unknownId));
+
+        mockMvc.perform(get("/api/admin/work-items/details/by-id")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemId", unknownId.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void detailsByIdMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/details/by-id")
+                        .param("workItemId", WORK_ITEM_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void detailsByIdMissingWorkItemIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/details/by-id")
                         .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
