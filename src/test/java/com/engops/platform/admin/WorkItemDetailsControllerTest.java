@@ -51,6 +51,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - support-summary bo'sh ro'yxat: 200 qaytariladi
  * - support-summary invalid limit: 400 qaytariladi
  * - support-summary missing tenantId: 400 qaytariladi
+ * - support-details/by-id success path: combined payload qaytariladi
+ * - support-details/by-id default historyLimit: 10 ishlatiladi
+ * - support-details/by-id not-found: 404 qaytariladi
+ * - support-details/by-id invalid historyLimit: 400 qaytariladi
+ * - support-details/by-id missing tenantId: 400 qaytariladi
+ * - support-details/by-id missing workItemId: 400 qaytariladi
  */
 @WebMvcTest(WorkItemDetailsController.class)
 class WorkItemDetailsControllerTest {
@@ -76,6 +82,9 @@ class WorkItemDetailsControllerTest {
 
     @MockBean
     private WorkItemSupportSummaryFacade supportSummaryFacade;
+
+    @MockBean
+    private WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade;
 
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
@@ -512,6 +521,129 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportSummaryMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary"))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== Support details by-id endpoint tests ==========
+
+    @Test
+    void supportDetailsByIdReturnsCorrectCombinedResponse() throws Exception {
+        WorkItem workItem = new WorkItem(
+                TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Login xato", "BUGS", OWNER_USER_ID);
+        workItem.setPriorityCode("HIGH");
+        workItem.assignOwner(OWNER_USER_ID);
+
+        WorkItemUpdate update = new WorkItemUpdate(
+                TENANT_ID, workItem.getId(), AUTHOR_USER_ID,
+                UpdateType.COMMENT, "Tekshirilmoqda");
+
+        var workItemView = new WorkItemDetailsFacade.WorkItemDetailsView(
+                workItem, List.of(update));
+
+        TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.of(
+                TENANT_ID, WORK_ITEM_ID,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                null, true);
+
+        var observabilityView = new TelegramDeliveryObservabilityDetailsView(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                snapshot, List.of());
+
+        var supportView = new WorkItemSupportDetailsFacade.WorkItemSupportDetailsView(
+                workItemView, observabilityView);
+
+        when(supportDetailsByIdFacade.getDetails(TENANT_ID, WORK_ITEM_ID, 10))
+                .thenReturn(supportView);
+
+        mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemId", WORK_ITEM_ID.toString()))
+                .andExpect(status().isOk())
+                // workItem section
+                .andExpect(jsonPath("$.workItem.workItemId").value(workItem.getId().toString()))
+                .andExpect(jsonPath("$.workItem.workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.workItem.title").value("Login xato"))
+                .andExpect(jsonPath("$.workItem.typeCode").value("BUG"))
+                .andExpect(jsonPath("$.workItem.priorityCode").value("HIGH"))
+                .andExpect(jsonPath("$.workItem.updates", hasSize(1)))
+                .andExpect(jsonPath("$.workItem.updates[0].updateTypeCode").value("COMMENT"))
+                // deliveryObservability section
+                .andExpect(jsonPath("$.deliveryObservability.workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.deliveryObservability.latestMetrics.success").value(true))
+                .andExpect(jsonPath("$.deliveryObservability.latestMetrics.deliveryOutcome").value("DELIVERED"));
+    }
+
+    @Test
+    void supportDetailsByIdDefaultHistoryLimitIsUsed() throws Exception {
+        WorkItem workItem = new WorkItem(
+                TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Login xato", "BUGS", OWNER_USER_ID);
+
+        var workItemView = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of());
+
+        TelegramDeliveryMetricsSnapshot snapshot =
+                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, WORK_ITEM_ID);
+        var observabilityView = new TelegramDeliveryObservabilityDetailsView(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                snapshot, List.of());
+
+        var supportView = new WorkItemSupportDetailsFacade.WorkItemSupportDetailsView(
+                workItemView, observabilityView);
+
+        // default historyLimit=10 ishlatilishi kerak
+        when(supportDetailsByIdFacade.getDetails(TENANT_ID, WORK_ITEM_ID, 10))
+                .thenReturn(supportView);
+
+        mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemId", WORK_ITEM_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workItem.workItemId").value(workItem.getId().toString()))
+                .andExpect(jsonPath("$.deliveryObservability.latestMetrics.empty").value(true));
+    }
+
+    @Test
+    void supportDetailsByIdNotFoundReturns404() throws Exception {
+        UUID unknownId = UUID.fromString("99999999-9999-9999-9999-999999999999");
+        when(supportDetailsByIdFacade.getDetails(TENANT_ID, unknownId, 10))
+                .thenThrow(new ResourceNotFoundException("WorkItem", unknownId));
+
+        mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemId", unknownId.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void supportDetailsByIdInvalidHistoryLimitReturns400() throws Exception {
+        when(supportDetailsByIdFacade.getDetails(TENANT_ID, WORK_ITEM_ID, 0))
+                .thenThrow(new IllegalArgumentException(
+                        "historyLimit 1..50 oralig'ida bo'lishi kerak"));
+
+        mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemId", WORK_ITEM_ID.toString())
+                        .param("historyLimit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void supportDetailsByIdMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
+                        .param("workItemId", WORK_ITEM_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void supportDetailsByIdMissingWorkItemIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 }

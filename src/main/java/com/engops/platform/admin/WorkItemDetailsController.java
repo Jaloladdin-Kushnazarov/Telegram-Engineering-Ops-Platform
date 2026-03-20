@@ -20,7 +20,8 @@ import java.util.UUID;
  * - GET /summary — tenant-scoped kompakt work item ro'yxat
  * - GET /details — tenant-scoped work item details + update history
  * - GET /support-summary — combined work item + delivery observability summary ro'yxat
- * - GET /support-details — combined work item details + delivery observability
+ * - GET /support-details — combined work item details + delivery observability (by code)
+ * - GET /support-details/by-id — combined work item details + delivery observability (by UUID)
  *
  * Faqat GET — write operatsiya yo'q.
  *
@@ -38,15 +39,18 @@ public class WorkItemDetailsController {
     private final WorkItemSummaryFacade summaryFacade;
     private final WorkItemSupportDetailsFacade supportDetailsFacade;
     private final WorkItemSupportSummaryFacade supportSummaryFacade;
+    private final WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade;
 
     public WorkItemDetailsController(WorkItemDetailsFacade detailsFacade,
                                      WorkItemSummaryFacade summaryFacade,
                                      WorkItemSupportDetailsFacade supportDetailsFacade,
-                                     WorkItemSupportSummaryFacade supportSummaryFacade) {
+                                     WorkItemSupportSummaryFacade supportSummaryFacade,
+                                     WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
         this.supportDetailsFacade = supportDetailsFacade;
         this.supportSummaryFacade = supportSummaryFacade;
+        this.supportDetailsByIdFacade = supportDetailsByIdFacade;
     }
 
     /**
@@ -109,6 +113,26 @@ public class WorkItemDetailsController {
 
         WorkItemSupportDetailsFacade.WorkItemSupportDetailsView view =
                 supportDetailsFacade.getDetails(tenantId, workItemCode, historyLimit);
+
+        return ResponseEntity.ok(toSupportDetailsResponse(view));
+    }
+
+    /**
+     * Bitta work item uchun combined support details qaytaradi (UUID bo'yicha).
+     *
+     * @param tenantId tenant identifikatori
+     * @param workItemId work item UUID identifikatori
+     * @param historyLimit so'nggi delivery attempt'lar soni (1..50, default 10)
+     * @return combined support details
+     */
+    @GetMapping("/support-details/by-id")
+    public ResponseEntity<WorkItemSupportDetailsResponse> getSupportDetailsById(
+            @RequestParam UUID tenantId,
+            @RequestParam UUID workItemId,
+            @RequestParam(defaultValue = "10") int historyLimit) {
+
+        WorkItemSupportDetailsFacade.WorkItemSupportDetailsView view =
+                supportDetailsByIdFacade.getDetails(tenantId, workItemId, historyLimit);
 
         return ResponseEntity.ok(toSupportDetailsResponse(view));
     }
