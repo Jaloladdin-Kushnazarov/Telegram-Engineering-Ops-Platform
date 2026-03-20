@@ -15,9 +15,10 @@ import java.util.UUID;
 /**
  * Delivery observability uchun read-only admin endpoint'lar.
  *
- * Ikki endpoint:
+ * Uch endpoint:
  * - GET /summary — tenant-scoped kompakt summary ro'yxat
- * - GET /details — bitta work item uchun to'liq details (recentAttempts bilan)
+ * - GET /details — bitta work item uchun to'liq details (workItemCode bo'yicha)
+ * - GET /details/by-id — bitta work item uchun to'liq details (workItemId bo'yicha)
  *
  * Faqat GET — write operatsiya yo'q.
  *
@@ -33,11 +34,14 @@ public class DeliveryObservabilityController {
 
     private final TelegramDeliveryObservabilityDetailsFacade detailsFacade;
     private final DeliveryObservabilitySummaryFacade summaryFacade;
+    private final DeliveryObservabilityDetailsByIdFacade detailsByIdFacade;
 
     public DeliveryObservabilityController(TelegramDeliveryObservabilityDetailsFacade detailsFacade,
-                                           DeliveryObservabilitySummaryFacade summaryFacade) {
+                                           DeliveryObservabilitySummaryFacade summaryFacade,
+                                           DeliveryObservabilityDetailsByIdFacade detailsByIdFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
+        this.detailsByIdFacade = detailsByIdFacade;
     }
 
     /**
@@ -77,6 +81,26 @@ public class DeliveryObservabilityController {
 
         TelegramDeliveryObservabilityDetailsView details =
                 detailsFacade.getDetails(tenantId, workItemCode, historyLimit);
+
+        return ResponseEntity.ok(toResponse(details));
+    }
+
+    /**
+     * Bitta work item uchun delivery observability details qaytaradi (UUID bo'yicha).
+     *
+     * @param tenantId tenant identifikatori
+     * @param workItemId work item UUID identifikatori
+     * @param historyLimit so'nggi attempt'lar soni (1..50, default 10)
+     * @return enriched delivery observability details
+     */
+    @GetMapping("/details/by-id")
+    public ResponseEntity<DeliveryObservabilityDetailsResponse> getDetailsById(
+            @RequestParam UUID tenantId,
+            @RequestParam UUID workItemId,
+            @RequestParam(defaultValue = "10") int historyLimit) {
+
+        TelegramDeliveryObservabilityDetailsView details =
+                detailsByIdFacade.getDetails(tenantId, workItemId, historyLimit);
 
         return ResponseEntity.ok(toResponse(details));
     }

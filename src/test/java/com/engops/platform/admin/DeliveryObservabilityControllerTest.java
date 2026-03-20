@@ -51,6 +51,9 @@ class DeliveryObservabilityControllerTest {
     @MockBean
     private DeliveryObservabilitySummaryFacade summaryFacade;
 
+    @MockBean
+    private DeliveryObservabilityDetailsByIdFacade detailsByIdFacade;
+
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
         UUID attemptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
@@ -263,6 +266,112 @@ class DeliveryObservabilityControllerTest {
     @Test
     void summaryMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/summary"))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== Details by-id endpoint tests ==========
+
+    @Test
+    void detailsByIdReturnsCorrectResponse() throws Exception {
+        TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.of(
+                TENANT_ID, WORK_ITEM_ID,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                null, true);
+
+        UUID attemptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        UUID chatBindingId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+
+        TelegramDeliveryAttempt attempt = TelegramDeliveryAttempt.reconstruct(
+                attemptId, FIXED_TIME, TENANT_ID, WORK_ITEM_ID,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                chatBindingId, 42L,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                99001L, null, null);
+
+        var details = new TelegramDeliveryObservabilityDetailsView(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                snapshot, List.of(attempt));
+
+        when(detailsByIdFacade.getDetails(TENANT_ID, WORK_ITEM_ID, 10))
+                .thenReturn(details);
+
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemId", WORK_ITEM_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.title").value("Login xato"))
+                .andExpect(jsonPath("$.typeCode").value("BUG"))
+                .andExpect(jsonPath("$.currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.latestMetrics.success").value(true))
+                .andExpect(jsonPath("$.latestMetrics.deliveryOutcome").value("DELIVERED"))
+                .andExpect(jsonPath("$.recentAttempts", hasSize(1)))
+                .andExpect(jsonPath("$.recentAttempts[0].attemptId").value(attemptId.toString()))
+                .andExpect(jsonPath("$.recentAttempts[0].operation").value("SEND_NEW_MESSAGE"))
+                .andExpect(jsonPath("$.recentAttempts[0].success").value(true));
+    }
+
+    @Test
+    void detailsByIdDefaultHistoryLimitIsUsed() throws Exception {
+        var details = new TelegramDeliveryObservabilityDetailsView(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, WORK_ITEM_ID),
+                List.of());
+
+        // default historyLimit=10 ishlatilishi kerak
+        when(detailsByIdFacade.getDetails(TENANT_ID, WORK_ITEM_ID, 10))
+                .thenReturn(details);
+
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemId", WORK_ITEM_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.latestMetrics.empty").value(true));
+    }
+
+    @Test
+    void detailsByIdNotFoundReturns404() throws Exception {
+        UUID unknownId = UUID.fromString("99999999-9999-9999-9999-999999999999");
+        when(detailsByIdFacade.getDetails(TENANT_ID, unknownId, 10))
+                .thenThrow(new ResourceNotFoundException("WorkItem", unknownId));
+
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemId", unknownId.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void detailsByIdInvalidHistoryLimitReturns400() throws Exception {
+        when(detailsByIdFacade.getDetails(TENANT_ID, WORK_ITEM_ID, 0))
+                .thenThrow(new IllegalArgumentException(
+                        "historyLimit 1..50 oralig'ida bo'lishi kerak"));
+
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemId", WORK_ITEM_ID.toString())
+                        .param("historyLimit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void detailsByIdMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
+                        .param("workItemId", WORK_ITEM_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void detailsByIdMissingWorkItemIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 }
