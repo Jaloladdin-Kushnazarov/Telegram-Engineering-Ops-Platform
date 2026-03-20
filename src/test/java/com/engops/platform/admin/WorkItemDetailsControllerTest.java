@@ -534,36 +534,39 @@ class WorkItemDetailsControllerTest {
         workItem.setPriorityCode("HIGH");
         workItem.assignOwner(OWNER_USER_ID);
 
+        // Semantic consistency: ikkala section bir xil workItemId va workItemCode ishlatadi
+        UUID consistentWorkItemId = workItem.getId();
+
         WorkItemUpdate update = new WorkItemUpdate(
-                TENANT_ID, workItem.getId(), AUTHOR_USER_ID,
+                TENANT_ID, consistentWorkItemId, AUTHOR_USER_ID,
                 UpdateType.COMMENT, "Tekshirilmoqda");
 
         var workItemView = new WorkItemDetailsFacade.WorkItemDetailsView(
                 workItem, List.of(update));
 
         TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.of(
-                TENANT_ID, WORK_ITEM_ID,
+                TENANT_ID, consistentWorkItemId,
                 TelegramDeliveryOperation.SEND_NEW_MESSAGE,
                 TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
                 null, true);
 
         var observabilityView = new TelegramDeliveryObservabilityDetailsView(
-                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                consistentWorkItemId, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 snapshot, List.of());
 
         var supportView = new WorkItemSupportDetailsFacade.WorkItemSupportDetailsView(
                 workItemView, observabilityView);
 
-        when(supportDetailsByIdFacade.getDetails(TENANT_ID, WORK_ITEM_ID, 10))
+        when(supportDetailsByIdFacade.getDetails(TENANT_ID, consistentWorkItemId, 10))
                 .thenReturn(supportView);
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemId", WORK_ITEM_ID.toString()))
+                        .param("workItemId", consistentWorkItemId.toString()))
                 .andExpect(status().isOk())
                 // workItem section
-                .andExpect(jsonPath("$.workItem.workItemId").value(workItem.getId().toString()))
+                .andExpect(jsonPath("$.workItem.workItemId").value(consistentWorkItemId.toString()))
                 .andExpect(jsonPath("$.workItem.workItemCode").value(WORK_ITEM_CODE))
                 .andExpect(jsonPath("$.workItem.title").value("Login xato"))
                 .andExpect(jsonPath("$.workItem.typeCode").value("BUG"))
@@ -571,7 +574,8 @@ class WorkItemDetailsControllerTest {
                 .andExpect(jsonPath("$.workItem.updates", hasSize(1)))
                 .andExpect(jsonPath("$.workItem.updates[0].updateTypeCode").value("COMMENT"))
                 // deliveryObservability section
-                .andExpect(jsonPath("$.deliveryObservability.workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.deliveryObservability.workItemId").value(consistentWorkItemId.toString()))
+                .andExpect(jsonPath("$.deliveryObservability.workItemCode").value(WORK_ITEM_CODE))
                 .andExpect(jsonPath("$.deliveryObservability.latestMetrics.success").value(true))
                 .andExpect(jsonPath("$.deliveryObservability.latestMetrics.deliveryOutcome").value("DELIVERED"));
     }
@@ -582,12 +586,14 @@ class WorkItemDetailsControllerTest {
                 TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
                 WORKFLOW_DEF_ID, "Login xato", "BUGS", OWNER_USER_ID);
 
+        UUID consistentWorkItemId = workItem.getId();
+
         var workItemView = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of());
 
         TelegramDeliveryMetricsSnapshot snapshot =
-                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, WORK_ITEM_ID);
+                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, consistentWorkItemId);
         var observabilityView = new TelegramDeliveryObservabilityDetailsView(
-                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                consistentWorkItemId, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 snapshot, List.of());
 
@@ -595,14 +601,16 @@ class WorkItemDetailsControllerTest {
                 workItemView, observabilityView);
 
         // default historyLimit=10 ishlatilishi kerak
-        when(supportDetailsByIdFacade.getDetails(TENANT_ID, WORK_ITEM_ID, 10))
+        when(supportDetailsByIdFacade.getDetails(TENANT_ID, consistentWorkItemId, 10))
                 .thenReturn(supportView);
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemId", WORK_ITEM_ID.toString()))
+                        .param("workItemId", consistentWorkItemId.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.workItem.workItemId").value(workItem.getId().toString()))
+                // Ikkala section bir xil workItemId ishlatishini isbotlash
+                .andExpect(jsonPath("$.workItem.workItemId").value(consistentWorkItemId.toString()))
+                .andExpect(jsonPath("$.deliveryObservability.workItemId").value(consistentWorkItemId.toString()))
                 .andExpect(jsonPath("$.deliveryObservability.latestMetrics.empty").value(true));
     }
 

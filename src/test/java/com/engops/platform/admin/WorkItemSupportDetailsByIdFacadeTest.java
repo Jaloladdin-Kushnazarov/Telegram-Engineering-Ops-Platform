@@ -15,17 +15,17 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 /**
  * WorkItemSupportDetailsByIdFacade unit testlari.
  *
  * Tekshiruvlar:
- * - UUID -> code resolve -> ikkala facade'ga delegation
+ * - UUID -> code resolve -> ikkala facade'ga delegation (verify bilan)
+ * - resolved code aynan downstream facade'larga uzatiladi
  * - historyLimit to'g'ri uzatiladi
- * - work item topilmasa ResourceNotFoundException
- * - null tenantId / workItemId rejected
+ * - work item topilmasa ResourceNotFoundException + downstream chaqirilMAYDI
+ * - null tenantId / workItemId rejected + downstream chaqirilMAYDI
  * - invalid historyLimit propagatsiya qiladi
  */
 class WorkItemSupportDetailsByIdFacadeTest {
@@ -43,31 +43,38 @@ class WorkItemSupportDetailsByIdFacadeTest {
             new WorkItemSupportDetailsByIdFacade(queryService, detailsFacade, observabilityFacade);
 
     @Test
-    void resolvesWorkItemIdAndDelegatesToBothFacades() {
+    void resolvesWorkItemIdAndDelegatesWithExactResolvedCode() {
         WorkItem workItem = new WorkItem(
                 TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
                 WORKFLOW_DEF_ID, "Login xato", "BUGS", null);
+        UUID actualWorkItemId = workItem.getId();
 
         var workItemView = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of());
 
         TelegramDeliveryMetricsSnapshot snapshot =
-                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, WORK_ITEM_ID);
+                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, actualWorkItemId);
         var observabilityView = new TelegramDeliveryObservabilityDetailsView(
-                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                actualWorkItemId, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 snapshot, List.of());
 
-        when(queryService.findByTenantAndId(TENANT_ID, workItem.getId()))
+        when(queryService.findByTenantAndId(TENANT_ID, actualWorkItemId))
                 .thenReturn(Optional.of(workItem));
         when(detailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE))
                 .thenReturn(workItemView);
         when(observabilityFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, 10))
                 .thenReturn(observabilityView);
 
-        var result = facade.getDetails(TENANT_ID, workItem.getId(), 10);
+        var result = facade.getDetails(TENANT_ID, actualWorkItemId, 10);
 
         assertThat(result.workItemDetails()).isSameAs(workItemView);
         assertThat(result.observabilityDetails()).isSameAs(observabilityView);
+
+        // Orchestration isboti: aynan resolved code downstream'ga uzatildi
+        verify(queryService).findByTenantAndId(TENANT_ID, actualWorkItemId);
+        verify(detailsFacade).getDetails(TENANT_ID, WORK_ITEM_CODE);
+        verify(observabilityFacade).getDetails(TENANT_ID, WORK_ITEM_CODE, 10);
+        verifyNoMoreInteractions(queryService, detailsFacade, observabilityFacade);
     }
 
     @Test
@@ -75,49 +82,61 @@ class WorkItemSupportDetailsByIdFacadeTest {
         WorkItem workItem = new WorkItem(
                 TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
                 WORKFLOW_DEF_ID, "Login xato", "BUGS", null);
+        UUID actualWorkItemId = workItem.getId();
 
         var workItemView = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of());
 
         TelegramDeliveryMetricsSnapshot snapshot =
-                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, WORK_ITEM_ID);
+                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, actualWorkItemId);
         var observabilityView = new TelegramDeliveryObservabilityDetailsView(
-                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                actualWorkItemId, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 snapshot, List.of());
 
-        when(queryService.findByTenantAndId(TENANT_ID, workItem.getId()))
+        when(queryService.findByTenantAndId(TENANT_ID, actualWorkItemId))
                 .thenReturn(Optional.of(workItem));
         when(detailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE))
                 .thenReturn(workItemView);
         when(observabilityFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, 30))
                 .thenReturn(observabilityView);
 
-        var result = facade.getDetails(TENANT_ID, workItem.getId(), 30);
+        var result = facade.getDetails(TENANT_ID, actualWorkItemId, 30);
 
         assertThat(result.observabilityDetails()).isSameAs(observabilityView);
+
+        // historyLimit=30 aynan observability facade'ga uzatilganini isbotlash
+        verify(observabilityFacade).getDetails(TENANT_ID, WORK_ITEM_CODE, 30);
     }
 
     @Test
-    void throwsResourceNotFoundWhenWorkItemMissing() {
+    void throwsResourceNotFoundAndSkipsDownstreamWhenWorkItemMissing() {
         when(queryService.findByTenantAndId(TENANT_ID, WORK_ITEM_ID))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> facade.getDetails(TENANT_ID, WORK_ITEM_ID, 10))
                 .isInstanceOf(ResourceNotFoundException.class);
+
+        // Downstream facade'lar CHAQIRILMAGANINI isbotlash
+        verifyNoInteractions(detailsFacade);
+        verifyNoInteractions(observabilityFacade);
     }
 
     @Test
-    void throwsIllegalArgumentWhenTenantIdNull() {
+    void throwsIllegalArgumentWhenTenantIdNullAndSkipsAll() {
         assertThatThrownBy(() -> facade.getDetails(null, WORK_ITEM_ID, 10))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(queryService, detailsFacade, observabilityFacade);
     }
 
     @Test
-    void throwsIllegalArgumentWhenWorkItemIdNull() {
+    void throwsIllegalArgumentWhenWorkItemIdNullAndSkipsAll() {
         assertThatThrownBy(() -> facade.getDetails(TENANT_ID, null, 10))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("workItemId");
+
+        verifyNoInteractions(queryService, detailsFacade, observabilityFacade);
     }
 
     @Test
