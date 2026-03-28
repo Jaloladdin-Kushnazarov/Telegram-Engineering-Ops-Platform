@@ -1,0 +1,132 @@
+package com.engops.platform.admin;
+
+import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.Instant;
+import java.util.UUID;
+
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+/**
+ * TenantConfigController @WebMvcTest testlari.
+ *
+ * Tekshiruvlar:
+ * - details success path: to'g'ri HTTP status va response body
+ * - details tenant not found: 404 qaytariladi
+ * - details null tenantId: 400 qaytariladi
+ * - response JSON structure nested section'lar bilan to'g'ri
+ */
+@WebMvcTest(TenantConfigController.class)
+class TenantConfigControllerTest {
+
+    private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private TenantConfigDetailsFacade detailsFacade;
+
+    @Test
+    void detailsReturnsCorrectStructuredResponse() throws Exception {
+        var view = new TenantConfigDetailsFacade.TenantConfigDetailsView(
+                TENANT_ID,
+                "Test Tenant",
+                "test-tenant",
+                "Asia/Tashkent",
+                "ACTIVE",
+                Instant.parse("2026-01-15T08:00:00Z"),
+                5, 3,     // membership: total, active
+                2, 1,     // workflow: total, active
+                4, 2,     // routing: total, active
+                1, 3);    // telegram: chat bindings, topic bindings
+
+        when(detailsFacade.getDetails(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/details")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                // tenant section
+                .andExpect(jsonPath("$.tenant.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.tenant.name").value("Test Tenant"))
+                .andExpect(jsonPath("$.tenant.slug").value("test-tenant"))
+                .andExpect(jsonPath("$.tenant.timezone").value("Asia/Tashkent"))
+                .andExpect(jsonPath("$.tenant.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.tenant.createdAt").value("2026-01-15T08:00:00Z"))
+                // membershipsSummary section
+                .andExpect(jsonPath("$.membershipsSummary.totalMembershipCount").value(5))
+                .andExpect(jsonPath("$.membershipsSummary.activeMembershipCount").value(3))
+                // workflowSummary section
+                .andExpect(jsonPath("$.workflowSummary.totalWorkflowDefinitionCount").value(2))
+                .andExpect(jsonPath("$.workflowSummary.activeWorkflowDefinitionCount").value(1))
+                // routingSummary section
+                .andExpect(jsonPath("$.routingSummary.totalRoutingRuleCount").value(4))
+                .andExpect(jsonPath("$.routingSummary.activeRoutingRuleCount").value(2))
+                // telegramSummary section
+                .andExpect(jsonPath("$.telegramSummary.activeChatBindingCount").value(1))
+                .andExpect(jsonPath("$.telegramSummary.activeTopicBindingCount").value(3));
+    }
+
+    @Test
+    void detailsWithZeroCountsReturnsValidResponse() throws Exception {
+        var view = new TenantConfigDetailsFacade.TenantConfigDetailsView(
+                TENANT_ID,
+                "Empty Tenant",
+                "empty-tenant",
+                "UTC",
+                "ACTIVE",
+                Instant.parse("2026-03-01T00:00:00Z"),
+                0, 0, 0, 0, 0, 0, 0, 0);
+
+        when(detailsFacade.getDetails(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/details")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenant.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.tenant.name").value("Empty Tenant"))
+                .andExpect(jsonPath("$.membershipsSummary.totalMembershipCount").value(0))
+                .andExpect(jsonPath("$.membershipsSummary.activeMembershipCount").value(0))
+                .andExpect(jsonPath("$.workflowSummary.totalWorkflowDefinitionCount").value(0))
+                .andExpect(jsonPath("$.workflowSummary.activeWorkflowDefinitionCount").value(0))
+                .andExpect(jsonPath("$.routingSummary.totalRoutingRuleCount").value(0))
+                .andExpect(jsonPath("$.routingSummary.activeRoutingRuleCount").value(0))
+                .andExpect(jsonPath("$.telegramSummary.activeChatBindingCount").value(0))
+                .andExpect(jsonPath("$.telegramSummary.activeTopicBindingCount").value(0));
+    }
+
+    @Test
+    void detailsTenantNotFoundReturns404() throws Exception {
+        when(detailsFacade.getDetails(TENANT_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/details")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void detailsInvalidTenantIdReturns400() throws Exception {
+        when(detailsFacade.getDetails(TENANT_ID))
+                .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/details")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void detailsMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/details"))
+                .andExpect(status().isBadRequest());
+    }
+}

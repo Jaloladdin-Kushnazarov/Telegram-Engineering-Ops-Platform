@@ -59,6 +59,20 @@ public class TenantConfigQueryService {
     }
 
     /**
+     * Tenant uchun barcha workflow ta'riflarini qaytaradi (barcha statuslar).
+     */
+    public List<WorkflowDefinition> listAllWorkflowDefinitions(UUID tenantId) {
+        return workflowDefinitionRepository.findByTenantId(tenantId);
+    }
+
+    /**
+     * Tenant uchun barcha yo'naltirish qoidalarini qaytaradi (barcha statuslar).
+     */
+    public List<RoutingRule> listAllRoutingRules(UUID tenantId) {
+        return routingRuleRepository.findByTenantId(tenantId);
+    }
+
+    /**
      * Tenant va ID bo'yicha workflow ta'rifini topadi (tenant-safe).
      */
     public Optional<WorkflowDefinition> findWorkflowDefinitionById(UUID tenantId, UUID definitionId) {

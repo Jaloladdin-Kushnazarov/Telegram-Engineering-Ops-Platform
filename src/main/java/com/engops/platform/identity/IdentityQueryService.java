@@ -58,6 +58,13 @@ public class IdentityQueryService {
     }
 
     /**
+     * Tenantning barcha a'zolarini qaytaradi (barcha statuslar).
+     */
+    public List<Membership> listAllMembers(UUID tenantId) {
+        return membershipRepository.findByTenantId(tenantId);
+    }
+
+    /**
      * Tenantning barcha aktiv a'zolarini qaytaradi.
      */
     public List<Membership> listActiveMembers(UUID tenantId) {
