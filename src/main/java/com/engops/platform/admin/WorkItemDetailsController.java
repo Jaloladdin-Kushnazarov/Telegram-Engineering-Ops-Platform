@@ -27,6 +27,7 @@ import java.util.UUID;
  * - GET /support-summary/by-owner — owner bo'yicha combined support summary ro'yxat
  * - GET /support-details — combined work item details + delivery observability (by code)
  * - GET /support-details/by-id — combined work item details + delivery observability (by UUID)
+ * - GET /support-details/by-status — status bo'yicha combined support details ro'yxat
  *
  * Faqat GET — write operatsiya yo'q.
  *
@@ -50,6 +51,7 @@ public class WorkItemDetailsController {
     private final WorkItemSummaryByOwnerFacade summaryByOwnerFacade;
     private final WorkItemSupportSummaryByStatusFacade supportSummaryByStatusFacade;
     private final WorkItemSupportSummaryByOwnerFacade supportSummaryByOwnerFacade;
+    private final WorkItemSupportDetailsByStatusFacade supportDetailsByStatusFacade;
 
     public WorkItemDetailsController(WorkItemDetailsFacade detailsFacade,
                                      WorkItemSummaryFacade summaryFacade,
@@ -60,7 +62,8 @@ public class WorkItemDetailsController {
                                      WorkItemSummaryByStatusFacade summaryByStatusFacade,
                                      WorkItemSummaryByOwnerFacade summaryByOwnerFacade,
                                      WorkItemSupportSummaryByStatusFacade supportSummaryByStatusFacade,
-                                     WorkItemSupportSummaryByOwnerFacade supportSummaryByOwnerFacade) {
+                                     WorkItemSupportSummaryByOwnerFacade supportSummaryByOwnerFacade,
+                                     WorkItemSupportDetailsByStatusFacade supportDetailsByStatusFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
         this.supportDetailsFacade = supportDetailsFacade;
@@ -71,6 +74,7 @@ public class WorkItemDetailsController {
         this.summaryByOwnerFacade = summaryByOwnerFacade;
         this.supportSummaryByStatusFacade = supportSummaryByStatusFacade;
         this.supportSummaryByOwnerFacade = supportSummaryByOwnerFacade;
+        this.supportDetailsByStatusFacade = supportDetailsByStatusFacade;
     }
 
     /**
@@ -227,6 +231,29 @@ public class WorkItemDetailsController {
                 supportDetailsFacade.getDetails(tenantId, workItemCode, historyLimit);
 
         return ResponseEntity.ok(toSupportDetailsResponse(view));
+    }
+
+    /**
+     * Tenant + statusCode bo'yicha aktiv work item'larning combined support details ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param statusCode holat kodi (masalan "BUGS", "PROCESSING")
+     * @param limit maksimal natija soni (1..50, default 20)
+     * @return combined support details ro'yxat
+     */
+    @GetMapping("/support-details/by-status")
+    public ResponseEntity<WorkItemSupportDetailsByStatusResponse> getSupportDetailsByStatus(
+            @RequestParam UUID tenantId,
+            @RequestParam String statusCode,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        var views = supportDetailsByStatusFacade.getDetailsList(tenantId, statusCode, limit);
+
+        var responseItems = views.stream()
+                .map(this::toSupportDetailsResponse)
+                .toList();
+
+        return ResponseEntity.ok(new WorkItemSupportDetailsByStatusResponse(responseItems));
     }
 
     /**
