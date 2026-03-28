@@ -44,12 +44,15 @@ class WorkItemSupportDetailsFacadeTest {
                 TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
                 WORKFLOW_DEF_ID, "Login xato", "BUGS", null);
 
+        // Canonical id = workItem.getId() — ikkala section uchun bir xil
+        UUID consistentId = workItem.getId();
+
         var workItemView = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of());
 
         TelegramDeliveryMetricsSnapshot snapshot =
-                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, WORK_ITEM_ID);
+                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, consistentId);
         var observabilityView = new TelegramDeliveryObservabilityDetailsView(
-                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                consistentId, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 snapshot, List.of());
 
@@ -63,6 +66,12 @@ class WorkItemSupportDetailsFacadeTest {
 
         assertThat(result.workItemDetails()).isSameAs(workItemView);
         assertThat(result.observabilityDetails()).isSameAs(observabilityView);
+
+        // Cross-section identity consistency: ikkala section bir xil workItemId ishlatadi
+        assertThat(result.observabilityDetails().workItemId())
+                .isEqualTo(result.workItemDetails().workItem().getId());
+        assertThat(result.observabilityDetails().workItemCode())
+                .isEqualTo(result.workItemDetails().workItem().getWorkItemCode());
     }
 
     @Test
@@ -71,12 +80,14 @@ class WorkItemSupportDetailsFacadeTest {
                 TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
                 WORKFLOW_DEF_ID, "Login xato", "BUGS", null);
 
+        UUID consistentId = workItem.getId();
+
         var workItemView = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of());
 
         TelegramDeliveryMetricsSnapshot snapshot =
-                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, WORK_ITEM_ID);
+                TelegramDeliveryMetricsSnapshot.empty(TENANT_ID, consistentId);
         var observabilityView = new TelegramDeliveryObservabilityDetailsView(
-                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                consistentId, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 snapshot, List.of());
 
