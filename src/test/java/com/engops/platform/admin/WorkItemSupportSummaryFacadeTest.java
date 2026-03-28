@@ -10,8 +10,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
+
 
 /**
  * WorkItemSupportSummaryFacade unit testlari.
@@ -82,13 +82,14 @@ class WorkItemSupportSummaryFacadeTest {
     }
 
     @Test
-    void emptyListWhenBothFacadesReturnEmpty() {
+    void emptyListWhenPrimaryEmptyAndSkipsDeliveryFacade() {
         when(workItemSummaryFacade.getSummaryList(TENANT_ID, 20))
                 .thenReturn(List.of());
 
         List<WorkItemSupportSummaryItem> result = facade.getSummaryList(TENANT_ID, 20);
 
         assertThat(result).isEmpty();
+        verifyNoInteractions(deliverySummaryFacade);
     }
 
     @Test
