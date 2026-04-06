@@ -304,4 +304,93 @@ class TenantConfigControllerTest {
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules"))
                 .andExpect(status().isBadRequest());
     }
+
+    // ========== chat-bindings endpoint ==========
+
+    @Test
+    void chatBindingsReturnsCorrectStructuredResponse() throws Exception {
+        var items = List.of(
+                new TenantConfigDetailsFacade.ChatBindingItemView(
+                        UUID.fromString("55555555-5555-5555-5555-555555555551"),
+                        200L,
+                        "Main Group",
+                        "MAIN_GROUP",
+                        true,
+                        3,
+                        Instant.parse("2026-03-15T12:00:00Z")),
+                new TenantConfigDetailsFacade.ChatBindingItemView(
+                        UUID.fromString("55555555-5555-5555-5555-555555555552"),
+                        100L,
+                        null,
+                        "NOTIFICATION_GROUP",
+                        false,
+                        1,
+                        Instant.parse("2026-03-10T10:00:00Z")));
+        var view = new TenantConfigDetailsFacade.ChatBindingListView(TENANT_ID, items);
+
+        when(detailsFacade.getChatBindings(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].chatBindingId").value("55555555-5555-5555-5555-555555555551"))
+                .andExpect(jsonPath("$.items[0].chatId").value(200))
+                .andExpect(jsonPath("$.items[0].chatTitle").value("Main Group"))
+                .andExpect(jsonPath("$.items[0].bindingType").value("MAIN_GROUP"))
+                .andExpect(jsonPath("$.items[0].active").value(true))
+                .andExpect(jsonPath("$.items[0].activeTopicBindingCount").value(3))
+                .andExpect(jsonPath("$.items[0].createdAt").value("2026-03-15T12:00:00Z"))
+                .andExpect(jsonPath("$.items[1].chatBindingId").value("55555555-5555-5555-5555-555555555552"))
+                .andExpect(jsonPath("$.items[1].chatId").value(100))
+                .andExpect(jsonPath("$.items[1].chatTitle").doesNotExist())
+                .andExpect(jsonPath("$.items[1].bindingType").value("NOTIFICATION_GROUP"))
+                .andExpect(jsonPath("$.items[1].active").value(false))
+                .andExpect(jsonPath("$.items[1].activeTopicBindingCount").value(1));
+    }
+
+    @Test
+    void chatBindingsWithEmptyListReturnsValidResponse() throws Exception {
+        var view = new TenantConfigDetailsFacade.ChatBindingListView(
+                TENANT_ID, List.of());
+
+        when(detailsFacade.getChatBindings(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void chatBindingsTenantNotFoundReturns404() throws Exception {
+        when(detailsFacade.getChatBindings(TENANT_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void chatBindingsInvalidTenantIdReturns400() throws Exception {
+        when(detailsFacade.getChatBindings(TENANT_ID))
+                .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void chatBindingsMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings"))
+                .andExpect(status().isBadRequest());
+    }
 }

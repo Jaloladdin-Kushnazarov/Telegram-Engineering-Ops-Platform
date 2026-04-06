@@ -4,6 +4,7 @@ import com.engops.platform.identity.IdentityQueryService;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
+import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
@@ -392,6 +393,170 @@ class TenantConfigDetailsFacadeTest {
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
         verify(tenantConfigQueryService).listAllRoutingRules(TENANT_ID);
+        verifyNoMoreInteractions(tenantConfigQueryService);
+        verifyNoInteractions(identityQueryService);
+    }
+
+    // ========== getChatBindings tests ==========
+
+    @Test
+    void chatBindingsReturnsCorrectItemListOrderedByBindingType() {
+        Tenant tenant = mockTenant();
+        UUID cbId1 = UUID.fromString("55555555-5555-5555-5555-555555555551");
+        UUID cbId2 = UUID.fromString("55555555-5555-5555-5555-555555555552");
+
+        TelegramChatBinding cb1 = mock(TelegramChatBinding.class);
+        when(cb1.getId()).thenReturn(cbId1);
+        when(cb1.getChatId()).thenReturn(100L);
+        when(cb1.getChatTitle()).thenReturn("Notification Group");
+        when(cb1.getBindingType()).thenReturn(ChatBindingType.NOTIFICATION_GROUP);
+        when(cb1.isActive()).thenReturn(false);
+        when(cb1.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-03-10T10:00:00Z"));
+
+        TelegramChatBinding cb2 = mock(TelegramChatBinding.class);
+        when(cb2.getId()).thenReturn(cbId2);
+        when(cb2.getChatId()).thenReturn(200L);
+        when(cb2.getChatTitle()).thenReturn("Main Group");
+        when(cb2.getBindingType()).thenReturn(ChatBindingType.MAIN_GROUP);
+        when(cb2.isActive()).thenReturn(true);
+        when(cb2.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-03-15T12:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllChatBindings(TENANT_ID))
+                .thenReturn(List.of(cb1, cb2));
+        when(tenantConfigQueryService.listActiveTopicBindings(cbId1))
+                .thenReturn(List.of(mock(TelegramTopicBinding.class)));
+        when(tenantConfigQueryService.listActiveTopicBindings(cbId2))
+                .thenReturn(List.of(
+                        mock(TelegramTopicBinding.class),
+                        mock(TelegramTopicBinding.class),
+                        mock(TelegramTopicBinding.class)));
+
+        var result = facade.getChatBindings(TENANT_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.items()).hasSize(2);
+
+        // bindingType ASC — MAIN_GROUP birinchi, NOTIFICATION_GROUP ikkinchi
+        var item1 = result.items().get(0);
+        assertThat(item1.chatBindingId()).isEqualTo(cbId2);
+        assertThat(item1.chatId()).isEqualTo(200L);
+        assertThat(item1.chatTitle()).isEqualTo("Main Group");
+        assertThat(item1.bindingType()).isEqualTo("MAIN_GROUP");
+        assertThat(item1.active()).isTrue();
+        assertThat(item1.activeTopicBindingCount()).isEqualTo(3);
+        assertThat(item1.createdAt()).isEqualTo(java.time.Instant.parse("2026-03-15T12:00:00Z"));
+
+        var item2 = result.items().get(1);
+        assertThat(item2.chatBindingId()).isEqualTo(cbId1);
+        assertThat(item2.chatId()).isEqualTo(100L);
+        assertThat(item2.chatTitle()).isEqualTo("Notification Group");
+        assertThat(item2.bindingType()).isEqualTo("NOTIFICATION_GROUP");
+        assertThat(item2.active()).isFalse();
+        assertThat(item2.activeTopicBindingCount()).isEqualTo(1);
+        assertThat(item2.createdAt()).isEqualTo(java.time.Instant.parse("2026-03-10T10:00:00Z"));
+    }
+
+    @Test
+    void chatBindingsTopicCountAggregatesCorrectlyPerBinding() {
+        Tenant tenant = mockTenant();
+        UUID cbId1 = UUID.fromString("55555555-5555-5555-5555-555555555561");
+        UUID cbId2 = UUID.fromString("55555555-5555-5555-5555-555555555562");
+
+        TelegramChatBinding cb1 = mock(TelegramChatBinding.class);
+        when(cb1.getId()).thenReturn(cbId1);
+        when(cb1.getChatId()).thenReturn(300L);
+        when(cb1.getChatTitle()).thenReturn(null);
+        when(cb1.getBindingType()).thenReturn(ChatBindingType.MAIN_GROUP);
+        when(cb1.isActive()).thenReturn(true);
+        when(cb1.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-04-01T08:00:00Z"));
+
+        TelegramChatBinding cb2 = mock(TelegramChatBinding.class);
+        when(cb2.getId()).thenReturn(cbId2);
+        when(cb2.getChatId()).thenReturn(400L);
+        when(cb2.getChatTitle()).thenReturn("Second");
+        when(cb2.getBindingType()).thenReturn(ChatBindingType.MAIN_GROUP);
+        when(cb2.isActive()).thenReturn(true);
+        when(cb2.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-04-02T08:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllChatBindings(TENANT_ID))
+                .thenReturn(List.of(cb1, cb2));
+        when(tenantConfigQueryService.listActiveTopicBindings(cbId1))
+                .thenReturn(List.of(
+                        mock(TelegramTopicBinding.class),
+                        mock(TelegramTopicBinding.class)));
+        when(tenantConfigQueryService.listActiveTopicBindings(cbId2))
+                .thenReturn(List.of());
+
+        var result = facade.getChatBindings(TENANT_ID);
+
+        // id tie-breaker (same bindingType MAIN_GROUP): cbId1 < cbId2
+        assertThat(result.items().get(0).activeTopicBindingCount()).isEqualTo(2);
+        assertThat(result.items().get(1).activeTopicBindingCount()).isZero();
+
+        verify(tenantConfigQueryService).listActiveTopicBindings(cbId1);
+        verify(tenantConfigQueryService).listActiveTopicBindings(cbId2);
+    }
+
+    @Test
+    void chatBindingsReturnsEmptyListWhenNoneExist() {
+        Tenant tenant = mockTenant();
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllChatBindings(TENANT_ID))
+                .thenReturn(List.of());
+
+        var result = facade.getChatBindings(TENANT_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void chatBindingsThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> facade.getChatBindings(TENANT_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(tenantConfigQueryService, never()).listAllChatBindings(TENANT_ID);
+    }
+
+    @Test
+    void chatBindingsThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.getChatBindings(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void chatBindingsDelegatesToTenantConfigQueryServiceOnly() {
+        Tenant tenant = mockTenant();
+        UUID cbId = UUID.fromString("55555555-5555-5555-5555-555555555571");
+
+        TelegramChatBinding cb = mock(TelegramChatBinding.class);
+        when(cb.getId()).thenReturn(cbId);
+        when(cb.getChatId()).thenReturn(500L);
+        when(cb.getChatTitle()).thenReturn("Test");
+        when(cb.getBindingType()).thenReturn(ChatBindingType.MAIN_GROUP);
+        when(cb.isActive()).thenReturn(true);
+        when(cb.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-04-01T00:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllChatBindings(TENANT_ID))
+                .thenReturn(List.of(cb));
+        when(tenantConfigQueryService.listActiveTopicBindings(cbId))
+                .thenReturn(List.of());
+
+        facade.getChatBindings(TENANT_ID);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(tenantConfigQueryService).listAllChatBindings(TENANT_ID);
+        verify(tenantConfigQueryService).listActiveTopicBindings(cbId);
         verifyNoMoreInteractions(tenantConfigQueryService);
         verifyNoInteractions(identityQueryService);
     }

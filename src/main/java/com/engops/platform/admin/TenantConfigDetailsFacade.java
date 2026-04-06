@@ -180,6 +180,67 @@ public class TenantConfigDetailsFacade {
     }
 
     /**
+     * Tenant uchun barcha Telegram chat bog'lanishlarining compact ro'yxatini qaytaradi.
+     *
+     * Har bir chat binding uchun activeTopicBindingCount ham hisoblanadi —
+     * mavjud listActiveTopicBindings() orqali.
+     *
+     * Ordering: bindingType name ASC -> id ASC
+     *
+     * @param tenantId tenant identifikatori
+     * @return chat bog'lanishlari ro'yxati
+     * @throws IllegalArgumentException agar tenantId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant topilmasa
+     */
+    public ChatBindingListView getChatBindings(UUID tenantId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        List<TelegramChatBinding> bindings =
+                tenantConfigQueryService.listAllChatBindings(tenantId);
+
+        List<ChatBindingItemView> items = bindings.stream()
+                .sorted(Comparator.comparing(
+                                (TelegramChatBinding cb) -> cb.getBindingType().name())
+                        .thenComparing(TelegramChatBinding::getId))
+                .map(cb -> {
+                    int activeTopicCount = tenantConfigQueryService
+                            .listActiveTopicBindings(cb.getId()).size();
+                    return new ChatBindingItemView(
+                            cb.getId(),
+                            cb.getChatId(),
+                            cb.getChatTitle(),
+                            cb.getBindingType().name(),
+                            cb.isActive(),
+                            activeTopicCount,
+                            cb.getCreatedAt());
+                })
+                .toList();
+
+        return new ChatBindingListView(tenantId, items);
+    }
+
+    /**
+     * Facade natija modeli — chat bog'lanishlari ro'yxati.
+     */
+    public record ChatBindingListView(
+            UUID tenantId,
+            List<ChatBindingItemView> items) {}
+
+    public record ChatBindingItemView(
+            UUID chatBindingId,
+            long chatId,
+            String chatTitle,
+            String bindingType,
+            boolean active,
+            int activeTopicBindingCount,
+            Instant createdAt) {}
+
+    /**
      * Facade natija modeli — routing qoidalari ro'yxati.
      */
     public record RoutingRuleListView(

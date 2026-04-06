@@ -102,6 +102,13 @@ public class TenantConfigQueryService {
     }
 
     /**
+     * Tenant uchun barcha Telegram chat bog'lanishlarini qaytaradi (barcha statuslar).
+     */
+    public List<TelegramChatBinding> listAllChatBindings(UUID tenantId) {
+        return telegramChatBindingRepository.findByTenantId(tenantId);
+    }
+
+    /**
      * Tenant uchun aktiv Telegram chat bog'lanishlarini qaytaradi.
      */
     public List<TelegramChatBinding> listActiveChatBindings(UUID tenantId) {
