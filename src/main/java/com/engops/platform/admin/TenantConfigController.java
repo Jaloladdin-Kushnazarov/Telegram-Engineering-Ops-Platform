@@ -19,6 +19,7 @@ import java.util.UUID;
  * - GET /chat-bindings — tenant Telegram chat bog'lanishlari ro'yxati
  * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
  * - GET /memberships — tenant a'zolik ro'yxati
+ * - GET /roles — global rol katalogi ro'yxati
  *
  * Faqat GET — write operatsiya yo'q.
  *
@@ -132,6 +133,36 @@ public class TenantConfigController {
                 detailsFacade.getMemberships(tenantId);
 
         return ResponseEntity.ok(toMembershipListResponse(view));
+    }
+
+    /**
+     * Global rol katalogi ro'yxatini qaytaradi.
+     *
+     * @param tenantId admin kontekst tenant identifikatori
+     * @return global rol katalogi ro'yxati
+     */
+    @GetMapping("/roles")
+    public ResponseEntity<TenantConfigRoleListResponse> getRoles(
+            @RequestParam UUID tenantId) {
+
+        TenantConfigDetailsFacade.RoleListView view =
+                detailsFacade.getRoles(tenantId);
+
+        return ResponseEntity.ok(toRoleListResponse(view));
+    }
+
+    private TenantConfigRoleListResponse toRoleListResponse(
+            TenantConfigDetailsFacade.RoleListView view) {
+        List<TenantConfigRoleListResponse.RoleItem> items = view.items().stream()
+                .map(i -> new TenantConfigRoleListResponse.RoleItem(
+                        i.roleId(),
+                        i.code(),
+                        i.name(),
+                        i.description(),
+                        i.systemRole(),
+                        i.createdAt()))
+                .toList();
+        return new TenantConfigRoleListResponse(view.tenantId(), items);
     }
 
     private TenantConfigMembershipListResponse toMembershipListResponse(

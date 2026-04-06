@@ -578,4 +578,89 @@ class TenantConfigControllerTest {
         mockMvc.perform(get("/api/admin/tenant-config/memberships"))
                 .andExpect(status().isBadRequest());
     }
+
+    // ========== roles endpoint ==========
+
+    @Test
+    void rolesReturnsCorrectStructuredResponse() throws Exception {
+        var items = List.of(
+                new TenantConfigDetailsFacade.RoleItemView(
+                        UUID.fromString("cc111111-1111-1111-1111-111111111111"),
+                        "ADMIN",
+                        "Administrator",
+                        null,
+                        true,
+                        Instant.parse("2026-01-05T08:00:00Z")),
+                new TenantConfigDetailsFacade.RoleItemView(
+                        UUID.fromString("cc222222-2222-2222-2222-222222222222"),
+                        "ENGINEER",
+                        "Engineer",
+                        "Engineering role",
+                        false,
+                        Instant.parse("2026-01-10T08:00:00Z")));
+        var view = new TenantConfigDetailsFacade.RoleListView(TENANT_ID, items);
+
+        when(detailsFacade.getRoles(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/roles")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].roleId").value("cc111111-1111-1111-1111-111111111111"))
+                .andExpect(jsonPath("$.items[0].code").value("ADMIN"))
+                .andExpect(jsonPath("$.items[0].name").value("Administrator"))
+                .andExpect(jsonPath("$.items[0].description").doesNotExist())
+                .andExpect(jsonPath("$.items[0].systemRole").value(true))
+                .andExpect(jsonPath("$.items[0].createdAt").value("2026-01-05T08:00:00Z"))
+                .andExpect(jsonPath("$.items[1].roleId").value("cc222222-2222-2222-2222-222222222222"))
+                .andExpect(jsonPath("$.items[1].code").value("ENGINEER"))
+                .andExpect(jsonPath("$.items[1].name").value("Engineer"))
+                .andExpect(jsonPath("$.items[1].description").value("Engineering role"))
+                .andExpect(jsonPath("$.items[1].systemRole").value(false));
+    }
+
+    @Test
+    void rolesWithEmptyListReturnsValidResponse() throws Exception {
+        var view = new TenantConfigDetailsFacade.RoleListView(
+                TENANT_ID, List.of());
+
+        when(detailsFacade.getRoles(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/roles")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void rolesTenantNotFoundReturns404() throws Exception {
+        when(detailsFacade.getRoles(TENANT_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/roles")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void rolesInvalidTenantIdReturns400() throws Exception {
+        when(detailsFacade.getRoles(TENANT_ID))
+                .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/roles")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void rolesMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/roles"))
+                .andExpect(status().isBadRequest());
+    }
 }

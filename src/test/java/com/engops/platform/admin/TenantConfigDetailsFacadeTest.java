@@ -900,6 +900,104 @@ class TenantConfigDetailsFacadeTest {
         assertThat(item.membershipStatus()).isEqualTo("ACTIVE");
     }
 
+    // ========== getRoles tests ==========
+
+    @Test
+    void rolesReturnsCorrectItemListOrderedByCode() {
+        Tenant tenant = mockTenant();
+        UUID roleId1 = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+        UUID roleId2 = UUID.fromString("cc222222-2222-2222-2222-222222222222");
+
+        Role role1 = mock(Role.class);
+        when(role1.getId()).thenReturn(roleId1);
+        when(role1.getCode()).thenReturn("ENGINEER");
+        when(role1.getName()).thenReturn("Engineer");
+        when(role1.getDescription()).thenReturn("Engineering role");
+        when(role1.isSystemRole()).thenReturn(false);
+        when(role1.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-10T08:00:00Z"));
+
+        Role role2 = mock(Role.class);
+        when(role2.getId()).thenReturn(roleId2);
+        when(role2.getCode()).thenReturn("ADMIN");
+        when(role2.getName()).thenReturn("Administrator");
+        when(role2.getDescription()).thenReturn(null);
+        when(role2.isSystemRole()).thenReturn(true);
+        when(role2.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-05T08:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.listAllRoles()).thenReturn(List.of(role1, role2));
+
+        var result = facade.getRoles(TENANT_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.items()).hasSize(2);
+
+        // code ASC — "ADMIN" birinchi, "ENGINEER" ikkinchi
+        var item1 = result.items().get(0);
+        assertThat(item1.roleId()).isEqualTo(roleId2);
+        assertThat(item1.code()).isEqualTo("ADMIN");
+        assertThat(item1.name()).isEqualTo("Administrator");
+        assertThat(item1.description()).isNull();
+        assertThat(item1.systemRole()).isTrue();
+        assertThat(item1.createdAt()).isEqualTo(java.time.Instant.parse("2026-01-05T08:00:00Z"));
+
+        var item2 = result.items().get(1);
+        assertThat(item2.roleId()).isEqualTo(roleId1);
+        assertThat(item2.code()).isEqualTo("ENGINEER");
+        assertThat(item2.name()).isEqualTo("Engineer");
+        assertThat(item2.description()).isEqualTo("Engineering role");
+        assertThat(item2.systemRole()).isFalse();
+        assertThat(item2.createdAt()).isEqualTo(java.time.Instant.parse("2026-01-10T08:00:00Z"));
+    }
+
+    @Test
+    void rolesReturnsEmptyListWhenNoneExist() {
+        Tenant tenant = mockTenant();
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.listAllRoles()).thenReturn(List.of());
+
+        var result = facade.getRoles(TENANT_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void rolesThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> facade.getRoles(TENANT_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(identityQueryService, never()).listAllRoles();
+    }
+
+    @Test
+    void rolesThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.getRoles(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void rolesDelegatesToBothServices() {
+        Tenant tenant = mockTenant();
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.listAllRoles()).thenReturn(List.of());
+
+        facade.getRoles(TENANT_ID);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verifyNoMoreInteractions(tenantConfigQueryService);
+        verify(identityQueryService).listAllRoles();
+        verifyNoMoreInteractions(identityQueryService);
+    }
+
     // ========== Helpers ==========
 
     private Tenant mockTenant() {

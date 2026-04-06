@@ -6,6 +6,7 @@ import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
+import com.engops.platform.identity.model.Role;
 import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
@@ -112,6 +113,59 @@ public class TenantConfigDetailsFacade {
                 activeChatBindingCount,
                 activeTopicBindingCount);
     }
+
+    /**
+     * Global rol katalogini compact ro'yxat sifatida qaytaradi.
+     *
+     * Rollar GLOBAL — tenantga tegishli emas. tenantId endpoint-family
+     * izchilligi va admin kontekst validatsiyasi uchun tekshiriladi.
+     *
+     * Ordering: code ASC -> id ASC
+     *
+     * @param tenantId admin kontekst tenant identifikatori
+     * @return global rol katalogi ro'yxati
+     * @throws IllegalArgumentException agar tenantId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant topilmasa
+     */
+    public RoleListView getRoles(UUID tenantId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        List<Role> roles = identityQueryService.listAllRoles();
+
+        List<RoleItemView> items = roles.stream()
+                .sorted(Comparator.comparing(Role::getCode)
+                        .thenComparing(Role::getId))
+                .map(r -> new RoleItemView(
+                        r.getId(),
+                        r.getCode(),
+                        r.getName(),
+                        r.getDescription(),
+                        r.isSystemRole(),
+                        r.getCreatedAt()))
+                .toList();
+
+        return new RoleListView(tenantId, items);
+    }
+
+    /**
+     * Facade natija modeli — global rol katalogi ro'yxati.
+     */
+    public record RoleListView(
+            UUID tenantId,
+            List<RoleItemView> items) {}
+
+    public record RoleItemView(
+            UUID roleId,
+            String code,
+            String name,
+            String description,
+            boolean systemRole,
+            Instant createdAt) {}
 
     /**
      * Tenant uchun barcha a'zoliklarning compact ro'yxatini qaytaradi.
