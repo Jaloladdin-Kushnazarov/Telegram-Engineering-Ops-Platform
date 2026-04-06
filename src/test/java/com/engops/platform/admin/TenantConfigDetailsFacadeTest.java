@@ -190,6 +190,106 @@ class TenantConfigDetailsFacadeTest {
         verifyNoMoreInteractions(identityQueryService);
     }
 
+    // ========== getWorkflowDefinitions tests ==========
+
+    @Test
+    void workflowDefinitionsReturnsCorrectItemList() {
+        Tenant tenant = mockTenant();
+        UUID defId1 = UUID.fromString("22222222-2222-2222-2222-222222222221");
+        UUID defId2 = UUID.fromString("22222222-2222-2222-2222-222222222222");
+
+        WorkflowDefinition wd1 = mock(WorkflowDefinition.class);
+        when(wd1.getId()).thenReturn(defId1);
+        when(wd1.getName()).thenReturn("Bug Flow");
+        when(wd1.getWorkItemType()).thenReturn("BUG");
+        when(wd1.getDescription()).thenReturn("Bug workflow");
+        when(wd1.isActive()).thenReturn(true);
+        when(wd1.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-02-01T10:00:00Z"));
+
+        WorkflowDefinition wd2 = mock(WorkflowDefinition.class);
+        when(wd2.getId()).thenReturn(defId2);
+        when(wd2.getName()).thenReturn("Incident Flow");
+        when(wd2.getWorkItemType()).thenReturn("INCIDENT");
+        when(wd2.getDescription()).thenReturn(null);
+        when(wd2.isActive()).thenReturn(false);
+        when(wd2.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-02-10T12:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllWorkflowDefinitions(TENANT_ID))
+                .thenReturn(List.of(wd1, wd2));
+
+        var result = facade.getWorkflowDefinitions(TENANT_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.items()).hasSize(2);
+
+        var item1 = result.items().get(0);
+        assertThat(item1.definitionId()).isEqualTo(defId1);
+        assertThat(item1.name()).isEqualTo("Bug Flow");
+        assertThat(item1.workItemType()).isEqualTo("BUG");
+        assertThat(item1.description()).isEqualTo("Bug workflow");
+        assertThat(item1.active()).isTrue();
+        assertThat(item1.createdAt()).isEqualTo(java.time.Instant.parse("2026-02-01T10:00:00Z"));
+
+        var item2 = result.items().get(1);
+        assertThat(item2.definitionId()).isEqualTo(defId2);
+        assertThat(item2.name()).isEqualTo("Incident Flow");
+        assertThat(item2.workItemType()).isEqualTo("INCIDENT");
+        assertThat(item2.description()).isNull();
+        assertThat(item2.active()).isFalse();
+        assertThat(item2.createdAt()).isEqualTo(java.time.Instant.parse("2026-02-10T12:00:00Z"));
+    }
+
+    @Test
+    void workflowDefinitionsReturnsEmptyListWhenNoneExist() {
+        Tenant tenant = mockTenant();
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllWorkflowDefinitions(TENANT_ID))
+                .thenReturn(List.of());
+
+        var result = facade.getWorkflowDefinitions(TENANT_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void workflowDefinitionsThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> facade.getWorkflowDefinitions(TENANT_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(tenantConfigQueryService, never()).listAllWorkflowDefinitions(TENANT_ID);
+    }
+
+    @Test
+    void workflowDefinitionsThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.getWorkflowDefinitions(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void workflowDefinitionsDelegatesToTenantConfigQueryServiceOnly() {
+        Tenant tenant = mockTenant();
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllWorkflowDefinitions(TENANT_ID))
+                .thenReturn(List.of());
+
+        facade.getWorkflowDefinitions(TENANT_ID);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(tenantConfigQueryService).listAllWorkflowDefinitions(TENANT_ID);
+        verifyNoMoreInteractions(tenantConfigQueryService);
+        verifyNoInteractions(identityQueryService);
+    }
+
     // ========== Helpers ==========
 
     private Tenant mockTenant() {

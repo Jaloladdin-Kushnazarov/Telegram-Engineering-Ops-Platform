@@ -8,6 +8,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.Mockito.when;
@@ -127,6 +128,91 @@ class TenantConfigControllerTest {
     @Test
     void detailsMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/details"))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== workflow-definitions endpoint ==========
+
+    @Test
+    void workflowDefinitionsReturnsCorrectStructuredResponse() throws Exception {
+        var items = List.of(
+                new TenantConfigDetailsFacade.WorkflowDefinitionItemView(
+                        UUID.fromString("22222222-2222-2222-2222-222222222221"),
+                        "Bug Flow",
+                        "BUG",
+                        "Bug workflow",
+                        true,
+                        Instant.parse("2026-02-01T10:00:00Z")),
+                new TenantConfigDetailsFacade.WorkflowDefinitionItemView(
+                        UUID.fromString("22222222-2222-2222-2222-222222222222"),
+                        "Incident Flow",
+                        "INCIDENT",
+                        null,
+                        false,
+                        Instant.parse("2026-02-10T12:00:00Z")));
+        var view = new TenantConfigDetailsFacade.WorkflowDefinitionListView(TENANT_ID, items);
+
+        when(detailsFacade.getWorkflowDefinitions(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].definitionId").value("22222222-2222-2222-2222-222222222221"))
+                .andExpect(jsonPath("$.items[0].name").value("Bug Flow"))
+                .andExpect(jsonPath("$.items[0].workItemType").value("BUG"))
+                .andExpect(jsonPath("$.items[0].description").value("Bug workflow"))
+                .andExpect(jsonPath("$.items[0].active").value(true))
+                .andExpect(jsonPath("$.items[0].createdAt").value("2026-02-01T10:00:00Z"))
+                .andExpect(jsonPath("$.items[1].definitionId").value("22222222-2222-2222-2222-222222222222"))
+                .andExpect(jsonPath("$.items[1].name").value("Incident Flow"))
+                .andExpect(jsonPath("$.items[1].workItemType").value("INCIDENT"))
+                .andExpect(jsonPath("$.items[1].description").doesNotExist())
+                .andExpect(jsonPath("$.items[1].active").value(false));
+    }
+
+    @Test
+    void workflowDefinitionsWithEmptyListReturnsValidResponse() throws Exception {
+        var view = new TenantConfigDetailsFacade.WorkflowDefinitionListView(
+                TENANT_ID, List.of());
+
+        when(detailsFacade.getWorkflowDefinitions(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void workflowDefinitionsTenantNotFoundReturns404() throws Exception {
+        when(detailsFacade.getWorkflowDefinitions(TENANT_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void workflowDefinitionsInvalidTenantIdReturns400() throws Exception {
+        when(detailsFacade.getWorkflowDefinitions(TENANT_ID))
+                .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void workflowDefinitionsMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions"))
                 .andExpect(status().isBadRequest());
     }
 }

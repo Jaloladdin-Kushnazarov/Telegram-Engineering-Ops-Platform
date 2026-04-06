@@ -5,10 +5,12 @@ import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
+import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -105,6 +107,55 @@ public class TenantConfigDetailsFacade {
                 activeChatBindingCount,
                 activeTopicBindingCount);
     }
+
+    /**
+     * Tenant uchun barcha workflow ta'riflarining compact ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @return workflow ta'riflari ro'yxati
+     * @throws IllegalArgumentException agar tenantId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant topilmasa
+     */
+    public WorkflowDefinitionListView getWorkflowDefinitions(UUID tenantId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        List<WorkflowDefinition> definitions =
+                tenantConfigQueryService.listAllWorkflowDefinitions(tenantId);
+
+        List<WorkflowDefinitionItemView> items = definitions.stream()
+                .sorted(Comparator.comparing(WorkflowDefinition::getName)
+                        .thenComparing(WorkflowDefinition::getId))
+                .map(d -> new WorkflowDefinitionItemView(
+                        d.getId(),
+                        d.getName(),
+                        d.getWorkItemType(),
+                        d.getDescription(),
+                        d.isActive(),
+                        d.getCreatedAt()))
+                .toList();
+
+        return new WorkflowDefinitionListView(tenantId, items);
+    }
+
+    /**
+     * Facade natija modeli — workflow ta'riflari ro'yxati.
+     */
+    public record WorkflowDefinitionListView(
+            UUID tenantId,
+            List<WorkflowDefinitionItemView> items) {}
+
+    public record WorkflowDefinitionItemView(
+            UUID definitionId,
+            String name,
+            String workItemType,
+            String description,
+            boolean active,
+            Instant createdAt) {}
 
     /**
      * Facade natija modeli — compact tenant config details.

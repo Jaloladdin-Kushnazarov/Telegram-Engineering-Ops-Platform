@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -13,6 +14,7 @@ import java.util.UUID;
  *
  * Endpoint'lar:
  * - GET /details — tenant konfiguratsiyasining compact details view'i
+ * - GET /workflow-definitions — tenant workflow ta'riflari ro'yxati
  *
  * Faqat GET — write operatsiya yo'q.
  *
@@ -46,6 +48,36 @@ public class TenantConfigController {
                 detailsFacade.getDetails(tenantId);
 
         return ResponseEntity.ok(toResponse(view));
+    }
+
+    /**
+     * Tenant workflow ta'riflari ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @return workflow ta'riflari ro'yxati
+     */
+    @GetMapping("/workflow-definitions")
+    public ResponseEntity<TenantConfigWorkflowListResponse> getWorkflowDefinitions(
+            @RequestParam UUID tenantId) {
+
+        TenantConfigDetailsFacade.WorkflowDefinitionListView view =
+                detailsFacade.getWorkflowDefinitions(tenantId);
+
+        return ResponseEntity.ok(toWorkflowListResponse(view));
+    }
+
+    private TenantConfigWorkflowListResponse toWorkflowListResponse(
+            TenantConfigDetailsFacade.WorkflowDefinitionListView view) {
+        List<TenantConfigWorkflowListResponse.WorkflowDefinitionItem> items = view.items().stream()
+                .map(i -> new TenantConfigWorkflowListResponse.WorkflowDefinitionItem(
+                        i.definitionId(),
+                        i.name(),
+                        i.workItemType(),
+                        i.description(),
+                        i.active(),
+                        i.createdAt()))
+                .toList();
+        return new TenantConfigWorkflowListResponse(view.tenantId(), items);
     }
 
     private TenantConfigDetailsResponse toResponse(
