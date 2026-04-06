@@ -17,6 +17,7 @@ import java.util.UUID;
  * - GET /workflow-definitions — tenant workflow ta'riflari ro'yxati
  * - GET /routing-rules — tenant routing qoidalari ro'yxati
  * - GET /chat-bindings — tenant Telegram chat bog'lanishlari ro'yxati
+ * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
  *
  * Faqat GET — write operatsiya yo'q.
  *
@@ -98,6 +99,39 @@ public class TenantConfigController {
                 detailsFacade.getChatBindings(tenantId);
 
         return ResponseEntity.ok(toChatBindingListResponse(view));
+    }
+
+    /**
+     * Tenant Telegram topic bog'lanishlari ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @return topic bog'lanishlari ro'yxati
+     */
+    @GetMapping("/topic-bindings")
+    public ResponseEntity<TenantConfigTopicBindingListResponse> getTopicBindings(
+            @RequestParam UUID tenantId) {
+
+        TenantConfigDetailsFacade.TopicBindingListView view =
+                detailsFacade.getTopicBindings(tenantId);
+
+        return ResponseEntity.ok(toTopicBindingListResponse(view));
+    }
+
+    private TenantConfigTopicBindingListResponse toTopicBindingListResponse(
+            TenantConfigDetailsFacade.TopicBindingListView view) {
+        List<TenantConfigTopicBindingListResponse.TopicBindingItem> items = view.items().stream()
+                .map(i -> new TenantConfigTopicBindingListResponse.TopicBindingItem(
+                        i.topicBindingId(),
+                        i.chatBindingId(),
+                        i.chatId(),
+                        i.chatTitle(),
+                        i.topicId(),
+                        i.topicName(),
+                        i.purpose(),
+                        i.active(),
+                        i.createdAt()))
+                .toList();
+        return new TenantConfigTopicBindingListResponse(view.tenantId(), items);
     }
 
     private TenantConfigChatBindingListResponse toChatBindingListResponse(

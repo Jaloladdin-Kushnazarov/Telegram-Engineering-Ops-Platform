@@ -6,6 +6,7 @@ import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
+import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -223,6 +224,68 @@ public class TenantConfigDetailsFacade {
 
         return new ChatBindingListView(tenantId, items);
     }
+
+    /**
+     * Tenant uchun barcha Telegram topic bog'lanishlarining compact flat ro'yxatini qaytaradi.
+     *
+     * Barcha chat binding'lar bo'ylab iteratsiya qilib, har birining topic binding'larini
+     * yig'adi. Chat kontekst field'lari (chatId, chatTitle) flat sifatida kiritiladi.
+     *
+     * Ordering: purpose ASC -> id ASC
+     *
+     * @param tenantId tenant identifikatori
+     * @return topic bog'lanishlari flat ro'yxati
+     * @throws IllegalArgumentException agar tenantId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant topilmasa
+     */
+    public TopicBindingListView getTopicBindings(UUID tenantId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        List<TelegramChatBinding> chatBindings =
+                tenantConfigQueryService.listAllChatBindings(tenantId);
+
+        List<TopicBindingItemView> items = chatBindings.stream()
+                .flatMap(cb -> tenantConfigQueryService.listAllTopicBindings(cb.getId())
+                        .stream()
+                        .map(tb -> new TopicBindingItemView(
+                                tb.getId(),
+                                cb.getId(),
+                                cb.getChatId(),
+                                cb.getChatTitle(),
+                                tb.getTopicId(),
+                                tb.getTopicName(),
+                                tb.getPurpose(),
+                                tb.isActive(),
+                                tb.getCreatedAt())))
+                .sorted(Comparator.comparing(TopicBindingItemView::purpose)
+                        .thenComparing(TopicBindingItemView::topicBindingId))
+                .toList();
+
+        return new TopicBindingListView(tenantId, items);
+    }
+
+    /**
+     * Facade natija modeli — topic bog'lanishlari ro'yxati.
+     */
+    public record TopicBindingListView(
+            UUID tenantId,
+            List<TopicBindingItemView> items) {}
+
+    public record TopicBindingItemView(
+            UUID topicBindingId,
+            UUID chatBindingId,
+            long chatId,
+            String chatTitle,
+            long topicId,
+            String topicName,
+            String purpose,
+            boolean active,
+            Instant createdAt) {}
 
     /**
      * Facade natija modeli — chat bog'lanishlari ro'yxati.

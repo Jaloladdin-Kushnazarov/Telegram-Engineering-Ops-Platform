@@ -123,6 +123,13 @@ public class TenantConfigQueryService {
     }
 
     /**
+     * Chat bog'lanishi uchun barcha topic bog'lanishlarini qaytaradi (barcha statuslar).
+     */
+    public List<TelegramTopicBinding> listAllTopicBindings(UUID chatBindingId) {
+        return telegramTopicBindingRepository.findByChatBindingId(chatBindingId);
+    }
+
+    /**
      * Chat bog'lanishi uchun aktiv topic bog'lanishlarini qaytaradi.
      */
     public List<TelegramTopicBinding> listActiveTopicBindings(UUID chatBindingId) {

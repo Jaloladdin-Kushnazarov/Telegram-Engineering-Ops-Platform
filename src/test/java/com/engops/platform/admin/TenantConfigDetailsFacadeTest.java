@@ -561,6 +561,178 @@ class TenantConfigDetailsFacadeTest {
         verifyNoInteractions(identityQueryService);
     }
 
+    // ========== getTopicBindings tests ==========
+
+    @Test
+    void topicBindingsReturnsCorrectFlatListOrderedByPurpose() {
+        Tenant tenant = mockTenant();
+        UUID cbId = UUID.fromString("66666666-6666-6666-6666-666666666661");
+        UUID tbId1 = UUID.fromString("77777777-7777-7777-7777-777777777771");
+        UUID tbId2 = UUID.fromString("77777777-7777-7777-7777-777777777772");
+
+        TelegramChatBinding cb = mock(TelegramChatBinding.class);
+        when(cb.getId()).thenReturn(cbId);
+        when(cb.getChatId()).thenReturn(100L);
+        when(cb.getChatTitle()).thenReturn("Main Group");
+
+        TelegramTopicBinding tb1 = mock(TelegramTopicBinding.class);
+        when(tb1.getId()).thenReturn(tbId1);
+        when(tb1.getTopicId()).thenReturn(10L);
+        when(tb1.getTopicName()).thenReturn("Incidents Topic");
+        when(tb1.getPurpose()).thenReturn("incidents");
+        when(tb1.isActive()).thenReturn(true);
+        when(tb1.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-03-20T10:00:00Z"));
+
+        TelegramTopicBinding tb2 = mock(TelegramTopicBinding.class);
+        when(tb2.getId()).thenReturn(tbId2);
+        when(tb2.getTopicId()).thenReturn(20L);
+        when(tb2.getTopicName()).thenReturn(null);
+        when(tb2.getPurpose()).thenReturn("bugs");
+        when(tb2.isActive()).thenReturn(false);
+        when(tb2.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-03-25T12:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllChatBindings(TENANT_ID)).thenReturn(List.of(cb));
+        when(tenantConfigQueryService.listAllTopicBindings(cbId)).thenReturn(List.of(tb1, tb2));
+
+        var result = facade.getTopicBindings(TENANT_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.items()).hasSize(2);
+
+        // purpose ASC — "bugs" birinchi, "incidents" ikkinchi
+        var item1 = result.items().get(0);
+        assertThat(item1.topicBindingId()).isEqualTo(tbId2);
+        assertThat(item1.chatBindingId()).isEqualTo(cbId);
+        assertThat(item1.chatId()).isEqualTo(100L);
+        assertThat(item1.chatTitle()).isEqualTo("Main Group");
+        assertThat(item1.topicId()).isEqualTo(20L);
+        assertThat(item1.topicName()).isNull();
+        assertThat(item1.purpose()).isEqualTo("bugs");
+        assertThat(item1.active()).isFalse();
+        assertThat(item1.createdAt()).isEqualTo(java.time.Instant.parse("2026-03-25T12:00:00Z"));
+
+        var item2 = result.items().get(1);
+        assertThat(item2.topicBindingId()).isEqualTo(tbId1);
+        assertThat(item2.chatBindingId()).isEqualTo(cbId);
+        assertThat(item2.chatId()).isEqualTo(100L);
+        assertThat(item2.chatTitle()).isEqualTo("Main Group");
+        assertThat(item2.topicId()).isEqualTo(10L);
+        assertThat(item2.topicName()).isEqualTo("Incidents Topic");
+        assertThat(item2.purpose()).isEqualTo("incidents");
+        assertThat(item2.active()).isTrue();
+        assertThat(item2.createdAt()).isEqualTo(java.time.Instant.parse("2026-03-20T10:00:00Z"));
+    }
+
+    @Test
+    void topicBindingsFlattenedAcrossMultipleChatBindings() {
+        Tenant tenant = mockTenant();
+        UUID cbId1 = UUID.fromString("66666666-6666-6666-6666-666666666671");
+        UUID cbId2 = UUID.fromString("66666666-6666-6666-6666-666666666672");
+        UUID tbId1 = UUID.fromString("77777777-7777-7777-7777-777777777781");
+        UUID tbId2 = UUID.fromString("77777777-7777-7777-7777-777777777782");
+
+        TelegramChatBinding cb1 = mock(TelegramChatBinding.class);
+        when(cb1.getId()).thenReturn(cbId1);
+        when(cb1.getChatId()).thenReturn(100L);
+        when(cb1.getChatTitle()).thenReturn("Chat A");
+
+        TelegramChatBinding cb2 = mock(TelegramChatBinding.class);
+        when(cb2.getId()).thenReturn(cbId2);
+        when(cb2.getChatId()).thenReturn(200L);
+        when(cb2.getChatTitle()).thenReturn("Chat B");
+
+        TelegramTopicBinding tb1 = mock(TelegramTopicBinding.class);
+        when(tb1.getId()).thenReturn(tbId1);
+        when(tb1.getTopicId()).thenReturn(10L);
+        when(tb1.getTopicName()).thenReturn("Topic X");
+        when(tb1.getPurpose()).thenReturn("bugs");
+        when(tb1.isActive()).thenReturn(true);
+        when(tb1.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-04-01T08:00:00Z"));
+
+        TelegramTopicBinding tb2 = mock(TelegramTopicBinding.class);
+        when(tb2.getId()).thenReturn(tbId2);
+        when(tb2.getTopicId()).thenReturn(20L);
+        when(tb2.getTopicName()).thenReturn("Topic Y");
+        when(tb2.getPurpose()).thenReturn("bugs");
+        when(tb2.isActive()).thenReturn(true);
+        when(tb2.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-04-02T08:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllChatBindings(TENANT_ID)).thenReturn(List.of(cb1, cb2));
+        when(tenantConfigQueryService.listAllTopicBindings(cbId1)).thenReturn(List.of(tb1));
+        when(tenantConfigQueryService.listAllTopicBindings(cbId2)).thenReturn(List.of(tb2));
+
+        var result = facade.getTopicBindings(TENANT_ID);
+
+        assertThat(result.items()).hasSize(2);
+
+        // same purpose "bugs" — id tie-breaker: tbId1 < tbId2
+        assertThat(result.items().get(0).topicBindingId()).isEqualTo(tbId1);
+        assertThat(result.items().get(0).chatId()).isEqualTo(100L);
+        assertThat(result.items().get(1).topicBindingId()).isEqualTo(tbId2);
+        assertThat(result.items().get(1).chatId()).isEqualTo(200L);
+
+        verify(tenantConfigQueryService).listAllTopicBindings(cbId1);
+        verify(tenantConfigQueryService).listAllTopicBindings(cbId2);
+    }
+
+    @Test
+    void topicBindingsReturnsEmptyListWhenNoneExist() {
+        Tenant tenant = mockTenant();
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllChatBindings(TENANT_ID)).thenReturn(List.of());
+
+        var result = facade.getTopicBindings(TENANT_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void topicBindingsThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> facade.getTopicBindings(TENANT_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(tenantConfigQueryService, never()).listAllChatBindings(TENANT_ID);
+    }
+
+    @Test
+    void topicBindingsThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.getTopicBindings(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void topicBindingsDelegatesToTenantConfigQueryServiceOnly() {
+        Tenant tenant = mockTenant();
+        UUID cbId = UUID.fromString("66666666-6666-6666-6666-666666666691");
+
+        TelegramChatBinding cb = mock(TelegramChatBinding.class);
+        when(cb.getId()).thenReturn(cbId);
+        when(cb.getChatId()).thenReturn(500L);
+        when(cb.getChatTitle()).thenReturn("Test");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllChatBindings(TENANT_ID)).thenReturn(List.of(cb));
+        when(tenantConfigQueryService.listAllTopicBindings(cbId)).thenReturn(List.of());
+
+        facade.getTopicBindings(TENANT_ID);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(tenantConfigQueryService).listAllChatBindings(TENANT_ID);
+        verify(tenantConfigQueryService).listAllTopicBindings(cbId);
+        verifyNoMoreInteractions(tenantConfigQueryService);
+        verifyNoInteractions(identityQueryService);
+    }
+
     // ========== Helpers ==========
 
     private Tenant mockTenant() {

@@ -393,4 +393,98 @@ class TenantConfigControllerTest {
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings"))
                 .andExpect(status().isBadRequest());
     }
+
+    // ========== topic-bindings endpoint ==========
+
+    @Test
+    void topicBindingsReturnsCorrectStructuredResponse() throws Exception {
+        var items = List.of(
+                new TenantConfigDetailsFacade.TopicBindingItemView(
+                        UUID.fromString("77777777-7777-7777-7777-777777777771"),
+                        UUID.fromString("66666666-6666-6666-6666-666666666661"),
+                        100L,
+                        "Main Group",
+                        10L,
+                        "Bugs Topic",
+                        "bugs",
+                        true,
+                        Instant.parse("2026-03-20T10:00:00Z")),
+                new TenantConfigDetailsFacade.TopicBindingItemView(
+                        UUID.fromString("77777777-7777-7777-7777-777777777772"),
+                        UUID.fromString("66666666-6666-6666-6666-666666666661"),
+                        100L,
+                        "Main Group",
+                        20L,
+                        null,
+                        "incidents",
+                        false,
+                        Instant.parse("2026-03-25T12:00:00Z")));
+        var view = new TenantConfigDetailsFacade.TopicBindingListView(TENANT_ID, items);
+
+        when(detailsFacade.getTopicBindings(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].topicBindingId").value("77777777-7777-7777-7777-777777777771"))
+                .andExpect(jsonPath("$.items[0].chatBindingId").value("66666666-6666-6666-6666-666666666661"))
+                .andExpect(jsonPath("$.items[0].chatId").value(100))
+                .andExpect(jsonPath("$.items[0].chatTitle").value("Main Group"))
+                .andExpect(jsonPath("$.items[0].topicId").value(10))
+                .andExpect(jsonPath("$.items[0].topicName").value("Bugs Topic"))
+                .andExpect(jsonPath("$.items[0].purpose").value("bugs"))
+                .andExpect(jsonPath("$.items[0].active").value(true))
+                .andExpect(jsonPath("$.items[0].createdAt").value("2026-03-20T10:00:00Z"))
+                .andExpect(jsonPath("$.items[1].topicBindingId").value("77777777-7777-7777-7777-777777777772"))
+                .andExpect(jsonPath("$.items[1].chatId").value(100))
+                .andExpect(jsonPath("$.items[1].topicName").doesNotExist())
+                .andExpect(jsonPath("$.items[1].purpose").value("incidents"))
+                .andExpect(jsonPath("$.items[1].active").value(false));
+    }
+
+    @Test
+    void topicBindingsWithEmptyListReturnsValidResponse() throws Exception {
+        var view = new TenantConfigDetailsFacade.TopicBindingListView(
+                TENANT_ID, List.of());
+
+        when(detailsFacade.getTopicBindings(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void topicBindingsTenantNotFoundReturns404() throws Exception {
+        when(detailsFacade.getTopicBindings(TENANT_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void topicBindingsInvalidTenantIdReturns400() throws Exception {
+        when(detailsFacade.getTopicBindings(TENANT_ID))
+                .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void topicBindingsMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings"))
+                .andExpect(status().isBadRequest());
+    }
 }
