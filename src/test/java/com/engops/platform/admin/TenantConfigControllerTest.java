@@ -487,4 +487,95 @@ class TenantConfigControllerTest {
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings"))
                 .andExpect(status().isBadRequest());
     }
+
+    // ========== memberships endpoint ==========
+
+    @Test
+    void membershipsReturnsCorrectStructuredResponse() throws Exception {
+        var items = List.of(
+                new TenantConfigDetailsFacade.MembershipItemView(
+                        UUID.fromString("aa111111-1111-1111-1111-111111111111"),
+                        UUID.fromString("bb111111-1111-1111-1111-111111111111"),
+                        1001L,
+                        "Anvar",
+                        null,
+                        "ACTIVE",
+                        List.of("Administrator"),
+                        Instant.parse("2026-03-01T08:00:00Z")),
+                new TenantConfigDetailsFacade.MembershipItemView(
+                        UUID.fromString("aa222222-2222-2222-2222-222222222222"),
+                        UUID.fromString("bb222222-2222-2222-2222-222222222222"),
+                        1002L,
+                        "Zafar",
+                        "zafar_dev",
+                        "SUSPENDED",
+                        null,
+                        Instant.parse("2026-02-01T08:00:00Z")));
+        var view = new TenantConfigDetailsFacade.MembershipListView(TENANT_ID, items);
+
+        when(detailsFacade.getMemberships(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].membershipId").value("aa111111-1111-1111-1111-111111111111"))
+                .andExpect(jsonPath("$.items[0].userId").value("bb111111-1111-1111-1111-111111111111"))
+                .andExpect(jsonPath("$.items[0].telegramUserId").value(1001))
+                .andExpect(jsonPath("$.items[0].displayName").value("Anvar"))
+                .andExpect(jsonPath("$.items[0].username").doesNotExist())
+                .andExpect(jsonPath("$.items[0].membershipStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.items[0].roleNames[0]").value("Administrator"))
+                .andExpect(jsonPath("$.items[0].createdAt").value("2026-03-01T08:00:00Z"))
+                .andExpect(jsonPath("$.items[1].membershipId").value("aa222222-2222-2222-2222-222222222222"))
+                .andExpect(jsonPath("$.items[1].displayName").value("Zafar"))
+                .andExpect(jsonPath("$.items[1].username").value("zafar_dev"))
+                .andExpect(jsonPath("$.items[1].membershipStatus").value("SUSPENDED"))
+                .andExpect(jsonPath("$.items[1].roleNames").doesNotExist());
+    }
+
+    @Test
+    void membershipsWithEmptyListReturnsValidResponse() throws Exception {
+        var view = new TenantConfigDetailsFacade.MembershipListView(
+                TENANT_ID, List.of());
+
+        when(detailsFacade.getMemberships(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void membershipsTenantNotFoundReturns404() throws Exception {
+        when(detailsFacade.getMemberships(TENANT_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void membershipsInvalidTenantIdReturns400() throws Exception {
+        when(detailsFacade.getMemberships(TENANT_ID))
+                .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void membershipsMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/memberships"))
+                .andExpect(status().isBadRequest());
+    }
 }

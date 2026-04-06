@@ -3,6 +3,9 @@ package com.engops.platform.admin;
 import com.engops.platform.identity.IdentityQueryService;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
+import com.engops.platform.identity.model.AppUser;
+import com.engops.platform.identity.model.Membership;
+import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
@@ -109,6 +112,87 @@ public class TenantConfigDetailsFacade {
                 activeChatBindingCount,
                 activeTopicBindingCount);
     }
+
+    /**
+     * Tenant uchun barcha a'zoliklarning compact ro'yxatini qaytaradi.
+     *
+     * Har bir membership uchun user ma'lumotlari va rol nomlari ham olinadi —
+     * IdentityQueryService public API orqali.
+     *
+     * Ordering: status order (ACTIVE=0, SUSPENDED=1, REMOVED=2) -> displayName ASC (nulls last) -> id ASC
+     *
+     * @param tenantId tenant identifikatori
+     * @return a'zoliklar ro'yxati
+     * @throws IllegalArgumentException agar tenantId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant topilmasa
+     */
+    public MembershipListView getMemberships(UUID tenantId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        List<Membership> memberships = identityQueryService.listAllMembers(tenantId);
+
+        List<MembershipItemView> items = memberships.stream()
+                .map(m -> {
+                    AppUser user = identityQueryService.findUserById(m.getUserId())
+                            .orElse(null);
+
+                    List<String> roleNames = identityQueryService.getMembershipRoles(m.getId())
+                            .stream()
+                            .map(MembershipRoleBinding::getRole)
+                            .map(role -> role.getName())
+                            .sorted()
+                            .toList();
+
+                    return new MembershipItemView(
+                            m.getId(),
+                            m.getUserId(),
+                            user != null ? user.getTelegramUserId() : null,
+                            user != null ? user.getDisplayName() : null,
+                            user != null ? user.getUsername() : null,
+                            m.getStatus().name(),
+                            roleNames.isEmpty() ? null : roleNames,
+                            m.getCreatedAt());
+                })
+                .sorted(Comparator.comparingInt(
+                                (MembershipItemView v) -> statusOrder(v.membershipStatus()))
+                        .thenComparing(MembershipItemView::displayName,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(MembershipItemView::membershipId))
+                .toList();
+
+        return new MembershipListView(tenantId, items);
+    }
+
+    private static int statusOrder(String status) {
+        return switch (status) {
+            case "ACTIVE" -> 0;
+            case "SUSPENDED" -> 1;
+            case "REMOVED" -> 2;
+            default -> 3;
+        };
+    }
+
+    /**
+     * Facade natija modeli — a'zoliklar ro'yxati.
+     */
+    public record MembershipListView(
+            UUID tenantId,
+            List<MembershipItemView> items) {}
+
+    public record MembershipItemView(
+            UUID membershipId,
+            UUID userId,
+            Long telegramUserId,
+            String displayName,
+            String username,
+            String membershipStatus,
+            List<String> roleNames,
+            Instant createdAt) {}
 
     /**
      * Tenant uchun barcha workflow ta'riflarining compact ro'yxatini qaytaradi.

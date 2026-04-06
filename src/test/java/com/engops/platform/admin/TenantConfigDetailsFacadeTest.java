@@ -4,6 +4,9 @@ import com.engops.platform.identity.IdentityQueryService;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
+import com.engops.platform.identity.model.AppUser;
+import com.engops.platform.identity.model.MembershipRoleBinding;
+import com.engops.platform.identity.model.Role;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.Tenant;
@@ -731,6 +734,170 @@ class TenantConfigDetailsFacadeTest {
         verify(tenantConfigQueryService).listAllTopicBindings(cbId);
         verifyNoMoreInteractions(tenantConfigQueryService);
         verifyNoInteractions(identityQueryService);
+    }
+
+    // ========== getMemberships tests ==========
+
+    @Test
+    void membershipsReturnsCorrectItemListOrderedByStatusThenDisplayName() {
+        Tenant tenant = mockTenant();
+        UUID mId1 = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        UUID mId2 = UUID.fromString("aa222222-2222-2222-2222-222222222222");
+        UUID uId1 = UUID.fromString("bb111111-1111-1111-1111-111111111111");
+        UUID uId2 = UUID.fromString("bb222222-2222-2222-2222-222222222222");
+
+        Membership m1 = mock(Membership.class);
+        when(m1.getId()).thenReturn(mId1);
+        when(m1.getUserId()).thenReturn(uId1);
+        when(m1.getStatus()).thenReturn(com.engops.platform.identity.model.MembershipStatus.SUSPENDED);
+        when(m1.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-02-01T08:00:00Z"));
+
+        Membership m2 = mock(Membership.class);
+        when(m2.getId()).thenReturn(mId2);
+        when(m2.getUserId()).thenReturn(uId2);
+        when(m2.getStatus()).thenReturn(com.engops.platform.identity.model.MembershipStatus.ACTIVE);
+        when(m2.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-03-01T08:00:00Z"));
+
+        AppUser user1 = mock(AppUser.class);
+        when(user1.getTelegramUserId()).thenReturn(1001L);
+        when(user1.getDisplayName()).thenReturn("Zafar");
+        when(user1.getUsername()).thenReturn("zafar_dev");
+
+        AppUser user2 = mock(AppUser.class);
+        when(user2.getTelegramUserId()).thenReturn(1002L);
+        when(user2.getDisplayName()).thenReturn("Anvar");
+        when(user2.getUsername()).thenReturn(null);
+
+        Role adminRole = mock(Role.class);
+        when(adminRole.getName()).thenReturn("Administrator");
+        MembershipRoleBinding roleBinding = mock(MembershipRoleBinding.class);
+        when(roleBinding.getRole()).thenReturn(adminRole);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.listAllMembers(TENANT_ID)).thenReturn(List.of(m1, m2));
+        when(identityQueryService.findUserById(uId1)).thenReturn(Optional.of(user1));
+        when(identityQueryService.findUserById(uId2)).thenReturn(Optional.of(user2));
+        when(identityQueryService.getMembershipRoles(mId1)).thenReturn(List.of());
+        when(identityQueryService.getMembershipRoles(mId2)).thenReturn(List.of(roleBinding));
+
+        var result = facade.getMemberships(TENANT_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.items()).hasSize(2);
+
+        // ACTIVE birinchi (m2), SUSPENDED ikkinchi (m1)
+        var item1 = result.items().get(0);
+        assertThat(item1.membershipId()).isEqualTo(mId2);
+        assertThat(item1.userId()).isEqualTo(uId2);
+        assertThat(item1.telegramUserId()).isEqualTo(1002L);
+        assertThat(item1.displayName()).isEqualTo("Anvar");
+        assertThat(item1.username()).isNull();
+        assertThat(item1.membershipStatus()).isEqualTo("ACTIVE");
+        assertThat(item1.roleNames()).containsExactly("Administrator");
+        assertThat(item1.createdAt()).isEqualTo(java.time.Instant.parse("2026-03-01T08:00:00Z"));
+
+        var item2 = result.items().get(1);
+        assertThat(item2.membershipId()).isEqualTo(mId1);
+        assertThat(item2.userId()).isEqualTo(uId1);
+        assertThat(item2.telegramUserId()).isEqualTo(1001L);
+        assertThat(item2.displayName()).isEqualTo("Zafar");
+        assertThat(item2.username()).isEqualTo("zafar_dev");
+        assertThat(item2.membershipStatus()).isEqualTo("SUSPENDED");
+        assertThat(item2.roleNames()).isNull();
+        assertThat(item2.createdAt()).isEqualTo(java.time.Instant.parse("2026-02-01T08:00:00Z"));
+    }
+
+    @Test
+    void membershipsReturnsEmptyListWhenNoneExist() {
+        Tenant tenant = mockTenant();
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.listAllMembers(TENANT_ID)).thenReturn(List.of());
+
+        var result = facade.getMemberships(TENANT_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void membershipsThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> facade.getMemberships(TENANT_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verifyNoInteractions(identityQueryService);
+    }
+
+    @Test
+    void membershipsThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.getMemberships(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void membershipsDelegatesToBothQueryServices() {
+        Tenant tenant = mockTenant();
+        UUID mId = UUID.fromString("aa333333-3333-3333-3333-333333333333");
+        UUID uId = UUID.fromString("bb333333-3333-3333-3333-333333333333");
+
+        Membership m = mock(Membership.class);
+        when(m.getId()).thenReturn(mId);
+        when(m.getUserId()).thenReturn(uId);
+        when(m.getStatus()).thenReturn(com.engops.platform.identity.model.MembershipStatus.ACTIVE);
+        when(m.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-04-01T00:00:00Z"));
+
+        AppUser user = mock(AppUser.class);
+        when(user.getTelegramUserId()).thenReturn(9999L);
+        when(user.getDisplayName()).thenReturn("Test");
+        when(user.getUsername()).thenReturn(null);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.listAllMembers(TENANT_ID)).thenReturn(List.of(m));
+        when(identityQueryService.findUserById(uId)).thenReturn(Optional.of(user));
+        when(identityQueryService.getMembershipRoles(mId)).thenReturn(List.of());
+
+        facade.getMemberships(TENANT_ID);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verifyNoMoreInteractions(tenantConfigQueryService);
+        verify(identityQueryService).listAllMembers(TENANT_ID);
+        verify(identityQueryService).findUserById(uId);
+        verify(identityQueryService).getMembershipRoles(mId);
+        verifyNoMoreInteractions(identityQueryService);
+    }
+
+    @Test
+    void membershipsHandlesMissingUserGracefully() {
+        Tenant tenant = mockTenant();
+        UUID mId = UUID.fromString("aa444444-4444-4444-4444-444444444444");
+        UUID uId = UUID.fromString("bb444444-4444-4444-4444-444444444444");
+
+        Membership m = mock(Membership.class);
+        when(m.getId()).thenReturn(mId);
+        when(m.getUserId()).thenReturn(uId);
+        when(m.getStatus()).thenReturn(com.engops.platform.identity.model.MembershipStatus.ACTIVE);
+        when(m.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-04-01T00:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.listAllMembers(TENANT_ID)).thenReturn(List.of(m));
+        when(identityQueryService.findUserById(uId)).thenReturn(Optional.empty());
+        when(identityQueryService.getMembershipRoles(mId)).thenReturn(List.of());
+
+        var result = facade.getMemberships(TENANT_ID);
+
+        assertThat(result.items()).hasSize(1);
+        var item = result.items().get(0);
+        assertThat(item.membershipId()).isEqualTo(mId);
+        assertThat(item.telegramUserId()).isNull();
+        assertThat(item.displayName()).isNull();
+        assertThat(item.username()).isNull();
+        assertThat(item.membershipStatus()).isEqualTo("ACTIVE");
     }
 
     // ========== Helpers ==========

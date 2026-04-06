@@ -18,6 +18,7 @@ import java.util.UUID;
  * - GET /routing-rules — tenant routing qoidalari ro'yxati
  * - GET /chat-bindings — tenant Telegram chat bog'lanishlari ro'yxati
  * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
+ * - GET /memberships — tenant a'zolik ro'yxati
  *
  * Faqat GET — write operatsiya yo'q.
  *
@@ -115,6 +116,38 @@ public class TenantConfigController {
                 detailsFacade.getTopicBindings(tenantId);
 
         return ResponseEntity.ok(toTopicBindingListResponse(view));
+    }
+
+    /**
+     * Tenant a'zolik ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @return a'zoliklar ro'yxati
+     */
+    @GetMapping("/memberships")
+    public ResponseEntity<TenantConfigMembershipListResponse> getMemberships(
+            @RequestParam UUID tenantId) {
+
+        TenantConfigDetailsFacade.MembershipListView view =
+                detailsFacade.getMemberships(tenantId);
+
+        return ResponseEntity.ok(toMembershipListResponse(view));
+    }
+
+    private TenantConfigMembershipListResponse toMembershipListResponse(
+            TenantConfigDetailsFacade.MembershipListView view) {
+        List<TenantConfigMembershipListResponse.MembershipItem> items = view.items().stream()
+                .map(i -> new TenantConfigMembershipListResponse.MembershipItem(
+                        i.membershipId(),
+                        i.userId(),
+                        i.telegramUserId(),
+                        i.displayName(),
+                        i.username(),
+                        i.membershipStatus(),
+                        i.roleNames(),
+                        i.createdAt()))
+                .toList();
+        return new TenantConfigMembershipListResponse(view.tenantId(), items);
     }
 
     private TenantConfigTopicBindingListResponse toTopicBindingListResponse(

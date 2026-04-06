@@ -42,6 +42,13 @@ public class IdentityQueryService {
     }
 
     /**
+     * ID bo'yicha foydalanuvchini topadi.
+     */
+    public Optional<AppUser> findUserById(UUID userId) {
+        return appUserRepository.findById(userId);
+    }
+
+    /**
      * Telegram user ID bo'yicha foydalanuvchini topadi.
      */
     public Optional<AppUser> findUserByTelegramUserId(Long telegramUserId) {
