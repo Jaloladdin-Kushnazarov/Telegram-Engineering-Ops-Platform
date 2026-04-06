@@ -4,6 +4,7 @@ import com.engops.platform.identity.IdentityQueryService;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.Tenant;
+import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import org.springframework.stereotype.Service;
@@ -141,6 +142,58 @@ public class TenantConfigDetailsFacade {
 
         return new WorkflowDefinitionListView(tenantId, items);
     }
+
+    /**
+     * Tenant uchun barcha routing qoidalarining compact ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @return routing qoidalari ro'yxati (priority DESC, name ASC, id ASC)
+     * @throws IllegalArgumentException agar tenantId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant topilmasa
+     */
+    public RoutingRuleListView getRoutingRules(UUID tenantId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        List<RoutingRule> rules =
+                tenantConfigQueryService.listAllRoutingRules(tenantId);
+
+        List<RoutingRuleItemView> items = rules.stream()
+                .sorted(Comparator.comparingInt(RoutingRule::getPriority).reversed()
+                        .thenComparing(RoutingRule::getName)
+                        .thenComparing(RoutingRule::getId))
+                .map(r -> new RoutingRuleItemView(
+                        r.getId(),
+                        r.getName(),
+                        r.getWorkItemType(),
+                        r.getPriority(),
+                        r.getTargetTopicBindingId(),
+                        r.isActive(),
+                        r.getCreatedAt()))
+                .toList();
+
+        return new RoutingRuleListView(tenantId, items);
+    }
+
+    /**
+     * Facade natija modeli — routing qoidalari ro'yxati.
+     */
+    public record RoutingRuleListView(
+            UUID tenantId,
+            List<RoutingRuleItemView> items) {}
+
+    public record RoutingRuleItemView(
+            UUID ruleId,
+            String name,
+            String workItemType,
+            int priority,
+            UUID targetTopicBindingId,
+            boolean active,
+            Instant createdAt) {}
 
     /**
      * Facade natija modeli — workflow ta'riflari ro'yxati.

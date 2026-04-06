@@ -215,4 +215,93 @@ class TenantConfigControllerTest {
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions"))
                 .andExpect(status().isBadRequest());
     }
+
+    // ========== routing-rules endpoint ==========
+
+    @Test
+    void routingRulesReturnsCorrectStructuredResponse() throws Exception {
+        var items = List.of(
+                new TenantConfigDetailsFacade.RoutingRuleItemView(
+                        UUID.fromString("33333333-3333-3333-3333-333333333331"),
+                        "Route Bugs",
+                        "BUG",
+                        20,
+                        UUID.fromString("44444444-4444-4444-4444-444444444444"),
+                        true,
+                        Instant.parse("2026-03-01T10:00:00Z")),
+                new TenantConfigDetailsFacade.RoutingRuleItemView(
+                        UUID.fromString("33333333-3333-3333-3333-333333333332"),
+                        "Route Incidents",
+                        "INCIDENT",
+                        10,
+                        null,
+                        false,
+                        Instant.parse("2026-03-05T12:00:00Z")));
+        var view = new TenantConfigDetailsFacade.RoutingRuleListView(TENANT_ID, items);
+
+        when(detailsFacade.getRoutingRules(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].ruleId").value("33333333-3333-3333-3333-333333333331"))
+                .andExpect(jsonPath("$.items[0].name").value("Route Bugs"))
+                .andExpect(jsonPath("$.items[0].workItemType").value("BUG"))
+                .andExpect(jsonPath("$.items[0].priority").value(20))
+                .andExpect(jsonPath("$.items[0].targetTopicBindingId").value("44444444-4444-4444-4444-444444444444"))
+                .andExpect(jsonPath("$.items[0].active").value(true))
+                .andExpect(jsonPath("$.items[0].createdAt").value("2026-03-01T10:00:00Z"))
+                .andExpect(jsonPath("$.items[1].ruleId").value("33333333-3333-3333-3333-333333333332"))
+                .andExpect(jsonPath("$.items[1].name").value("Route Incidents"))
+                .andExpect(jsonPath("$.items[1].workItemType").value("INCIDENT"))
+                .andExpect(jsonPath("$.items[1].priority").value(10))
+                .andExpect(jsonPath("$.items[1].targetTopicBindingId").doesNotExist())
+                .andExpect(jsonPath("$.items[1].active").value(false));
+    }
+
+    @Test
+    void routingRulesWithEmptyListReturnsValidResponse() throws Exception {
+        var view = new TenantConfigDetailsFacade.RoutingRuleListView(
+                TENANT_ID, List.of());
+
+        when(detailsFacade.getRoutingRules(TENANT_ID)).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void routingRulesTenantNotFoundReturns404() throws Exception {
+        when(detailsFacade.getRoutingRules(TENANT_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void routingRulesInvalidTenantIdReturns400() throws Exception {
+        when(detailsFacade.getRoutingRules(TENANT_ID))
+                .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void routingRulesMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules"))
+                .andExpect(status().isBadRequest());
+    }
 }

@@ -15,6 +15,7 @@ import java.util.UUID;
  * Endpoint'lar:
  * - GET /details — tenant konfiguratsiyasining compact details view'i
  * - GET /workflow-definitions — tenant workflow ta'riflari ro'yxati
+ * - GET /routing-rules — tenant routing qoidalari ro'yxati
  *
  * Faqat GET — write operatsiya yo'q.
  *
@@ -64,6 +65,37 @@ public class TenantConfigController {
                 detailsFacade.getWorkflowDefinitions(tenantId);
 
         return ResponseEntity.ok(toWorkflowListResponse(view));
+    }
+
+    /**
+     * Tenant routing qoidalari ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @return routing qoidalari ro'yxati
+     */
+    @GetMapping("/routing-rules")
+    public ResponseEntity<TenantConfigRoutingRuleListResponse> getRoutingRules(
+            @RequestParam UUID tenantId) {
+
+        TenantConfigDetailsFacade.RoutingRuleListView view =
+                detailsFacade.getRoutingRules(tenantId);
+
+        return ResponseEntity.ok(toRoutingRuleListResponse(view));
+    }
+
+    private TenantConfigRoutingRuleListResponse toRoutingRuleListResponse(
+            TenantConfigDetailsFacade.RoutingRuleListView view) {
+        List<TenantConfigRoutingRuleListResponse.RoutingRuleItem> items = view.items().stream()
+                .map(i -> new TenantConfigRoutingRuleListResponse.RoutingRuleItem(
+                        i.ruleId(),
+                        i.name(),
+                        i.workItemType(),
+                        i.priority(),
+                        i.targetTopicBindingId(),
+                        i.active(),
+                        i.createdAt()))
+                .toList();
+        return new TenantConfigRoutingRuleListResponse(view.tenantId(), items);
     }
 
     private TenantConfigWorkflowListResponse toWorkflowListResponse(
