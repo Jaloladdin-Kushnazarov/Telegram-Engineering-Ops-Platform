@@ -78,6 +78,66 @@ public class TenantConfigWriteFacade {
     }
 
     /**
+     * Workflow definition metadata'sini PATCH yangilash uchun request boundary validatsiyasi va delegation.
+     *
+     * PATCH semantikasi:
+     * - faqat JSON'da mavjud field'lar yangilanadi
+     * - kamida bitta field berilishi kerak
+     * - name berilsa, blank bo'lmasligi kerak
+     * - description berilmasa o'zgarmaydi, null/blank berilsa tozalanadi
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @param request yangilash so'rovi
+     * @return yangilangan workflow definition view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public WorkflowDefinitionUpdatedView updateWorkflowDefinition(UUID tenantId, UUID definitionId,
+                                                                    UpdateWorkflowDefinitionRequest request) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (definitionId == null) {
+            throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (!request.isNameProvided() && !request.isDescriptionProvided()) {
+            throw new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak");
+        }
+        if (request.isNameProvided() && (request.getName() == null || request.getName().isBlank())) {
+            throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
+        }
+
+        WorkflowDefinition definition = commandService.updateWorkflowDefinition(
+                tenantId, definitionId,
+                request.getName(), request.isNameProvided(),
+                request.getDescription(), request.isDescriptionProvided());
+
+        return new WorkflowDefinitionUpdatedView(
+                definition.getTenantId(),
+                definition.getId(),
+                definition.getName(),
+                definition.getWorkItemType(),
+                definition.getDescription(),
+                definition.isActive(),
+                definition.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — yangilangan workflow definition.
+     */
+    public record WorkflowDefinitionUpdatedView(
+            UUID tenantId,
+            UUID definitionId,
+            String name,
+            String workItemType,
+            String description,
+            boolean active,
+            java.time.Instant createdAt) {}
+
+    /**
      * Facade natija modeli — yaratilgan workflow definition.
      */
     public record WorkflowDefinitionCreatedView(

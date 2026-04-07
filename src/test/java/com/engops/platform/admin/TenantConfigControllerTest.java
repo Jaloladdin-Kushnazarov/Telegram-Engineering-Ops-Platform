@@ -17,6 +17,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -812,6 +813,187 @@ class TenantConfigControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_WORKFLOW_NAME"));
+    }
+
+    // ========== PATCH /workflow-definitions/{definitionId} endpoint ==========
+
+    private static final UUID DEF_ID = UUID.fromString("22222222-2222-2222-2222-222222222221");
+
+    @Test
+    void updateWorkflowDefinitionReturns200WithUpdatedResource() throws Exception {
+        var view = new TenantConfigWriteFacade.WorkflowDefinitionUpdatedView(
+                TENANT_ID,
+                DEF_ID,
+                "Updated Flow",
+                "BUG",
+                "New description",
+                true,
+                Instant.parse("2026-04-08T10:00:00Z"));
+
+        when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
+                any(UpdateWorkflowDefinitionRequest.class))).thenReturn(view);
+
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Updated Flow","description":"New description"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.definitionId").value(DEF_ID.toString()))
+                .andExpect(jsonPath("$.name").value("Updated Flow"))
+                .andExpect(jsonPath("$.workItemType").value("BUG"))
+                .andExpect(jsonPath("$.description").value("New description"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").value("2026-04-08T10:00:00Z"));
+    }
+
+    @Test
+    void updateWorkflowDefinitionWithNullDescriptionOmitsField() throws Exception {
+        var view = new TenantConfigWriteFacade.WorkflowDefinitionUpdatedView(
+                TENANT_ID, DEF_ID, "Flow", "BUG", null, true,
+                Instant.parse("2026-04-08T10:00:00Z"));
+
+        when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
+                any(UpdateWorkflowDefinitionRequest.class))).thenReturn(view);
+
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Flow"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.description").doesNotExist());
+    }
+
+    @Test
+    void updateWorkflowDefinitionOnlyDescriptionSucceeds() throws Exception {
+        var view = new TenantConfigWriteFacade.WorkflowDefinitionUpdatedView(
+                TENANT_ID, DEF_ID, "Kept Name", "BUG", "Updated desc", true,
+                Instant.parse("2026-04-08T10:00:00Z"));
+
+        when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
+                any(UpdateWorkflowDefinitionRequest.class))).thenReturn(view);
+
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"description":"Updated desc"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Kept Name"))
+                .andExpect(jsonPath("$.description").value("Updated desc"));
+    }
+
+    @Test
+    void updateWorkflowDefinitionEmptyBodyReturns400() throws Exception {
+        when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
+                any(UpdateWorkflowDefinitionRequest.class)))
+                .thenThrow(new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak"));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void updateWorkflowDefinitionExplicitNullDescriptionClearsIt() throws Exception {
+        var view = new TenantConfigWriteFacade.WorkflowDefinitionUpdatedView(
+                TENANT_ID, DEF_ID, "Flow", "BUG", null, true,
+                Instant.parse("2026-04-08T10:00:00Z"));
+
+        when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
+                any(UpdateWorkflowDefinitionRequest.class))).thenReturn(view);
+
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"description":null}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.description").doesNotExist());
+    }
+
+    @Test
+    void updateWorkflowDefinitionMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Flow"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateWorkflowDefinitionBlankNameReturns400() throws Exception {
+        when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
+                any(UpdateWorkflowDefinitionRequest.class)))
+                .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"  "}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void updateWorkflowDefinitionTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
+                any(UpdateWorkflowDefinitionRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Flow"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void updateWorkflowDefinitionNotFoundReturns404() throws Exception {
+        when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
+                any(UpdateWorkflowDefinitionRequest.class)))
+                .thenThrow(new ResourceNotFoundException("WorkflowDefinition", DEF_ID));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Flow"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void updateWorkflowDefinitionDuplicateNameReturns422() throws Exception {
+        when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
+                any(UpdateWorkflowDefinitionRequest.class)))
+                .thenThrow(new BusinessRuleException("DUPLICATE_WORKFLOW_NAME",
+                        "Tenant ichida 'Taken' nomli workflow allaqachon mavjud"));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Taken"}
                                 """))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("DUPLICATE_WORKFLOW_NAME"));

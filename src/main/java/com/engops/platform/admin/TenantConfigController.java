@@ -3,6 +3,8 @@ package com.engops.platform.admin;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,6 +28,7 @@ import java.util.UUID;
  *
  * Write endpoint'lar:
  * - POST /workflow-definitions — yangi workflow definition yaratish
+ * - PATCH /workflow-definitions/{definitionId} — workflow definition metadata yangilash
  *
  * Bu controller thin adapter:
  * - HTTP request parametrlarini facade'ga uzatadi
@@ -177,6 +180,38 @@ public class TenantConfigController {
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toCreatedResponse(view));
+    }
+
+    /**
+     * Workflow definition metadata'sini yangilaydi (name, description).
+     *
+     * @param definitionId workflow definition identifikatori
+     * @param tenantId tenant identifikatori
+     * @param request yangilash so'rovi
+     * @return yangilangan workflow definition (200 OK)
+     */
+    @PatchMapping("/workflow-definitions/{definitionId}")
+    public ResponseEntity<TenantConfigWorkflowDefinitionCreatedResponse> updateWorkflowDefinition(
+            @PathVariable UUID definitionId,
+            @RequestParam UUID tenantId,
+            @RequestBody UpdateWorkflowDefinitionRequest request) {
+
+        TenantConfigWriteFacade.WorkflowDefinitionUpdatedView view =
+                writeFacade.updateWorkflowDefinition(tenantId, definitionId, request);
+
+        return ResponseEntity.ok(toUpdatedResponse(view));
+    }
+
+    private TenantConfigWorkflowDefinitionCreatedResponse toUpdatedResponse(
+            TenantConfigWriteFacade.WorkflowDefinitionUpdatedView view) {
+        return new TenantConfigWorkflowDefinitionCreatedResponse(
+                view.tenantId(),
+                view.definitionId(),
+                view.name(),
+                view.workItemType(),
+                view.description(),
+                view.active(),
+                view.createdAt());
     }
 
     private TenantConfigWorkflowDefinitionCreatedResponse toCreatedResponse(

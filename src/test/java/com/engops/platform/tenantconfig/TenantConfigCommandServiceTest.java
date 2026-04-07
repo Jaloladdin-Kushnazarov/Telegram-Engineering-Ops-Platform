@@ -175,4 +175,161 @@ class TenantConfigCommandServiceTest {
                 eq(null),
                 eq("Task Flow"));
     }
+
+    // ========== updateWorkflowDefinition tests ==========
+
+    @Test
+    void updateBothNameAndDescription() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222221");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Old Name", "BUG");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+        when(workflowDefinitionRepository.findByTenantIdAndName(TENANT_ID, "New Name"))
+                .thenReturn(Optional.empty());
+        when(workflowDefinitionRepository.save(any(WorkflowDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        WorkflowDefinition result = service.updateWorkflowDefinition(
+                TENANT_ID, defId, "New Name", true, "New desc", true);
+
+        assertThat(result.getName()).isEqualTo("New Name");
+        assertThat(result.getDescription()).isEqualTo("New desc");
+
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("WORKFLOW_DEFINITION"), eq(existing.getId()),
+                eq("UPDATED"), eq(null), eq("ADMIN_API"),
+                eq("Old Name"), eq("New Name | New desc"));
+    }
+
+    @Test
+    void updateOnlyDescription() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Kept Name", "BUG");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+        when(workflowDefinitionRepository.save(any(WorkflowDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        WorkflowDefinition result = service.updateWorkflowDefinition(
+                TENANT_ID, defId, null, false, "New desc", true);
+
+        assertThat(result.getName()).isEqualTo("Kept Name");
+        assertThat(result.getDescription()).isEqualTo("New desc");
+
+        verify(workflowDefinitionRepository, never()).findByTenantIdAndName(any(), any());
+    }
+
+    @Test
+    void updateOnlyName() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222223");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Old Name", "BUG");
+        existing.setDescription("Kept desc");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+        when(workflowDefinitionRepository.findByTenantIdAndName(TENANT_ID, "New Name"))
+                .thenReturn(Optional.empty());
+        when(workflowDefinitionRepository.save(any(WorkflowDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        WorkflowDefinition result = service.updateWorkflowDefinition(
+                TENANT_ID, defId, "New Name", true, null, false);
+
+        assertThat(result.getName()).isEqualTo("New Name");
+        assertThat(result.getDescription()).isEqualTo("Kept desc");
+    }
+
+    @Test
+    void updateClearsDescriptionWhenExplicitNull() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222224");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Flow", "BUG");
+        existing.setDescription("Old desc");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+        when(workflowDefinitionRepository.save(any(WorkflowDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        WorkflowDefinition result = service.updateWorkflowDefinition(
+                TENANT_ID, defId, null, false, null, true);
+
+        assertThat(result.getDescription()).isNull();
+    }
+
+    @Test
+    void updateUnchangedNameSkipsDuplicateCheck() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222225");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Same Name", "BUG");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+        when(workflowDefinitionRepository.save(any(WorkflowDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.updateWorkflowDefinition(
+                TENANT_ID, defId, "Same Name", true, null, false);
+
+        verify(workflowDefinitionRepository, never()).findByTenantIdAndName(any(), any());
+    }
+
+    @Test
+    void updateThrowsResourceNotFoundWhenTenantMissing() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222226");
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateWorkflowDefinition(
+                TENANT_ID, defId, "Name", true, null, false))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void updateThrowsResourceNotFoundWhenDefinitionMissing() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222227");
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateWorkflowDefinition(
+                TENANT_ID, defId, "Name", true, null, false))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void updateThrowsBusinessRuleForDuplicateName() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222228");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Old Name", "BUG");
+        WorkflowDefinition duplicate = mock(WorkflowDefinition.class);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+        when(workflowDefinitionRepository.findByTenantIdAndName(TENANT_ID, "Taken Name"))
+                .thenReturn(Optional.of(duplicate));
+
+        assertThatThrownBy(() -> service.updateWorkflowDefinition(
+                TENANT_ID, defId, "Taken Name", true, null, false))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Taken Name");
+
+        verify(workflowDefinitionRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
 }

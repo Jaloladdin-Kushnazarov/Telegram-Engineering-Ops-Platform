@@ -87,6 +87,75 @@ public class TenantConfigCommandService {
     }
 
     /**
+     * Workflow definition metadata'sini partial yangilaydi (PATCH semantikasi).
+     *
+     * Faqat provided=true field'lar yangilanadi:
+     * - nameProvided=false → nom o'zgarmaydi
+     * - nameProvided=true → yangi nom o'rnatiladi, duplicate check bajariladi
+     * - descriptionProvided=false → tavsif o'zgarmaydi
+     * - descriptionProvided=true, description null/blank → tavsif tozalanadi
+     * - descriptionProvided=true, description non-blank → tavsif yangilanadi
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @param name yangi nom (faqat nameProvided=true bo'lganda ishlatiladi)
+     * @param nameProvided name field JSON'da berilganmi
+     * @param description yangi tavsif (faqat descriptionProvided=true bo'lganda ishlatiladi)
+     * @param descriptionProvided description field JSON'da berilganmi
+     * @return yangilangan WorkflowDefinition
+     * @throws ResourceNotFoundException agar tenant yoki workflow definition topilmasa
+     * @throws BusinessRuleException agar shu nomli workflow allaqachon mavjud bo'lsa
+     */
+    public WorkflowDefinition updateWorkflowDefinition(UUID tenantId, UUID definitionId,
+                                                         String name, boolean nameProvided,
+                                                         String description, boolean descriptionProvided) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        WorkflowDefinition definition = workflowDefinitionRepository.findByTenantIdAndId(tenantId, definitionId)
+                .orElseThrow(() -> new ResourceNotFoundException("WorkflowDefinition", definitionId));
+
+        String oldName = definition.getName();
+        String oldDescription = definition.getDescription();
+
+        if (nameProvided) {
+            if (!name.equals(definition.getName())) {
+                workflowDefinitionRepository.findByTenantIdAndName(tenantId, name)
+                        .ifPresent(existing -> {
+                            throw new BusinessRuleException("DUPLICATE_WORKFLOW_NAME",
+                                    "Tenant ichida '" + name + "' nomli workflow allaqachon mavjud");
+                        });
+            }
+            definition.setName(name);
+        }
+
+        if (descriptionProvided) {
+            definition.setDescription(description != null && !description.isBlank() ? description : null);
+        }
+
+        try {
+            definition = workflowDefinitionRepository.save(definition);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateNameConstraint(ex)) {
+                String failedName = nameProvided ? name : definition.getName();
+                throw new BusinessRuleException("DUPLICATE_WORKFLOW_NAME",
+                        "Tenant ichida '" + failedName + "' nomli workflow allaqachon mavjud");
+            }
+            throw ex;
+        }
+
+        String newName = definition.getName();
+        String newDescription = definition.getDescription();
+        String oldValue = oldName + (oldDescription != null ? " | " + oldDescription : "");
+        String newValue = newName + (newDescription != null ? " | " + newDescription : "");
+
+        auditService.recordEvent(tenantId, "WORKFLOW_DEFINITION", definition.getId(),
+                "UPDATED", null, "ADMIN_API", oldValue, newValue);
+
+        return definition;
+    }
+
+    /**
      * DataIntegrityViolationException workflow_definition (tenant_id, name) unique
      * constraint violation ekanligini tekshiradi.
      *
