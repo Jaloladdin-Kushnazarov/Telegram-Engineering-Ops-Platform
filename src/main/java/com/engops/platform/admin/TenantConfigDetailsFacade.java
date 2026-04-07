@@ -251,6 +251,8 @@ public class TenantConfigDetailsFacade {
     /**
      * Tenant uchun barcha workflow ta'riflarining compact ro'yxatini qaytaradi.
      *
+     * Ordering: name ASC -> id ASC
+     *
      * @param tenantId tenant identifikatori
      * @return workflow ta'riflari ro'yxati
      * @throws IllegalArgumentException agar tenantId null bo'lsa
@@ -285,8 +287,10 @@ public class TenantConfigDetailsFacade {
     /**
      * Tenant uchun barcha routing qoidalarining compact ro'yxatini qaytaradi.
      *
+     * Ordering: priority DESC -> name ASC -> id ASC
+     *
      * @param tenantId tenant identifikatori
-     * @return routing qoidalari ro'yxati (priority DESC, name ASC, id ASC)
+     * @return routing qoidalari ro'yxati
      * @throws IllegalArgumentException agar tenantId null bo'lsa
      * @throws ResourceNotFoundException agar tenant topilmasa
      */
