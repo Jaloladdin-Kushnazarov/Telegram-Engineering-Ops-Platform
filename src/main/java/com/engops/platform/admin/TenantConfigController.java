@@ -29,6 +29,8 @@ import java.util.UUID;
  * Write endpoint'lar:
  * - POST /workflow-definitions — yangi workflow definition yaratish
  * - PATCH /workflow-definitions/{definitionId} — workflow definition metadata yangilash
+ * - POST /workflow-definitions/{definitionId}/activate — workflow definition aktivlashtirish
+ * - POST /workflow-definitions/{definitionId}/deactivate — workflow definition deaktivlashtirish
  *
  * Bu controller thin adapter:
  * - HTTP request parametrlarini facade'ga uzatadi
@@ -198,6 +200,42 @@ public class TenantConfigController {
 
         TenantConfigWriteFacade.WorkflowDefinitionUpdatedView view =
                 writeFacade.updateWorkflowDefinition(tenantId, definitionId, request);
+
+        return ResponseEntity.ok(toUpdatedResponse(view));
+    }
+
+    /**
+     * Workflow definition'ni aktiv holatga o'tkazadi.
+     *
+     * @param definitionId workflow definition identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan workflow definition (200 OK)
+     */
+    @PostMapping("/workflow-definitions/{definitionId}/activate")
+    public ResponseEntity<TenantConfigWorkflowDefinitionCreatedResponse> activateWorkflowDefinition(
+            @PathVariable UUID definitionId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.WorkflowDefinitionUpdatedView view =
+                writeFacade.activateWorkflowDefinition(tenantId, definitionId);
+
+        return ResponseEntity.ok(toUpdatedResponse(view));
+    }
+
+    /**
+     * Workflow definition'ni noaktiv holatga o'tkazadi.
+     *
+     * @param definitionId workflow definition identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan workflow definition (200 OK)
+     */
+    @PostMapping("/workflow-definitions/{definitionId}/deactivate")
+    public ResponseEntity<TenantConfigWorkflowDefinitionCreatedResponse> deactivateWorkflowDefinition(
+            @PathVariable UUID definitionId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.WorkflowDefinitionUpdatedView view =
+                writeFacade.deactivateWorkflowDefinition(tenantId, definitionId);
 
         return ResponseEntity.ok(toUpdatedResponse(view));
     }

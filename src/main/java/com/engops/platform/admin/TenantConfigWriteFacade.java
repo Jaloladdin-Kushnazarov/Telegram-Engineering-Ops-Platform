@@ -126,6 +126,57 @@ public class TenantConfigWriteFacade {
     }
 
     /**
+     * Workflow definition'ni aktiv holatga o'tkazadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @return yangilangan workflow definition view
+     * @throws IllegalArgumentException tenantId yoki definitionId null bo'lsa
+     */
+    public WorkflowDefinitionUpdatedView activateWorkflowDefinition(UUID tenantId, UUID definitionId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (definitionId == null) {
+            throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
+        }
+
+        WorkflowDefinition definition = commandService.activateWorkflowDefinition(tenantId, definitionId);
+        return toUpdatedView(definition);
+    }
+
+    /**
+     * Workflow definition'ni noaktiv holatga o'tkazadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @return yangilangan workflow definition view
+     * @throws IllegalArgumentException tenantId yoki definitionId null bo'lsa
+     */
+    public WorkflowDefinitionUpdatedView deactivateWorkflowDefinition(UUID tenantId, UUID definitionId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (definitionId == null) {
+            throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
+        }
+
+        WorkflowDefinition definition = commandService.deactivateWorkflowDefinition(tenantId, definitionId);
+        return toUpdatedView(definition);
+    }
+
+    private WorkflowDefinitionUpdatedView toUpdatedView(WorkflowDefinition definition) {
+        return new WorkflowDefinitionUpdatedView(
+                definition.getTenantId(),
+                definition.getId(),
+                definition.getName(),
+                definition.getWorkItemType(),
+                definition.getDescription(),
+                definition.isActive(),
+                definition.getCreatedAt());
+    }
+
+    /**
      * Facade natija modeli — yangilangan workflow definition.
      */
     public record WorkflowDefinitionUpdatedView(

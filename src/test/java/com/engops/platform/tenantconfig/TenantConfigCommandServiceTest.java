@@ -332,4 +332,136 @@ class TenantConfigCommandServiceTest {
         verify(workflowDefinitionRepository, never()).save(any());
         verifyNoInteractions(auditService);
     }
+
+    // ========== activateWorkflowDefinition tests ==========
+
+    @Test
+    void activateWorkflowDefinitionSuccess() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222231");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Flow", "BUG");
+        existing.setActive(false);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+        when(workflowDefinitionRepository.save(any(WorkflowDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        WorkflowDefinition result = service.activateWorkflowDefinition(TENANT_ID, defId);
+
+        assertThat(result.isActive()).isTrue();
+        verify(workflowDefinitionRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("WORKFLOW_DEFINITION"), eq(existing.getId()),
+                eq("ACTIVATED"), eq(null), eq("ADMIN_API"), eq("false"), eq("true"));
+    }
+
+    @Test
+    void activateAlreadyActiveIsIdempotent() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222232");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Flow", "BUG");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+
+        WorkflowDefinition result = service.activateWorkflowDefinition(TENANT_ID, defId);
+
+        assertThat(result.isActive()).isTrue();
+        verify(workflowDefinitionRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void activateThrowsResourceNotFoundWhenTenantMissing() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222233");
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.activateWorkflowDefinition(TENANT_ID, defId))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void activateThrowsResourceNotFoundWhenDefinitionMissing() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222234");
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.activateWorkflowDefinition(TENANT_ID, defId))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    // ========== deactivateWorkflowDefinition tests ==========
+
+    @Test
+    void deactivateWorkflowDefinitionSuccess() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222241");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Flow", "BUG");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+        when(workflowDefinitionRepository.save(any(WorkflowDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        WorkflowDefinition result = service.deactivateWorkflowDefinition(TENANT_ID, defId);
+
+        assertThat(result.isActive()).isFalse();
+        verify(workflowDefinitionRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("WORKFLOW_DEFINITION"), eq(existing.getId()),
+                eq("DEACTIVATED"), eq(null), eq("ADMIN_API"), eq("true"), eq("false"));
+    }
+
+    @Test
+    void deactivateAlreadyInactiveIsIdempotent() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222242");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Flow", "BUG");
+        existing.setActive(false);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+
+        WorkflowDefinition result = service.deactivateWorkflowDefinition(TENANT_ID, defId);
+
+        assertThat(result.isActive()).isFalse();
+        verify(workflowDefinitionRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deactivateThrowsResourceNotFoundWhenTenantMissing() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222243");
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deactivateWorkflowDefinition(TENANT_ID, defId))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deactivateThrowsResourceNotFoundWhenDefinitionMissing() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222244");
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deactivateWorkflowDefinition(TENANT_ID, defId))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
 }

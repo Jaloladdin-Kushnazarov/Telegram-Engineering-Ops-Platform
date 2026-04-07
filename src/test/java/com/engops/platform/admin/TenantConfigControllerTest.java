@@ -998,4 +998,94 @@ class TenantConfigControllerTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("DUPLICATE_WORKFLOW_NAME"));
     }
+
+    // ========== POST /workflow-definitions/{definitionId}/activate endpoint ==========
+
+    @Test
+    void activateWorkflowDefinitionReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.WorkflowDefinitionUpdatedView(
+                TENANT_ID, DEF_ID, "Flow", "BUG", null, true,
+                Instant.parse("2026-04-08T10:00:00Z"));
+
+        when(writeFacade.activateWorkflowDefinition(TENANT_ID, DEF_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.definitionId").value(DEF_ID.toString()))
+                .andExpect(jsonPath("$.active").value(true));
+    }
+
+    @Test
+    void activateWorkflowDefinitionMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void activateWorkflowDefinitionTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.activateWorkflowDefinition(TENANT_ID, DEF_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void activateWorkflowDefinitionNotFoundReturns404() throws Exception {
+        when(writeFacade.activateWorkflowDefinition(TENANT_ID, DEF_ID))
+                .thenThrow(new ResourceNotFoundException("WorkflowDefinition", DEF_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    // ========== POST /workflow-definitions/{definitionId}/deactivate endpoint ==========
+
+    @Test
+    void deactivateWorkflowDefinitionReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.WorkflowDefinitionUpdatedView(
+                TENANT_ID, DEF_ID, "Flow", "BUG", null, false,
+                Instant.parse("2026-04-08T10:00:00Z"));
+
+        when(writeFacade.deactivateWorkflowDefinition(TENANT_ID, DEF_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.definitionId").value(DEF_ID.toString()))
+                .andExpect(jsonPath("$.active").value(false));
+    }
+
+    @Test
+    void deactivateWorkflowDefinitionMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deactivateWorkflowDefinitionTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.deactivateWorkflowDefinition(TENANT_ID, DEF_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void deactivateWorkflowDefinitionNotFoundReturns404() throws Exception {
+        when(writeFacade.deactivateWorkflowDefinition(TENANT_ID, DEF_ID))
+                .thenThrow(new ResourceNotFoundException("WorkflowDefinition", DEF_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
 }

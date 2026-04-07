@@ -308,4 +308,73 @@ class TenantConfigWriteFacadeTest {
                 eq(TENANT_ID), eq(DEF_ID),
                 eq(null), eq(false), eq(null), eq(true));
     }
+
+    // ========== activateWorkflowDefinition tests ==========
+
+    @Test
+    void activateThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.activateWorkflowDefinition(null, DEF_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void activateThrowsIllegalArgumentWhenDefinitionIdNull() {
+        assertThatThrownBy(() -> facade.activateWorkflowDefinition(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("definitionId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void activateDelegatesToCommandService() {
+        WorkflowDefinition definition = new WorkflowDefinition(TENANT_ID, "Flow", "BUG");
+
+        when(commandService.activateWorkflowDefinition(TENANT_ID, DEF_ID))
+                .thenReturn(definition);
+
+        var result = facade.activateWorkflowDefinition(TENANT_ID, DEF_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.active()).isTrue();
+        verify(commandService).activateWorkflowDefinition(TENANT_ID, DEF_ID);
+    }
+
+    // ========== deactivateWorkflowDefinition tests ==========
+
+    @Test
+    void deactivateThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.deactivateWorkflowDefinition(null, DEF_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deactivateThrowsIllegalArgumentWhenDefinitionIdNull() {
+        assertThatThrownBy(() -> facade.deactivateWorkflowDefinition(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("definitionId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deactivateDelegatesToCommandService() {
+        WorkflowDefinition definition = new WorkflowDefinition(TENANT_ID, "Flow", "BUG");
+        definition.setActive(false);
+
+        when(commandService.deactivateWorkflowDefinition(TENANT_ID, DEF_ID))
+                .thenReturn(definition);
+
+        var result = facade.deactivateWorkflowDefinition(TENANT_ID, DEF_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.active()).isFalse();
+        verify(commandService).deactivateWorkflowDefinition(TENANT_ID, DEF_ID);
+    }
 }

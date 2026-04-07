@@ -156,6 +156,66 @@ public class TenantConfigCommandService {
     }
 
     /**
+     * Workflow definition'ni aktiv holatga o'tkazadi.
+     *
+     * Idempotent: allaqachon aktiv bo'lsa, hech narsa o'zgarmaydi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @return yangilangan WorkflowDefinition
+     * @throws ResourceNotFoundException agar tenant yoki workflow definition topilmasa
+     */
+    public WorkflowDefinition activateWorkflowDefinition(UUID tenantId, UUID definitionId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        WorkflowDefinition definition = workflowDefinitionRepository.findByTenantIdAndId(tenantId, definitionId)
+                .orElseThrow(() -> new ResourceNotFoundException("WorkflowDefinition", definitionId));
+
+        if (definition.isActive()) {
+            return definition;
+        }
+
+        definition.setActive(true);
+        definition = workflowDefinitionRepository.save(definition);
+
+        auditService.recordEvent(tenantId, "WORKFLOW_DEFINITION", definition.getId(),
+                "ACTIVATED", null, "ADMIN_API", "false", "true");
+
+        return definition;
+    }
+
+    /**
+     * Workflow definition'ni noaktiv holatga o'tkazadi.
+     *
+     * Idempotent: allaqachon noaktiv bo'lsa, hech narsa o'zgarmaydi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @return yangilangan WorkflowDefinition
+     * @throws ResourceNotFoundException agar tenant yoki workflow definition topilmasa
+     */
+    public WorkflowDefinition deactivateWorkflowDefinition(UUID tenantId, UUID definitionId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        WorkflowDefinition definition = workflowDefinitionRepository.findByTenantIdAndId(tenantId, definitionId)
+                .orElseThrow(() -> new ResourceNotFoundException("WorkflowDefinition", definitionId));
+
+        if (!definition.isActive()) {
+            return definition;
+        }
+
+        definition.setActive(false);
+        definition = workflowDefinitionRepository.save(definition);
+
+        auditService.recordEvent(tenantId, "WORKFLOW_DEFINITION", definition.getId(),
+                "DEACTIVATED", null, "ADMIN_API", "true", "false");
+
+        return definition;
+    }
+
+    /**
      * DataIntegrityViolationException workflow_definition (tenant_id, name) unique
      * constraint violation ekanligini tekshiradi.
      *
