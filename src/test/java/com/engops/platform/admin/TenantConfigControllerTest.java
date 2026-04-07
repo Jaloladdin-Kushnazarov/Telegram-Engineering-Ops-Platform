@@ -1,18 +1,23 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
@@ -34,6 +39,9 @@ class TenantConfigControllerTest {
 
     @MockBean
     private TenantConfigDetailsFacade detailsFacade;
+
+    @MockBean
+    private TenantConfigWriteFacade writeFacade;
 
     @Test
     void detailsReturnsCorrectStructuredResponse() throws Exception {
@@ -662,5 +670,150 @@ class TenantConfigControllerTest {
     void rolesMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/roles"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ========== POST /workflow-definitions endpoint ==========
+
+    @Test
+    void createWorkflowDefinitionReturns201WithCreatedResource() throws Exception {
+        var view = new TenantConfigWriteFacade.WorkflowDefinitionCreatedView(
+                TENANT_ID,
+                UUID.fromString("22222222-2222-2222-2222-222222222221"),
+                "Bug Flow",
+                "BUG",
+                "Bug workflow",
+                true,
+                Instant.parse("2026-04-08T10:00:00Z"));
+
+        when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
+                any(CreateWorkflowDefinitionRequest.class))).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Bug Flow","workItemType":"BUG","description":"Bug workflow"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.definitionId").value("22222222-2222-2222-2222-222222222221"))
+                .andExpect(jsonPath("$.name").value("Bug Flow"))
+                .andExpect(jsonPath("$.workItemType").value("BUG"))
+                .andExpect(jsonPath("$.description").value("Bug workflow"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").value("2026-04-08T10:00:00Z"));
+    }
+
+    @Test
+    void createWorkflowDefinitionWithNullDescriptionOmitsField() throws Exception {
+        var view = new TenantConfigWriteFacade.WorkflowDefinitionCreatedView(
+                TENANT_ID,
+                UUID.fromString("22222222-2222-2222-2222-222222222222"),
+                "Incident Flow",
+                "INCIDENT",
+                null,
+                true,
+                Instant.parse("2026-04-08T10:00:00Z"));
+
+        when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
+                any(CreateWorkflowDefinitionRequest.class))).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Incident Flow","workItemType":"INCIDENT"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.description").doesNotExist());
+    }
+
+    @Test
+    void createWorkflowDefinitionMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Bug Flow","workItemType":"BUG"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createWorkflowDefinitionInvalidNameReturns400() throws Exception {
+        when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
+                any(CreateWorkflowDefinitionRequest.class)))
+                .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"","workItemType":"BUG"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createWorkflowDefinitionInvalidWorkItemTypeReturns400() throws Exception {
+        when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
+                any(CreateWorkflowDefinitionRequest.class)))
+                .thenThrow(new IllegalArgumentException(
+                        "workItemType faqat BUG, INCIDENT, TASK bo'lishi mumkin: FEATURE"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Bug Flow","workItemType":"FEATURE"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createWorkflowDefinitionTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
+                any(CreateWorkflowDefinitionRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Bug Flow","workItemType":"BUG"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void createWorkflowDefinitionEmptyBodyReturns400() throws Exception {
+        when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
+                any(CreateWorkflowDefinitionRequest.class)))
+                .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createWorkflowDefinitionDuplicateNameReturns422() throws Exception {
+        when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
+                any(CreateWorkflowDefinitionRequest.class)))
+                .thenThrow(new BusinessRuleException("DUPLICATE_WORKFLOW_NAME",
+                        "Tenant ichida 'Bug Flow' nomli workflow allaqachon mavjud"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Bug Flow","workItemType":"BUG"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_WORKFLOW_NAME"));
     }
 }

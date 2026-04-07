@@ -1,7 +1,10 @@
 package com.engops.platform.admin;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -10,9 +13,9 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Tenant konfiguratsiyasi uchun read-only admin endpoint'lar.
+ * Tenant konfiguratsiyasi uchun admin endpoint'lar.
  *
- * Endpoint'lar:
+ * Read endpoint'lar:
  * - GET /details — tenant konfiguratsiyasining compact details view'i
  * - GET /workflow-definitions — tenant workflow ta'riflari ro'yxati
  * - GET /routing-rules — tenant routing qoidalari ro'yxati
@@ -21,22 +24,26 @@ import java.util.UUID;
  * - GET /memberships — tenant a'zolik ro'yxati
  * - GET /roles — global rol katalogi ro'yxati
  *
- * Faqat GET — write operatsiya yo'q.
+ * Write endpoint'lar:
+ * - POST /workflow-definitions — yangi workflow definition yaratish
  *
  * Bu controller thin adapter:
  * - HTTP request parametrlarini facade'ga uzatadi
  * - Facade natijasini response DTO'ga map qiladi
- * - ResourceNotFoundException (404) va IllegalArgumentException (400)
- *   GlobalExceptionHandler tomonidan qayta ishlanadi
+ * - ResourceNotFoundException (404), IllegalArgumentException (400),
+ *   BusinessRuleException (422) GlobalExceptionHandler tomonidan qayta ishlanadi
  */
 @RestController
 @RequestMapping("/api/admin/tenant-config")
 public class TenantConfigController {
 
     private final TenantConfigDetailsFacade detailsFacade;
+    private final TenantConfigWriteFacade writeFacade;
 
-    public TenantConfigController(TenantConfigDetailsFacade detailsFacade) {
+    public TenantConfigController(TenantConfigDetailsFacade detailsFacade,
+                                   TenantConfigWriteFacade writeFacade) {
         this.detailsFacade = detailsFacade;
+        this.writeFacade = writeFacade;
     }
 
     /**
@@ -150,6 +157,41 @@ public class TenantConfigController {
 
         return ResponseEntity.ok(toRoleListResponse(view));
     }
+
+    // ========== Write endpoint'lar ==========
+
+    /**
+     * Yangi workflow definition yaratadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan workflow definition (201 Created)
+     */
+    @PostMapping("/workflow-definitions")
+    public ResponseEntity<TenantConfigWorkflowDefinitionCreatedResponse> createWorkflowDefinition(
+            @RequestParam UUID tenantId,
+            @RequestBody CreateWorkflowDefinitionRequest request) {
+
+        TenantConfigWriteFacade.WorkflowDefinitionCreatedView view =
+                writeFacade.createWorkflowDefinition(tenantId, request);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(toCreatedResponse(view));
+    }
+
+    private TenantConfigWorkflowDefinitionCreatedResponse toCreatedResponse(
+            TenantConfigWriteFacade.WorkflowDefinitionCreatedView view) {
+        return new TenantConfigWorkflowDefinitionCreatedResponse(
+                view.tenantId(),
+                view.definitionId(),
+                view.name(),
+                view.workItemType(),
+                view.description(),
+                view.active(),
+                view.createdAt());
+    }
+
+    // ========== Read response mapping ==========
 
     private TenantConfigRoleListResponse toRoleListResponse(
             TenantConfigDetailsFacade.RoleListView view) {
