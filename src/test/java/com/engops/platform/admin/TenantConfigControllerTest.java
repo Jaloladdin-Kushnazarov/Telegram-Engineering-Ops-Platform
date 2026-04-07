@@ -1088,4 +1088,142 @@ class TenantConfigControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
+
+    // ========== POST /routing-rules endpoint ==========
+
+    @Test
+    void createRoutingRuleReturns201WithCreatedResource() throws Exception {
+        UUID topicBindingId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        var view = new TenantConfigWriteFacade.RoutingRuleCreatedView(
+                TENANT_ID,
+                UUID.fromString("33333333-3333-3333-3333-333333333331"),
+                "Route Bugs",
+                "BUG",
+                10,
+                topicBindingId,
+                true,
+                Instant.parse("2026-04-08T12:00:00Z"));
+
+        when(writeFacade.createRoutingRule(eq(TENANT_ID),
+                any(CreateRoutingRuleRequest.class))).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Route Bugs","workItemType":"BUG","priority":10,
+                                 "targetTopicBindingId":"44444444-4444-4444-4444-444444444444"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.ruleId").value("33333333-3333-3333-3333-333333333331"))
+                .andExpect(jsonPath("$.name").value("Route Bugs"))
+                .andExpect(jsonPath("$.workItemType").value("BUG"))
+                .andExpect(jsonPath("$.priority").value(10))
+                .andExpect(jsonPath("$.targetTopicBindingId").value(topicBindingId.toString()))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").value("2026-04-08T12:00:00Z"));
+    }
+
+    @Test
+    void createRoutingRuleWithNullTopicBindingOmitsField() throws Exception {
+        var view = new TenantConfigWriteFacade.RoutingRuleCreatedView(
+                TENANT_ID,
+                UUID.fromString("33333333-3333-3333-3333-333333333332"),
+                "Catch All",
+                "INCIDENT",
+                5,
+                null,
+                true,
+                Instant.parse("2026-04-08T12:00:00Z"));
+
+        when(writeFacade.createRoutingRule(eq(TENANT_ID),
+                any(CreateRoutingRuleRequest.class))).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Catch All","workItemType":"INCIDENT","priority":5}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.targetTopicBindingId").doesNotExist());
+    }
+
+    @Test
+    void createRoutingRuleMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Rule","workItemType":"BUG","priority":10}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createRoutingRuleInvalidNameReturns400() throws Exception {
+        when(writeFacade.createRoutingRule(eq(TENANT_ID),
+                any(CreateRoutingRuleRequest.class)))
+                .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"","workItemType":"BUG","priority":10}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createRoutingRuleInvalidWorkItemTypeReturns400() throws Exception {
+        when(writeFacade.createRoutingRule(eq(TENANT_ID),
+                any(CreateRoutingRuleRequest.class)))
+                .thenThrow(new IllegalArgumentException(
+                        "workItemType faqat BUG, INCIDENT, TASK bo'lishi mumkin: FEATURE"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Rule","workItemType":"FEATURE","priority":10}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createRoutingRuleTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.createRoutingRule(eq(TENANT_ID),
+                any(CreateRoutingRuleRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Rule","workItemType":"BUG","priority":10}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void createRoutingRuleInvalidTopicBindingReturns422() throws Exception {
+        when(writeFacade.createRoutingRule(eq(TENANT_ID),
+                any(CreateRoutingRuleRequest.class)))
+                .thenThrow(new BusinessRuleException("INVALID_TOPIC_BINDING",
+                        "Topic binding topilmadi yoki shu tenantga tegishli emas"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Rule","workItemType":"BUG","priority":10,
+                                 "targetTopicBindingId":"44444444-4444-4444-4444-444444444445"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_TOPIC_BINDING"));
+    }
 }

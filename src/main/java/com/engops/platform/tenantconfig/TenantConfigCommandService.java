@@ -3,7 +3,10 @@ package com.engops.platform.tenantconfig;
 import com.engops.platform.audit.AuditService;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
+import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
+import com.engops.platform.tenantconfig.repository.RoutingRuleRepository;
+import com.engops.platform.tenantconfig.repository.TelegramTopicBindingRepository;
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -29,13 +32,19 @@ public class TenantConfigCommandService {
 
     private final TenantRepository tenantRepository;
     private final WorkflowDefinitionRepository workflowDefinitionRepository;
+    private final RoutingRuleRepository routingRuleRepository;
+    private final TelegramTopicBindingRepository telegramTopicBindingRepository;
     private final AuditService auditService;
 
     public TenantConfigCommandService(TenantRepository tenantRepository,
                                        WorkflowDefinitionRepository workflowDefinitionRepository,
+                                       RoutingRuleRepository routingRuleRepository,
+                                       TelegramTopicBindingRepository telegramTopicBindingRepository,
                                        AuditService auditService) {
         this.tenantRepository = tenantRepository;
         this.workflowDefinitionRepository = workflowDefinitionRepository;
+        this.routingRuleRepository = routingRuleRepository;
+        this.telegramTopicBindingRepository = telegramTopicBindingRepository;
         this.auditService = auditService;
     }
 
@@ -213,6 +222,52 @@ public class TenantConfigCommandService {
                 "DEACTIVATED", null, "ADMIN_API", "true", "false");
 
         return definition;
+    }
+
+    // ========== RoutingRule operations ==========
+
+    /**
+     * Yangi routing rule yaratadi.
+     *
+     * Validatsiyalar:
+     * 1. Tenant mavjud bo'lishi kerak
+     * 2. targetTopicBindingId berilsa, topic binding mavjud va shu tenantga tegishli bo'lishi kerak
+     *
+     * @param tenantId tenant identifikatori
+     * @param name rule nomi
+     * @param workItemType work item turi (BUG, INCIDENT, TASK)
+     * @param priority rule prioriteti
+     * @param targetTopicBindingId target topic binding (nullable)
+     * @param conditionExpression shart ifodasi (nullable)
+     * @return yaratilgan RoutingRule
+     * @throws ResourceNotFoundException agar tenant yoki topic binding topilmasa
+     */
+    public RoutingRule createRoutingRule(UUID tenantId, String name, String workItemType,
+                                         int priority, UUID targetTopicBindingId,
+                                         String conditionExpression) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        if (targetTopicBindingId != null) {
+            telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(targetTopicBindingId, tenantId)
+                    .orElseThrow(() -> new BusinessRuleException("INVALID_TOPIC_BINDING",
+                            "Topic binding (id=" + targetTopicBindingId
+                                    + ") topilmadi yoki shu tenantga tegishli emas"));
+        }
+
+        RoutingRule rule = new RoutingRule(tenantId, name, workItemType);
+        rule.setPriority(priority);
+        rule.setTargetTopicBindingId(targetTopicBindingId);
+        if (conditionExpression != null && !conditionExpression.isBlank()) {
+            rule.setConditionExpression(conditionExpression);
+        }
+
+        rule = routingRuleRepository.save(rule);
+
+        auditService.recordEvent(tenantId, "ROUTING_RULE", rule.getId(),
+                "CREATED", null, "ADMIN_API", null, name);
+
+        return rule;
     }
 
     /**

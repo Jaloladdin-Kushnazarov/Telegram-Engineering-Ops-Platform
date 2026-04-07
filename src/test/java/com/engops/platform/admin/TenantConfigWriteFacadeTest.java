@@ -1,6 +1,7 @@
 package com.engops.platform.admin;
 
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
+import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import org.junit.jupiter.api.Test;
 
@@ -376,5 +377,76 @@ class TenantConfigWriteFacadeTest {
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.active()).isFalse();
         verify(commandService).deactivateWorkflowDefinition(TENANT_ID, DEF_ID);
+    }
+
+    // ========== createRoutingRule tests ==========
+
+    @Test
+    void createRoutingRuleThrowsIllegalArgumentWhenTenantIdNull() {
+        var request = new CreateRoutingRuleRequest("Rule", "BUG", 10, null, null);
+
+        assertThatThrownBy(() -> facade.createRoutingRule(null, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createRoutingRuleThrowsIllegalArgumentWhenRequestNull() {
+        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createRoutingRuleThrowsIllegalArgumentWhenNameBlank() {
+        var request = new CreateRoutingRuleRequest("  ", "BUG", 10, null, null);
+
+        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createRoutingRuleThrowsIllegalArgumentWhenWorkItemTypeInvalid() {
+        var request = new CreateRoutingRuleRequest("Rule", "FEATURE", 10, null, null);
+
+        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("workItemType");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createRoutingRuleDelegatesToCommandService() {
+        UUID topicBindingId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        var request = new CreateRoutingRuleRequest("Route Bugs", "BUG", 10, topicBindingId, null);
+
+        RoutingRule rule = new RoutingRule(TENANT_ID, "Route Bugs", "BUG");
+        rule.setPriority(10);
+        rule.setTargetTopicBindingId(topicBindingId);
+
+        when(commandService.createRoutingRule(
+                TENANT_ID, "Route Bugs", "BUG", 10, topicBindingId, null))
+                .thenReturn(rule);
+
+        var result = facade.createRoutingRule(TENANT_ID, request);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.ruleId()).isEqualTo(rule.getId());
+        assertThat(result.name()).isEqualTo("Route Bugs");
+        assertThat(result.workItemType()).isEqualTo("BUG");
+        assertThat(result.priority()).isEqualTo(10);
+        assertThat(result.targetTopicBindingId()).isEqualTo(topicBindingId);
+        assertThat(result.active()).isTrue();
+
+        verify(commandService).createRoutingRule(
+                TENANT_ID, "Route Bugs", "BUG", 10, topicBindingId, null);
     }
 }

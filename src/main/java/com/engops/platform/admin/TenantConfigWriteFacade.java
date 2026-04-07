@@ -1,6 +1,7 @@
 package com.engops.platform.admin;
 
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
+import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import org.springframework.stereotype.Service;
 
@@ -175,6 +176,64 @@ public class TenantConfigWriteFacade {
                 definition.isActive(),
                 definition.getCreatedAt());
     }
+
+    // ========== RoutingRule operations ==========
+
+    /**
+     * Yangi routing rule yaratish uchun request boundary validatsiyasi va delegation.
+     *
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan routing rule view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public RoutingRuleCreatedView createRoutingRule(UUID tenantId,
+                                                     CreateRoutingRuleRequest request) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.name() == null || request.name().isBlank()) {
+            throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
+        }
+        if (request.workItemType() == null || request.workItemType().isBlank()) {
+            throw new IllegalArgumentException("workItemType null yoki bo'sh bo'lishi mumkin emas");
+        }
+        if (!ALLOWED_WORK_ITEM_TYPES.contains(request.workItemType())) {
+            throw new IllegalArgumentException(
+                    "workItemType faqat BUG, INCIDENT, TASK bo'lishi mumkin: " + request.workItemType());
+        }
+
+        RoutingRule rule = commandService.createRoutingRule(
+                tenantId, request.name(), request.workItemType(),
+                request.priority(), request.targetTopicBindingId(),
+                request.conditionExpression());
+
+        return new RoutingRuleCreatedView(
+                rule.getTenantId(),
+                rule.getId(),
+                rule.getName(),
+                rule.getWorkItemType(),
+                rule.getPriority(),
+                rule.getTargetTopicBindingId(),
+                rule.isActive(),
+                rule.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — yaratilgan routing rule.
+     */
+    public record RoutingRuleCreatedView(
+            UUID tenantId,
+            UUID ruleId,
+            String name,
+            String workItemType,
+            int priority,
+            UUID targetTopicBindingId,
+            boolean active,
+            java.time.Instant createdAt) {}
 
     /**
      * Facade natija modeli — yangilangan workflow definition.

@@ -3,8 +3,12 @@ package com.engops.platform.tenantconfig;
 import com.engops.platform.audit.AuditService;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
+import com.engops.platform.tenantconfig.model.RoutingRule;
+import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
+import com.engops.platform.tenantconfig.repository.RoutingRuleRepository;
+import com.engops.platform.tenantconfig.repository.TelegramTopicBindingRepository;
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
 import org.junit.jupiter.api.Test;
@@ -38,9 +42,14 @@ class TenantConfigCommandServiceTest {
     private final TenantRepository tenantRepository = mock(TenantRepository.class);
     private final WorkflowDefinitionRepository workflowDefinitionRepository =
             mock(WorkflowDefinitionRepository.class);
+    private final RoutingRuleRepository routingRuleRepository =
+            mock(RoutingRuleRepository.class);
+    private final TelegramTopicBindingRepository telegramTopicBindingRepository =
+            mock(TelegramTopicBindingRepository.class);
     private final AuditService auditService = mock(AuditService.class);
     private final TenantConfigCommandService service =
-            new TenantConfigCommandService(tenantRepository, workflowDefinitionRepository, auditService);
+            new TenantConfigCommandService(tenantRepository, workflowDefinitionRepository,
+                    routingRuleRepository, telegramTopicBindingRepository, auditService);
 
     @Test
     void createWorkflowDefinitionSuccess() {
@@ -463,5 +472,95 @@ class TenantConfigCommandServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verifyNoInteractions(auditService);
+    }
+
+    // ========== createRoutingRule tests ==========
+
+    @Test
+    void createRoutingRuleSuccess() {
+        UUID topicBindingId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        Tenant tenant = mock(Tenant.class);
+        TelegramTopicBinding topicBinding = mock(TelegramTopicBinding.class);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(topicBindingId, TENANT_ID))
+                .thenReturn(Optional.of(topicBinding));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.createRoutingRule(
+                TENANT_ID, "Route Bugs", "BUG", 10, topicBindingId, null);
+
+        assertThat(result.getTenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.getName()).isEqualTo("Route Bugs");
+        assertThat(result.getWorkItemType()).isEqualTo("BUG");
+        assertThat(result.getPriority()).isEqualTo(10);
+        assertThat(result.getTargetTopicBindingId()).isEqualTo(topicBindingId);
+        assertThat(result.isActive()).isTrue();
+
+        verify(routingRuleRepository).save(any(RoutingRule.class));
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("ROUTING_RULE"), eq(result.getId()),
+                eq("CREATED"), eq(null), eq("ADMIN_API"), eq(null), eq("Route Bugs"));
+    }
+
+    @Test
+    void createRoutingRuleWithNullTopicBinding() {
+        Tenant tenant = mock(Tenant.class);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.createRoutingRule(
+                TENANT_ID, "Catch All", "INCIDENT", 5, null, null);
+
+        assertThat(result.getTargetTopicBindingId()).isNull();
+
+        verify(telegramTopicBindingRepository, never()).findByIdAndChatBinding_TenantId(any(), any());
+    }
+
+    @Test
+    void createRoutingRuleThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createRoutingRule(
+                TENANT_ID, "Rule", "BUG", 10, null, null))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(routingRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createRoutingRuleRejectsInvalidTopicBinding() {
+        UUID topicBindingId = UUID.fromString("44444444-4444-4444-4444-444444444445");
+        Tenant tenant = mock(Tenant.class);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(topicBindingId, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createRoutingRule(
+                TENANT_ID, "Rule", "BUG", 10, topicBindingId, null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Topic binding");
+
+        verify(routingRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createRoutingRuleWithConditionExpression() {
+        Tenant tenant = mock(Tenant.class);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.createRoutingRule(
+                TENANT_ID, "Conditional", "TASK", 20, null, "severity == HIGH");
+
+        assertThat(result.getConditionExpression()).isEqualTo("severity == HIGH");
     }
 }
