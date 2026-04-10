@@ -379,6 +379,33 @@ class TenantConfigWriteFacadeTest {
         verify(commandService).deactivateWorkflowDefinition(TENANT_ID, DEF_ID);
     }
 
+    // ========== deleteWorkflowDefinition tests ==========
+
+    @Test
+    void deleteWorkflowDefinitionThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.deleteWorkflowDefinition(null, DEF_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deleteWorkflowDefinitionThrowsIllegalArgumentWhenDefinitionIdNull() {
+        assertThatThrownBy(() -> facade.deleteWorkflowDefinition(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("definitionId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deleteWorkflowDefinitionDelegatesToCommandService() {
+        facade.deleteWorkflowDefinition(TENANT_ID, DEF_ID);
+
+        verify(commandService).deleteWorkflowDefinition(TENANT_ID, DEF_ID);
+    }
+
     // ========== createRoutingRule tests ==========
 
     @Test

@@ -32,6 +32,7 @@ import java.util.UUID;
  * - PATCH /workflow-definitions/{definitionId} — workflow definition metadata yangilash
  * - POST /workflow-definitions/{definitionId}/activate — workflow definition aktivlashtirish
  * - POST /workflow-definitions/{definitionId}/deactivate — workflow definition deaktivlashtirish
+ * - DELETE /workflow-definitions/{definitionId} — workflow definition o'chirish
  * - POST /routing-rules — yangi routing rule yaratish
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
  * - POST /routing-rules/{ruleId}/activate — routing rule aktivlashtirish
@@ -244,6 +245,23 @@ public class TenantConfigController {
                 writeFacade.deactivateWorkflowDefinition(tenantId, definitionId);
 
         return ResponseEntity.ok(toUpdatedResponse(view));
+    }
+
+    /**
+     * Workflow definition'ni o'chiradi.
+     *
+     * @param definitionId workflow definition identifikatori
+     * @param tenantId tenant identifikatori
+     * @return 204 No Content
+     */
+    @DeleteMapping("/workflow-definitions/{definitionId}")
+    public ResponseEntity<Void> deleteWorkflowDefinition(
+            @PathVariable UUID definitionId,
+            @RequestParam UUID tenantId) {
+
+        writeFacade.deleteWorkflowDefinition(tenantId, definitionId);
+
+        return ResponseEntity.noContent().build();
     }
 
     /**

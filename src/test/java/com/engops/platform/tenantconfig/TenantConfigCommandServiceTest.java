@@ -474,6 +474,54 @@ class TenantConfigCommandServiceTest {
         verifyNoInteractions(auditService);
     }
 
+    // ========== deleteWorkflowDefinition tests ==========
+
+    @Test
+    void deleteWorkflowDefinitionSuccess() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222241");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Bug Flow", "BUG");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+
+        service.deleteWorkflowDefinition(TENANT_ID, defId);
+
+        verify(workflowDefinitionRepository).delete(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("WORKFLOW_DEFINITION"), eq(defId),
+                eq("DELETED"), eq(null), eq("ADMIN_API"),
+                eq("Bug Flow | type=BUG"), eq(null));
+    }
+
+    @Test
+    void deleteWorkflowDefinitionThrowsResourceNotFoundWhenTenantMissing() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222242");
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteWorkflowDefinition(TENANT_ID, defId))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(workflowDefinitionRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deleteWorkflowDefinitionThrowsResourceNotFoundWhenDefinitionMissing() {
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222243");
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteWorkflowDefinition(TENANT_ID, defId))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(workflowDefinitionRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
     // ========== createRoutingRule tests ==========
 
     @Test

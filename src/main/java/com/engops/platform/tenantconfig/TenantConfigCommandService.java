@@ -224,6 +224,28 @@ public class TenantConfigCommandService {
         return definition;
     }
 
+    /**
+     * Workflow definition'ni o'chiradi (hard delete).
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @throws ResourceNotFoundException agar tenant yoki workflow definition topilmasa
+     */
+    public void deleteWorkflowDefinition(UUID tenantId, UUID definitionId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        WorkflowDefinition definition = workflowDefinitionRepository.findByTenantIdAndId(tenantId, definitionId)
+                .orElseThrow(() -> new ResourceNotFoundException("WorkflowDefinition", definitionId));
+
+        String oldValue = definition.getName() + " | type=" + definition.getWorkItemType();
+
+        workflowDefinitionRepository.delete(definition);
+
+        auditService.recordEvent(tenantId, "WORKFLOW_DEFINITION", definitionId,
+                "DELETED", null, "ADMIN_API", oldValue, null);
+    }
+
     // ========== RoutingRule operations ==========
 
     /**

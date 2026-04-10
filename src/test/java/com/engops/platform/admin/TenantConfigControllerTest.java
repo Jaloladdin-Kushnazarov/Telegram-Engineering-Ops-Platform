@@ -1091,6 +1091,44 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
+    // ========== DELETE /workflow-definitions/{definitionId} endpoint ==========
+
+    @Test
+    void deleteWorkflowDefinitionReturns204() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+    }
+
+    @Test
+    void deleteWorkflowDefinitionMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deleteWorkflowDefinitionTenantNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("Tenant", TENANT_ID))
+                .when(writeFacade).deleteWorkflowDefinition(TENANT_ID, DEF_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void deleteWorkflowDefinitionNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("WorkflowDefinition", DEF_ID))
+                .when(writeFacade).deleteWorkflowDefinition(TENANT_ID, DEF_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
     // ========== POST /routing-rules endpoint ==========
 
     @Test

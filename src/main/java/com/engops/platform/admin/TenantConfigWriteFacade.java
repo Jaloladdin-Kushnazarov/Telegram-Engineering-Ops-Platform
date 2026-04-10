@@ -177,6 +177,24 @@ public class TenantConfigWriteFacade {
                 definition.getCreatedAt());
     }
 
+    /**
+     * Workflow definition'ni o'chiradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @throws IllegalArgumentException tenantId yoki definitionId null bo'lsa
+     */
+    public void deleteWorkflowDefinition(UUID tenantId, UUID definitionId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (definitionId == null) {
+            throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
+        }
+
+        commandService.deleteWorkflowDefinition(tenantId, definitionId);
+    }
+
     // ========== RoutingRule operations ==========
 
     /**
