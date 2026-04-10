@@ -3,11 +3,14 @@ package com.engops.platform.tenantconfig;
 import com.engops.platform.audit.AuditService;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
+import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
+import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.repository.RoutingRuleRepository;
+import com.engops.platform.tenantconfig.repository.TelegramChatBindingRepository;
 import com.engops.platform.tenantconfig.repository.TelegramTopicBindingRepository;
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
@@ -44,12 +47,15 @@ class TenantConfigCommandServiceTest {
             mock(WorkflowDefinitionRepository.class);
     private final RoutingRuleRepository routingRuleRepository =
             mock(RoutingRuleRepository.class);
+    private final TelegramChatBindingRepository telegramChatBindingRepository =
+            mock(TelegramChatBindingRepository.class);
     private final TelegramTopicBindingRepository telegramTopicBindingRepository =
             mock(TelegramTopicBindingRepository.class);
     private final AuditService auditService = mock(AuditService.class);
     private final TenantConfigCommandService service =
             new TenantConfigCommandService(tenantRepository, workflowDefinitionRepository,
-                    routingRuleRepository, telegramTopicBindingRepository, auditService);
+                    routingRuleRepository, telegramChatBindingRepository,
+                    telegramTopicBindingRepository, auditService);
 
     @Test
     void createWorkflowDefinitionSuccess() {
@@ -520,6 +526,97 @@ class TenantConfigCommandServiceTest {
 
         verify(workflowDefinitionRepository, never()).delete(any());
         verifyNoInteractions(auditService);
+    }
+
+    // ========== createChatBinding tests ==========
+
+    @Test
+    void createChatBindingSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByTenantIdAndChatId(TENANT_ID, -1001234567890L))
+                .thenReturn(Optional.empty());
+        when(telegramChatBindingRepository.save(any(TelegramChatBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramChatBinding result = service.createChatBinding(
+                TENANT_ID, -1001234567890L, "Dev Team Chat", ChatBindingType.MAIN_GROUP);
+
+        assertThat(result.getTenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.getChatId()).isEqualTo(-1001234567890L);
+        assertThat(result.getChatTitle()).isEqualTo("Dev Team Chat");
+        assertThat(result.getBindingType()).isEqualTo(ChatBindingType.MAIN_GROUP);
+        assertThat(result.isActive()).isTrue();
+
+        verify(telegramChatBindingRepository).save(any(TelegramChatBinding.class));
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("CHAT_BINDING"), eq(result.getId()),
+                eq("CREATED"), eq(null), eq("ADMIN_API"),
+                eq(null), any(String.class));
+    }
+
+    @Test
+    void createChatBindingWithNullTitle() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByTenantIdAndChatId(TENANT_ID, -1001234567891L))
+                .thenReturn(Optional.empty());
+        when(telegramChatBindingRepository.save(any(TelegramChatBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramChatBinding result = service.createChatBinding(
+                TENANT_ID, -1001234567891L, null, ChatBindingType.NOTIFICATION_GROUP);
+
+        assertThat(result.getChatTitle()).isNull();
+        assertThat(result.getBindingType()).isEqualTo(ChatBindingType.NOTIFICATION_GROUP);
+    }
+
+    @Test
+    void createChatBindingThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createChatBinding(
+                TENANT_ID, -1001234567890L, "Chat", ChatBindingType.MAIN_GROUP))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(telegramChatBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createChatBindingThrowsBusinessRuleWhenDuplicate() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = mock(TelegramChatBinding.class);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByTenantIdAndChatId(TENANT_ID, -1001234567890L))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.createChatBinding(
+                TENANT_ID, -1001234567890L, "Chat", ChatBindingType.MAIN_GROUP))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("chatId");
+
+        verify(telegramChatBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createChatBindingRecordsAuditEvent() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByTenantIdAndChatId(TENANT_ID, -100999L))
+                .thenReturn(Optional.empty());
+        when(telegramChatBindingRepository.save(any(TelegramChatBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramChatBinding result = service.createChatBinding(
+                TENANT_ID, -100999L, "Ops Channel", ChatBindingType.NOTIFICATION_GROUP);
+
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("CHAT_BINDING"), eq(result.getId()),
+                eq("CREATED"), eq(null), eq("ADMIN_API"),
+                eq(null), eq("-100999 | NOTIFICATION_GROUP | Ops Channel"));
     }
 
     // ========== createRoutingRule tests ==========

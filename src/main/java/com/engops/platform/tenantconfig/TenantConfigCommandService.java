@@ -3,9 +3,12 @@ package com.engops.platform.tenantconfig;
 import com.engops.platform.audit.AuditService;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
+import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
+import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.repository.RoutingRuleRepository;
+import com.engops.platform.tenantconfig.repository.TelegramChatBindingRepository;
 import com.engops.platform.tenantconfig.repository.TelegramTopicBindingRepository;
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
@@ -33,17 +36,20 @@ public class TenantConfigCommandService {
     private final TenantRepository tenantRepository;
     private final WorkflowDefinitionRepository workflowDefinitionRepository;
     private final RoutingRuleRepository routingRuleRepository;
+    private final TelegramChatBindingRepository telegramChatBindingRepository;
     private final TelegramTopicBindingRepository telegramTopicBindingRepository;
     private final AuditService auditService;
 
     public TenantConfigCommandService(TenantRepository tenantRepository,
                                        WorkflowDefinitionRepository workflowDefinitionRepository,
                                        RoutingRuleRepository routingRuleRepository,
+                                       TelegramChatBindingRepository telegramChatBindingRepository,
                                        TelegramTopicBindingRepository telegramTopicBindingRepository,
                                        AuditService auditService) {
         this.tenantRepository = tenantRepository;
         this.workflowDefinitionRepository = workflowDefinitionRepository;
         this.routingRuleRepository = routingRuleRepository;
+        this.telegramChatBindingRepository = telegramChatBindingRepository;
         this.telegramTopicBindingRepository = telegramTopicBindingRepository;
         this.auditService = auditService;
     }
@@ -244,6 +250,57 @@ public class TenantConfigCommandService {
 
         auditService.recordEvent(tenantId, "WORKFLOW_DEFINITION", definitionId,
                 "DELETED", null, "ADMIN_API", oldValue, null);
+    }
+
+    // ========== TelegramChatBinding operations ==========
+
+    /**
+     * Yangi Telegram chat binding yaratadi.
+     *
+     * Validatsiyalar:
+     * 1. Tenant mavjud bo'lishi kerak
+     * 2. Shu tenant ichida shu chatId uchun binding allaqachon mavjud bo'lmasligi kerak
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatId Telegram chat identifikatori
+     * @param chatTitle chat sarlavhasi (nullable)
+     * @param bindingType binding turi (MAIN_GROUP, NOTIFICATION_GROUP)
+     * @return yaratilgan TelegramChatBinding
+     * @throws ResourceNotFoundException agar tenant topilmasa
+     * @throws BusinessRuleException agar duplicate chat binding mavjud bo'lsa
+     */
+    public TelegramChatBinding createChatBinding(UUID tenantId, long chatId,
+                                                   String chatTitle, ChatBindingType bindingType) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        telegramChatBindingRepository.findByTenantIdAndChatId(tenantId, chatId)
+                .ifPresent(existing -> {
+                    throw new BusinessRuleException("DUPLICATE_CHAT_BINDING",
+                            "Tenant ichida chatId=" + chatId + " uchun binding allaqachon mavjud");
+                });
+
+        TelegramChatBinding binding = new TelegramChatBinding(tenantId, chatId,
+                chatTitle != null && !chatTitle.isBlank() ? chatTitle : null);
+        binding.setBindingType(bindingType);
+
+        try {
+            binding = telegramChatBindingRepository.save(binding);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateChatBindingConstraint(ex)) {
+                throw new BusinessRuleException("DUPLICATE_CHAT_BINDING",
+                        "Tenant ichida chatId=" + chatId + " uchun binding allaqachon mavjud");
+            }
+            throw ex;
+        }
+
+        String newValue = chatId + " | " + bindingType.name()
+                + (binding.getChatTitle() != null ? " | " + binding.getChatTitle() : "");
+
+        auditService.recordEvent(tenantId, "CHAT_BINDING", binding.getId(),
+                "CREATED", null, "ADMIN_API", null, newValue);
+
+        return binding;
     }
 
     // ========== RoutingRule operations ==========
@@ -470,6 +527,22 @@ public class TenantConfigCommandService {
                     && constraintName.contains("workflow_definition")
                     && constraintName.contains("tenant_id")
                     && constraintName.contains("name");
+        }
+        return false;
+    }
+
+    /**
+     * DataIntegrityViolationException telegram_chat_binding (tenant_id, chat_id) unique
+     * constraint violation ekanligini tekshiradi.
+     */
+    private static boolean isDuplicateChatBindingConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("telegram_chat_binding")
+                    && constraintName.contains("tenant_id")
+                    && constraintName.contains("chat_id");
         }
         return false;
     }

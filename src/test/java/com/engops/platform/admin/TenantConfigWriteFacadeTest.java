@@ -1,7 +1,9 @@
 package com.engops.platform.admin;
 
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
+import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
+import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import org.junit.jupiter.api.Test;
 
@@ -404,6 +406,85 @@ class TenantConfigWriteFacadeTest {
         facade.deleteWorkflowDefinition(TENANT_ID, DEF_ID);
 
         verify(commandService).deleteWorkflowDefinition(TENANT_ID, DEF_ID);
+    }
+
+    // ========== createChatBinding tests ==========
+
+    @Test
+    void createChatBindingThrowsIllegalArgumentWhenTenantIdNull() {
+        var request = new CreateChatBindingRequest(-1001234567890L, "Chat", "MAIN_GROUP");
+
+        assertThatThrownBy(() -> facade.createChatBinding(null, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createChatBindingThrowsIllegalArgumentWhenRequestNull() {
+        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, (CreateChatBindingRequest) null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createChatBindingThrowsIllegalArgumentWhenChatIdNull() {
+        var request = new CreateChatBindingRequest(null, "Chat", "MAIN_GROUP");
+
+        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("chatId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createChatBindingThrowsIllegalArgumentWhenBindingTypeBlank() {
+        var request = new CreateChatBindingRequest(-1001234567890L, "Chat", "  ");
+
+        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("bindingType");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createChatBindingThrowsIllegalArgumentWhenBindingTypeInvalid() {
+        var request = new CreateChatBindingRequest(-1001234567890L, "Chat", "PRIVATE_CHAT");
+
+        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("bindingType");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createChatBindingDelegatesToCommandService() {
+        var request = new CreateChatBindingRequest(-1001234567890L, "Dev Chat", "MAIN_GROUP");
+
+        TelegramChatBinding binding = new TelegramChatBinding(TENANT_ID, -1001234567890L, "Dev Chat");
+        binding.setBindingType(ChatBindingType.MAIN_GROUP);
+
+        when(commandService.createChatBinding(
+                TENANT_ID, -1001234567890L, "Dev Chat", ChatBindingType.MAIN_GROUP))
+                .thenReturn(binding);
+
+        var result = facade.createChatBinding(TENANT_ID, request);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.chatBindingId()).isEqualTo(binding.getId());
+        assertThat(result.chatId()).isEqualTo(-1001234567890L);
+        assertThat(result.chatTitle()).isEqualTo("Dev Chat");
+        assertThat(result.bindingType()).isEqualTo("MAIN_GROUP");
+        assertThat(result.active()).isTrue();
+
+        verify(commandService).createChatBinding(
+                TENANT_ID, -1001234567890L, "Dev Chat", ChatBindingType.MAIN_GROUP);
     }
 
     // ========== createRoutingRule tests ==========

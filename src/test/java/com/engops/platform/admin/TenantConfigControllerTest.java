@@ -1129,6 +1129,122 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
+    // ========== POST /chat-bindings endpoint ==========
+
+    @Test
+    void createChatBindingReturns201WithCreatedResource() throws Exception {
+        var view = new TenantConfigWriteFacade.ChatBindingCreatedView(
+                TENANT_ID,
+                UUID.fromString("55555555-5555-5555-5555-555555555551"),
+                -1001234567890L,
+                "Dev Team Chat",
+                "MAIN_GROUP",
+                true,
+                Instant.parse("2026-04-10T12:00:00Z"));
+
+        when(writeFacade.createChatBinding(eq(TENANT_ID),
+                any(CreateChatBindingRequest.class))).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatId":-1001234567890,"chatTitle":"Dev Team Chat","bindingType":"MAIN_GROUP"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.chatBindingId").value("55555555-5555-5555-5555-555555555551"))
+                .andExpect(jsonPath("$.chatId").value(-1001234567890L))
+                .andExpect(jsonPath("$.chatTitle").value("Dev Team Chat"))
+                .andExpect(jsonPath("$.bindingType").value("MAIN_GROUP"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").value("2026-04-10T12:00:00Z"));
+    }
+
+    @Test
+    void createChatBindingWithNullTitleOmitsField() throws Exception {
+        var view = new TenantConfigWriteFacade.ChatBindingCreatedView(
+                TENANT_ID,
+                UUID.fromString("55555555-5555-5555-5555-555555555552"),
+                -1001234567891L,
+                null,
+                "NOTIFICATION_GROUP",
+                true,
+                Instant.parse("2026-04-10T12:00:00Z"));
+
+        when(writeFacade.createChatBinding(eq(TENANT_ID),
+                any(CreateChatBindingRequest.class))).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatId":-1001234567891,"bindingType":"NOTIFICATION_GROUP"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.chatTitle").doesNotExist());
+    }
+
+    @Test
+    void createChatBindingMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatId":-1001234567890,"bindingType":"MAIN_GROUP"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createChatBindingInvalidBindingTypeReturns400() throws Exception {
+        when(writeFacade.createChatBinding(eq(TENANT_ID),
+                any(CreateChatBindingRequest.class)))
+                .thenThrow(new IllegalArgumentException(
+                        "bindingType faqat MAIN_GROUP, NOTIFICATION_GROUP bo'lishi mumkin: PRIVATE_CHAT"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatId":-1001234567890,"bindingType":"PRIVATE_CHAT"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createChatBindingTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.createChatBinding(eq(TENANT_ID),
+                any(CreateChatBindingRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatId":-1001234567890,"bindingType":"MAIN_GROUP"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void createChatBindingDuplicateReturns422() throws Exception {
+        when(writeFacade.createChatBinding(eq(TENANT_ID),
+                any(CreateChatBindingRequest.class)))
+                .thenThrow(new BusinessRuleException("DUPLICATE_CHAT_BINDING",
+                        "Tenant ichida chatId=-1001234567890 uchun binding allaqachon mavjud"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatId":-1001234567890,"bindingType":"MAIN_GROUP"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_CHAT_BINDING"));
+    }
+
     // ========== POST /routing-rules endpoint ==========
 
     @Test

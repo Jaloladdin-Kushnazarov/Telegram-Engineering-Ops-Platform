@@ -33,6 +33,7 @@ import java.util.UUID;
  * - POST /workflow-definitions/{definitionId}/activate — workflow definition aktivlashtirish
  * - POST /workflow-definitions/{definitionId}/deactivate — workflow definition deaktivlashtirish
  * - DELETE /workflow-definitions/{definitionId} — workflow definition o'chirish
+ * - POST /chat-bindings — yangi chat binding yaratish
  * - POST /routing-rules — yangi routing rule yaratish
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
  * - POST /routing-rules/{ruleId}/activate — routing rule aktivlashtirish
@@ -262,6 +263,37 @@ public class TenantConfigController {
         writeFacade.deleteWorkflowDefinition(tenantId, definitionId);
 
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Yangi chat binding yaratadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan chat binding (201 Created)
+     */
+    @PostMapping("/chat-bindings")
+    public ResponseEntity<TenantConfigChatBindingCreatedResponse> createChatBinding(
+            @RequestParam UUID tenantId,
+            @RequestBody CreateChatBindingRequest request) {
+
+        TenantConfigWriteFacade.ChatBindingCreatedView view =
+                writeFacade.createChatBinding(tenantId, request);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(toChatBindingCreatedResponse(view));
+    }
+
+    private TenantConfigChatBindingCreatedResponse toChatBindingCreatedResponse(
+            TenantConfigWriteFacade.ChatBindingCreatedView view) {
+        return new TenantConfigChatBindingCreatedResponse(
+                view.tenantId(),
+                view.chatBindingId(),
+                view.chatId(),
+                view.chatTitle(),
+                view.bindingType(),
+                view.active(),
+                view.createdAt());
     }
 
     /**

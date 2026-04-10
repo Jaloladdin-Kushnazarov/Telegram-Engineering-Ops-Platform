@@ -1,7 +1,9 @@
 package com.engops.platform.admin;
 
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
+import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
+import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import org.springframework.stereotype.Service;
 
@@ -24,6 +26,7 @@ import java.util.UUID;
 public class TenantConfigWriteFacade {
 
     private static final Set<String> ALLOWED_WORK_ITEM_TYPES = Set.of("BUG", "INCIDENT", "TASK");
+    private static final Set<String> ALLOWED_BINDING_TYPES = Set.of("MAIN_GROUP", "NOTIFICATION_GROUP");
 
     private final TenantConfigCommandService commandService;
 
@@ -194,6 +197,61 @@ public class TenantConfigWriteFacade {
 
         commandService.deleteWorkflowDefinition(tenantId, definitionId);
     }
+
+    // ========== TelegramChatBinding operations ==========
+
+    /**
+     * Yangi chat binding yaratish uchun request boundary validatsiyasi va delegation.
+     *
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan chat binding view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public ChatBindingCreatedView createChatBinding(UUID tenantId,
+                                                      CreateChatBindingRequest request) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.chatId() == null) {
+            throw new IllegalArgumentException("chatId null bo'lishi mumkin emas");
+        }
+        if (request.bindingType() == null || request.bindingType().isBlank()) {
+            throw new IllegalArgumentException("bindingType null yoki bo'sh bo'lishi mumkin emas");
+        }
+        if (!ALLOWED_BINDING_TYPES.contains(request.bindingType())) {
+            throw new IllegalArgumentException(
+                    "bindingType faqat MAIN_GROUP, NOTIFICATION_GROUP bo'lishi mumkin: " + request.bindingType());
+        }
+
+        TelegramChatBinding binding = commandService.createChatBinding(
+                tenantId, request.chatId(), request.chatTitle(),
+                ChatBindingType.valueOf(request.bindingType()));
+
+        return new ChatBindingCreatedView(
+                binding.getTenantId(),
+                binding.getId(),
+                binding.getChatId(),
+                binding.getChatTitle(),
+                binding.getBindingType().name(),
+                binding.isActive(),
+                binding.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — yaratilgan chat binding.
+     */
+    public record ChatBindingCreatedView(
+            UUID tenantId,
+            UUID chatBindingId,
+            long chatId,
+            String chatTitle,
+            String bindingType,
+            boolean active,
+            java.time.Instant createdAt) {}
 
     // ========== RoutingRule operations ==========
 
