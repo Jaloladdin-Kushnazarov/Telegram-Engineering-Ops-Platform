@@ -271,6 +271,88 @@ public class TenantConfigCommandService {
     }
 
     /**
+     * Mavjud routing rule metadata'sini partial yangilaydi (PATCH semantikasi).
+     *
+     * Faqat provided=true field'lar yangilanadi:
+     * - nameProvided=true → yangi nom o'rnatiladi
+     * - priorityProvided=true → yangi prioritet o'rnatiladi
+     * - targetTopicBindingIdProvided=true, null → tozalanadi
+     * - targetTopicBindingIdProvided=true, non-null → tenant-safe validate va set
+     * - conditionExpressionProvided=true, null/blank → tozalanadi
+     * - conditionExpressionProvided=true, non-blank → yangilanadi
+     *
+     * @param tenantId tenant identifikatori
+     * @param ruleId routing rule identifikatori
+     * @param name yangi nom (faqat nameProvided=true bo'lganda)
+     * @param nameProvided name field JSON'da berilganmi
+     * @param priority yangi prioritet (faqat priorityProvided=true bo'lganda)
+     * @param priorityProvided priority field JSON'da berilganmi
+     * @param targetTopicBindingId yangi topic binding (faqat provided=true bo'lganda)
+     * @param targetTopicBindingIdProvided field JSON'da berilganmi
+     * @param conditionExpression yangi shart ifodasi (faqat provided=true bo'lganda)
+     * @param conditionExpressionProvided field JSON'da berilganmi
+     * @return yangilangan RoutingRule
+     * @throws ResourceNotFoundException agar tenant yoki routing rule topilmasa
+     * @throws BusinessRuleException agar topic binding yaroqsiz bo'lsa
+     */
+    public RoutingRule updateRoutingRule(UUID tenantId, UUID ruleId,
+                                          String name, boolean nameProvided,
+                                          Integer priority, boolean priorityProvided,
+                                          UUID targetTopicBindingId, boolean targetTopicBindingIdProvided,
+                                          String conditionExpression, boolean conditionExpressionProvided) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        RoutingRule rule = routingRuleRepository.findByIdAndTenantId(ruleId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("RoutingRule", ruleId));
+
+        String oldName = rule.getName();
+        int oldPriority = rule.getPriority();
+        UUID oldTopicBindingId = rule.getTargetTopicBindingId();
+        String oldConditionExpression = rule.getConditionExpression();
+
+        if (nameProvided) {
+            rule.setName(name);
+        }
+
+        if (priorityProvided) {
+            rule.setPriority(priority);
+        }
+
+        if (targetTopicBindingIdProvided) {
+            if (targetTopicBindingId == null) {
+                rule.setTargetTopicBindingId(null);
+            } else {
+                telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(targetTopicBindingId, tenantId)
+                        .orElseThrow(() -> new BusinessRuleException("INVALID_TOPIC_BINDING",
+                                "Topic binding (id=" + targetTopicBindingId
+                                        + ") topilmadi yoki shu tenantga tegishli emas"));
+                rule.setTargetTopicBindingId(targetTopicBindingId);
+            }
+        }
+
+        if (conditionExpressionProvided) {
+            rule.setConditionExpression(
+                    conditionExpression != null && !conditionExpression.isBlank()
+                            ? conditionExpression : null);
+        }
+
+        rule = routingRuleRepository.save(rule);
+
+        String oldValue = oldName + " | p=" + oldPriority
+                + (oldTopicBindingId != null ? " | tb=" + oldTopicBindingId : "")
+                + (oldConditionExpression != null ? " | ce=" + oldConditionExpression : "");
+        String newValue = rule.getName() + " | p=" + rule.getPriority()
+                + (rule.getTargetTopicBindingId() != null ? " | tb=" + rule.getTargetTopicBindingId() : "")
+                + (rule.getConditionExpression() != null ? " | ce=" + rule.getConditionExpression() : "");
+
+        auditService.recordEvent(tenantId, "ROUTING_RULE", rule.getId(),
+                "UPDATED", null, "ADMIN_API", oldValue, newValue);
+
+        return rule;
+    }
+
+    /**
      * DataIntegrityViolationException workflow_definition (tenant_id, name) unique
      * constraint violation ekanligini tekshiradi.
      *

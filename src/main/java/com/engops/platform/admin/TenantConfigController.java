@@ -32,6 +32,7 @@ import java.util.UUID;
  * - POST /workflow-definitions/{definitionId}/activate — workflow definition aktivlashtirish
  * - POST /workflow-definitions/{definitionId}/deactivate — workflow definition deaktivlashtirish
  * - POST /routing-rules — yangi routing rule yaratish
+ * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
  *
  * Bu controller thin adapter:
  * - HTTP request parametrlarini facade'ga uzatadi
@@ -258,6 +259,39 @@ public class TenantConfigController {
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toRoutingRuleCreatedResponse(view));
+    }
+
+    /**
+     * Routing rule metadata'sini yangilaydi (name, priority, targetTopicBindingId, conditionExpression).
+     *
+     * @param ruleId routing rule identifikatori
+     * @param tenantId tenant identifikatori
+     * @param request yangilash so'rovi
+     * @return yangilangan routing rule (200 OK)
+     */
+    @PatchMapping("/routing-rules/{ruleId}")
+    public ResponseEntity<TenantConfigRoutingRuleUpdatedResponse> updateRoutingRule(
+            @PathVariable UUID ruleId,
+            @RequestParam UUID tenantId,
+            @RequestBody UpdateRoutingRuleRequest request) {
+
+        TenantConfigWriteFacade.RoutingRuleUpdatedView view =
+                writeFacade.updateRoutingRule(tenantId, ruleId, request);
+
+        return ResponseEntity.ok(toRoutingRuleUpdatedResponse(view));
+    }
+
+    private TenantConfigRoutingRuleUpdatedResponse toRoutingRuleUpdatedResponse(
+            TenantConfigWriteFacade.RoutingRuleUpdatedView view) {
+        return new TenantConfigRoutingRuleUpdatedResponse(
+                view.tenantId(),
+                view.ruleId(),
+                view.name(),
+                view.priority(),
+                view.targetTopicBindingId(),
+                view.conditionExpression(),
+                view.active(),
+                view.createdAt());
     }
 
     private TenantConfigRoutingRuleCreatedResponse toRoutingRuleCreatedResponse(

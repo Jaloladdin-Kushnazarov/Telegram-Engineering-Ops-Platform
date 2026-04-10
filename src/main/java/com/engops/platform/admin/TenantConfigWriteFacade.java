@@ -223,6 +223,76 @@ public class TenantConfigWriteFacade {
     }
 
     /**
+     * Mavjud routing rule metadata'sini PATCH yangilash uchun request boundary validatsiyasi va delegation.
+     *
+     * PATCH semantikasi:
+     * - faqat JSON'da mavjud field'lar yangilanadi
+     * - kamida bitta field berilishi kerak
+     * - name berilsa, blank bo'lmasligi kerak
+     * - targetTopicBindingId berilmasa o'zgarmaydi, explicit null berilsa tozalanadi
+     * - conditionExpression berilmasa o'zgarmaydi, null/blank berilsa tozalanadi
+     * - priority berilmasa o'zgarmaydi
+     *
+     * @param tenantId tenant identifikatori
+     * @param ruleId routing rule identifikatori
+     * @param request yangilash so'rovi
+     * @return yangilangan routing rule view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public RoutingRuleUpdatedView updateRoutingRule(UUID tenantId, UUID ruleId,
+                                                      UpdateRoutingRuleRequest request) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (ruleId == null) {
+            throw new IllegalArgumentException("ruleId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (!request.isNameProvided() && !request.isPriorityProvided()
+                && !request.isTargetTopicBindingIdProvided() && !request.isConditionExpressionProvided()) {
+            throw new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak");
+        }
+        if (request.isNameProvided() && (request.getName() == null || request.getName().isBlank())) {
+            throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
+        }
+        if (request.isPriorityProvided() && request.getPriority() == null) {
+            throw new IllegalArgumentException("priority null bo'lishi mumkin emas");
+        }
+
+        RoutingRule rule = commandService.updateRoutingRule(
+                tenantId, ruleId,
+                request.getName(), request.isNameProvided(),
+                request.getPriority(), request.isPriorityProvided(),
+                request.getTargetTopicBindingId(), request.isTargetTopicBindingIdProvided(),
+                request.getConditionExpression(), request.isConditionExpressionProvided());
+
+        return new RoutingRuleUpdatedView(
+                rule.getTenantId(),
+                rule.getId(),
+                rule.getName(),
+                rule.getPriority(),
+                rule.getTargetTopicBindingId(),
+                rule.getConditionExpression(),
+                rule.isActive(),
+                rule.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — yangilangan routing rule.
+     */
+    public record RoutingRuleUpdatedView(
+            UUID tenantId,
+            UUID ruleId,
+            String name,
+            int priority,
+            UUID targetTopicBindingId,
+            String conditionExpression,
+            boolean active,
+            java.time.Instant createdAt) {}
+
+    /**
      * Facade natija modeli — yaratilgan routing rule.
      */
     public record RoutingRuleCreatedView(

@@ -563,4 +563,276 @@ class TenantConfigCommandServiceTest {
 
         assertThat(result.getConditionExpression()).isEqualTo("severity == HIGH");
     }
+
+    // ========== updateRoutingRule tests ==========
+
+    private static final UUID RULE_ID = UUID.fromString("33333333-3333-3333-3333-333333333331");
+
+    private RoutingRule existingRule() {
+        RoutingRule rule = new RoutingRule(TENANT_ID, "Old Rule", "BUG");
+        rule.setPriority(10);
+        rule.setTargetTopicBindingId(UUID.fromString("44444444-4444-4444-4444-444444444444"));
+        rule.setConditionExpression("severity == HIGH");
+        return rule;
+    }
+
+    @Test
+    void updateRoutingRuleAllFields() {
+        UUID newTopicId = UUID.fromString("44444444-4444-4444-4444-444444444445");
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(newTopicId, TENANT_ID))
+                .thenReturn(Optional.of(mock(TelegramTopicBinding.class)));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                "New Rule", true,
+                20, true,
+                newTopicId, true,
+                "priority == LOW", true);
+
+        assertThat(result.getName()).isEqualTo("New Rule");
+        assertThat(result.getPriority()).isEqualTo(20);
+        assertThat(result.getTargetTopicBindingId()).isEqualTo(newTopicId);
+        assertThat(result.getConditionExpression()).isEqualTo("priority == LOW");
+
+        verify(routingRuleRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("ROUTING_RULE"), eq(existing.getId()),
+                eq("UPDATED"), eq(null), eq("ADMIN_API"),
+                any(String.class), any(String.class));
+    }
+
+    @Test
+    void updateRoutingRuleOnlyName() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                "Updated Name", true,
+                null, false,
+                null, false,
+                null, false);
+
+        assertThat(result.getName()).isEqualTo("Updated Name");
+        assertThat(result.getPriority()).isEqualTo(10);
+        assertThat(result.getTargetTopicBindingId()).isEqualTo(
+                UUID.fromString("44444444-4444-4444-4444-444444444444"));
+        assertThat(result.getConditionExpression()).isEqualTo("severity == HIGH");
+    }
+
+    @Test
+    void updateRoutingRuleOnlyPriority() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                null, false,
+                99, true,
+                null, false,
+                null, false);
+
+        assertThat(result.getName()).isEqualTo("Old Rule");
+        assertThat(result.getPriority()).isEqualTo(99);
+    }
+
+    @Test
+    void updateRoutingRuleOnlyTargetTopicBindingId() {
+        UUID newTopicId = UUID.fromString("44444444-4444-4444-4444-444444444446");
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(newTopicId, TENANT_ID))
+                .thenReturn(Optional.of(mock(TelegramTopicBinding.class)));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                null, false,
+                null, false,
+                newTopicId, true,
+                null, false);
+
+        assertThat(result.getTargetTopicBindingId()).isEqualTo(newTopicId);
+    }
+
+    @Test
+    void updateRoutingRuleExplicitNullTopicBindingClearsIt() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                null, false,
+                null, false,
+                null, true,
+                null, false);
+
+        assertThat(result.getTargetTopicBindingId()).isNull();
+        verify(telegramTopicBindingRepository, never()).findByIdAndChatBinding_TenantId(any(), any());
+    }
+
+    @Test
+    void updateRoutingRuleOnlyConditionExpression() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                null, false,
+                null, false,
+                null, false,
+                "type == CRITICAL", true);
+
+        assertThat(result.getConditionExpression()).isEqualTo("type == CRITICAL");
+    }
+
+    @Test
+    void updateRoutingRuleExplicitNullConditionExpressionClearsIt() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                null, false,
+                null, false,
+                null, false,
+                null, true);
+
+        assertThat(result.getConditionExpression()).isNull();
+    }
+
+    @Test
+    void updateRoutingRuleBlankConditionExpressionClearsIt() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                null, false,
+                null, false,
+                null, false,
+                "   ", true);
+
+        assertThat(result.getConditionExpression()).isNull();
+    }
+
+    @Test
+    void updateRoutingRuleThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                "Name", true, null, false, null, false, null, false))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void updateRoutingRuleThrowsResourceNotFoundWhenRuleMissing() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                "Name", true, null, false, null, false, null, false))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void updateRoutingRuleRejectsInvalidTopicBinding() {
+        UUID badTopicId = UUID.fromString("44444444-4444-4444-4444-444444444499");
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(badTopicId, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                null, false, null, false,
+                badTopicId, true,
+                null, false))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Topic binding");
+
+        verify(routingRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void updateRoutingRuleUnchangedNameDoesNotCauseIssues() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.updateRoutingRule(
+                TENANT_ID, RULE_ID,
+                "Old Rule", true,
+                null, false, null, false, null, false);
+
+        assertThat(result.getName()).isEqualTo("Old Rule");
+        verify(routingRuleRepository).save(existing);
+    }
 }
