@@ -242,6 +242,58 @@ public class TenantConfigWriteFacade {
     }
 
     /**
+     * Chat binding metadata'sini PATCH yangilash uchun request boundary validatsiyasi va delegation.
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatBindingId chat binding identifikatori
+     * @param request yangilash so'rovi
+     * @return yangilangan chat binding view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public ChatBindingCreatedView updateChatBinding(UUID tenantId, UUID chatBindingId,
+                                                      UpdateChatBindingRequest request) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (chatBindingId == null) {
+            throw new IllegalArgumentException("chatBindingId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (!request.isChatTitleProvided() && !request.isBindingTypeProvided()) {
+            throw new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak");
+        }
+        if (request.isBindingTypeProvided()) {
+            if (request.getBindingType() == null || request.getBindingType().isBlank()) {
+                throw new IllegalArgumentException("bindingType null yoki bo'sh bo'lishi mumkin emas");
+            }
+            if (!ALLOWED_BINDING_TYPES.contains(request.getBindingType())) {
+                throw new IllegalArgumentException(
+                        "bindingType faqat MAIN_GROUP, NOTIFICATION_GROUP bo'lishi mumkin: "
+                                + request.getBindingType());
+            }
+        }
+
+        ChatBindingType bindingType = request.isBindingTypeProvided()
+                ? ChatBindingType.valueOf(request.getBindingType()) : null;
+
+        TelegramChatBinding binding = commandService.updateChatBinding(
+                tenantId, chatBindingId,
+                request.getChatTitle(), request.isChatTitleProvided(),
+                bindingType, request.isBindingTypeProvided());
+
+        return new ChatBindingCreatedView(
+                binding.getTenantId(),
+                binding.getId(),
+                binding.getChatId(),
+                binding.getChatTitle(),
+                binding.getBindingType().name(),
+                binding.isActive(),
+                binding.getCreatedAt());
+    }
+
+    /**
      * Facade natija modeli — yaratilgan chat binding.
      */
     public record ChatBindingCreatedView(

@@ -303,6 +303,57 @@ public class TenantConfigCommandService {
         return binding;
     }
 
+    /**
+     * Chat binding metadata'sini partial yangilaydi (PATCH semantikasi).
+     *
+     * Faqat provided=true field'lar yangilanadi:
+     * - chatTitleProvided=false → sarlavha o'zgarmaydi
+     * - chatTitleProvided=true, null/blank → sarlavha tozalanadi
+     * - chatTitleProvided=true, non-blank → sarlavha yangilanadi
+     * - bindingTypeProvided=false → tur o'zgarmaydi
+     * - bindingTypeProvided=true → yangi tur o'rnatiladi
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatBindingId chat binding identifikatori
+     * @param chatTitle yangi sarlavha (faqat chatTitleProvided=true bo'lganda)
+     * @param chatTitleProvided chatTitle field JSON'da berilganmi
+     * @param bindingType yangi binding turi (faqat bindingTypeProvided=true bo'lganda)
+     * @param bindingTypeProvided bindingType field JSON'da berilganmi
+     * @return yangilangan TelegramChatBinding
+     * @throws ResourceNotFoundException agar tenant yoki chat binding topilmasa
+     */
+    public TelegramChatBinding updateChatBinding(UUID tenantId, UUID chatBindingId,
+                                                   String chatTitle, boolean chatTitleProvided,
+                                                   ChatBindingType bindingType, boolean bindingTypeProvided) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramChatBinding binding = telegramChatBindingRepository.findByIdAndTenantId(chatBindingId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("ChatBinding", chatBindingId));
+
+        String oldChatTitle = binding.getChatTitle();
+        String oldBindingType = binding.getBindingType().name();
+
+        if (chatTitleProvided) {
+            binding.setChatTitle(chatTitle != null && !chatTitle.isBlank() ? chatTitle : null);
+        }
+
+        if (bindingTypeProvided) {
+            binding.setBindingType(bindingType);
+        }
+
+        binding = telegramChatBindingRepository.save(binding);
+
+        String oldValue = oldBindingType + (oldChatTitle != null ? " | " + oldChatTitle : "");
+        String newValue = binding.getBindingType().name()
+                + (binding.getChatTitle() != null ? " | " + binding.getChatTitle() : "");
+
+        auditService.recordEvent(tenantId, "CHAT_BINDING", binding.getId(),
+                "UPDATED", null, "ADMIN_API", oldValue, newValue);
+
+        return binding;
+    }
+
     // ========== RoutingRule operations ==========
 
     /**

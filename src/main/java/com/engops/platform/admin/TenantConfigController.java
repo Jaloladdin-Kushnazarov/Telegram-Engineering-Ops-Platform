@@ -34,6 +34,7 @@ import java.util.UUID;
  * - POST /workflow-definitions/{definitionId}/deactivate — workflow definition deaktivlashtirish
  * - DELETE /workflow-definitions/{definitionId} — workflow definition o'chirish
  * - POST /chat-bindings — yangi chat binding yaratish
+ * - PATCH /chat-bindings/{chatBindingId} — chat binding metadata yangilash
  * - POST /routing-rules — yangi routing rule yaratish
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
  * - POST /routing-rules/{ruleId}/activate — routing rule aktivlashtirish
@@ -282,6 +283,26 @@ public class TenantConfigController {
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toChatBindingCreatedResponse(view));
+    }
+
+    /**
+     * Chat binding metadata'sini yangilaydi (chatTitle, bindingType).
+     *
+     * @param chatBindingId chat binding identifikatori
+     * @param tenantId tenant identifikatori
+     * @param request yangilash so'rovi
+     * @return yangilangan chat binding (200 OK)
+     */
+    @PatchMapping("/chat-bindings/{chatBindingId}")
+    public ResponseEntity<TenantConfigChatBindingCreatedResponse> updateChatBinding(
+            @PathVariable UUID chatBindingId,
+            @RequestParam UUID tenantId,
+            @RequestBody UpdateChatBindingRequest request) {
+
+        TenantConfigWriteFacade.ChatBindingCreatedView view =
+                writeFacade.updateChatBinding(tenantId, chatBindingId, request);
+
+        return ResponseEntity.ok(toChatBindingCreatedResponse(view));
     }
 
     private TenantConfigChatBindingCreatedResponse toChatBindingCreatedResponse(

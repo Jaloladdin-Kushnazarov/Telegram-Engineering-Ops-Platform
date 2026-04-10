@@ -1245,6 +1245,163 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("DUPLICATE_CHAT_BINDING"));
     }
 
+    // ========== PATCH /chat-bindings/{chatBindingId} endpoint ==========
+
+    private static final UUID CB_ID = UUID.fromString("55555555-5555-5555-5555-555555555551");
+
+    @Test
+    void updateChatBindingWithOnlyChatTitle() throws Exception {
+        var view = new TenantConfigWriteFacade.ChatBindingCreatedView(
+                TENANT_ID, CB_ID, -1001234567890L, "New Title", "MAIN_GROUP", true,
+                Instant.parse("2026-04-10T12:00:00Z"));
+
+        when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
+                any(UpdateChatBindingRequest.class))).thenReturn(view);
+
+        mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatTitle":"New Title"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.chatBindingId").value(CB_ID.toString()))
+                .andExpect(jsonPath("$.chatTitle").value("New Title"))
+                .andExpect(jsonPath("$.bindingType").value("MAIN_GROUP"));
+    }
+
+    @Test
+    void updateChatBindingWithOnlyBindingType() throws Exception {
+        var view = new TenantConfigWriteFacade.ChatBindingCreatedView(
+                TENANT_ID, CB_ID, -1001234567890L, "Chat", "NOTIFICATION_GROUP", true,
+                Instant.parse("2026-04-10T12:00:00Z"));
+
+        when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
+                any(UpdateChatBindingRequest.class))).thenReturn(view);
+
+        mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"bindingType":"NOTIFICATION_GROUP"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bindingType").value("NOTIFICATION_GROUP"));
+    }
+
+    @Test
+    void updateChatBindingWithBothFields() throws Exception {
+        var view = new TenantConfigWriteFacade.ChatBindingCreatedView(
+                TENANT_ID, CB_ID, -1001234567890L, "Updated", "NOTIFICATION_GROUP", true,
+                Instant.parse("2026-04-10T12:00:00Z"));
+
+        when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
+                any(UpdateChatBindingRequest.class))).thenReturn(view);
+
+        mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatTitle":"Updated","bindingType":"NOTIFICATION_GROUP"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.chatTitle").value("Updated"))
+                .andExpect(jsonPath("$.bindingType").value("NOTIFICATION_GROUP"));
+    }
+
+    @Test
+    void updateChatBindingExplicitNullChatTitleOmitsField() throws Exception {
+        var view = new TenantConfigWriteFacade.ChatBindingCreatedView(
+                TENANT_ID, CB_ID, -1001234567890L, null, "MAIN_GROUP", true,
+                Instant.parse("2026-04-10T12:00:00Z"));
+
+        when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
+                any(UpdateChatBindingRequest.class))).thenReturn(view);
+
+        mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatTitle":null}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.chatTitle").doesNotExist());
+    }
+
+    @Test
+    void updateChatBindingMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatTitle":"Title"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateChatBindingInvalidBindingTypeReturns400() throws Exception {
+        when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
+                any(UpdateChatBindingRequest.class)))
+                .thenThrow(new IllegalArgumentException(
+                        "bindingType faqat MAIN_GROUP, NOTIFICATION_GROUP bo'lishi mumkin: PRIVATE"));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"bindingType":"PRIVATE"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void updateChatBindingTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
+                any(UpdateChatBindingRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatTitle":"Title"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void updateChatBindingNotFoundReturns404() throws Exception {
+        when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
+                any(UpdateChatBindingRequest.class)))
+                .thenThrow(new ResourceNotFoundException("ChatBinding", CB_ID));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatTitle":"Title"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void updateChatBindingEmptyBodyReturns400() throws Exception {
+        when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
+                any(UpdateChatBindingRequest.class)))
+                .thenThrow(new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak"));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
     // ========== POST /routing-rules endpoint ==========
 
     @Test

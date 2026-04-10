@@ -619,6 +619,146 @@ class TenantConfigCommandServiceTest {
                 eq(null), eq("-100999 | NOTIFICATION_GROUP | Ops Channel"));
     }
 
+    // ========== updateChatBinding tests ==========
+
+    private static final UUID CHAT_BINDING_ID = UUID.fromString("55555555-5555-5555-5555-555555555551");
+
+    private TelegramChatBinding existingChatBinding() {
+        TelegramChatBinding binding = new TelegramChatBinding(TENANT_ID, -1001234567890L, "Old Title");
+        binding.setBindingType(ChatBindingType.MAIN_GROUP);
+        return binding;
+    }
+
+    @Test
+    void updateChatBindingOnlyChatTitle() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = existingChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramChatBindingRepository.save(any(TelegramChatBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramChatBinding result = service.updateChatBinding(
+                TENANT_ID, CHAT_BINDING_ID,
+                "New Title", true,
+                null, false);
+
+        assertThat(result.getChatTitle()).isEqualTo("New Title");
+        assertThat(result.getBindingType()).isEqualTo(ChatBindingType.MAIN_GROUP);
+    }
+
+    @Test
+    void updateChatBindingOnlyBindingType() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = existingChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramChatBindingRepository.save(any(TelegramChatBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramChatBinding result = service.updateChatBinding(
+                TENANT_ID, CHAT_BINDING_ID,
+                null, false,
+                ChatBindingType.NOTIFICATION_GROUP, true);
+
+        assertThat(result.getChatTitle()).isEqualTo("Old Title");
+        assertThat(result.getBindingType()).isEqualTo(ChatBindingType.NOTIFICATION_GROUP);
+    }
+
+    @Test
+    void updateChatBindingBothFields() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = existingChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramChatBindingRepository.save(any(TelegramChatBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramChatBinding result = service.updateChatBinding(
+                TENANT_ID, CHAT_BINDING_ID,
+                "Updated Title", true,
+                ChatBindingType.NOTIFICATION_GROUP, true);
+
+        assertThat(result.getChatTitle()).isEqualTo("Updated Title");
+        assertThat(result.getBindingType()).isEqualTo(ChatBindingType.NOTIFICATION_GROUP);
+
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("CHAT_BINDING"), eq(existing.getId()),
+                eq("UPDATED"), eq(null), eq("ADMIN_API"),
+                eq("MAIN_GROUP | Old Title"), eq("NOTIFICATION_GROUP | Updated Title"));
+    }
+
+    @Test
+    void updateChatBindingExplicitNullChatTitleClearsField() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = existingChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramChatBindingRepository.save(any(TelegramChatBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramChatBinding result = service.updateChatBinding(
+                TENANT_ID, CHAT_BINDING_ID,
+                null, true,
+                null, false);
+
+        assertThat(result.getChatTitle()).isNull();
+    }
+
+    @Test
+    void updateChatBindingBlankChatTitleClearsField() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = existingChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramChatBindingRepository.save(any(TelegramChatBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramChatBinding result = service.updateChatBinding(
+                TENANT_ID, CHAT_BINDING_ID,
+                "   ", true,
+                null, false);
+
+        assertThat(result.getChatTitle()).isNull();
+    }
+
+    @Test
+    void updateChatBindingThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateChatBinding(
+                TENANT_ID, CHAT_BINDING_ID,
+                "Title", true, null, false))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void updateChatBindingThrowsResourceNotFoundWhenBindingMissing() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateChatBinding(
+                TENANT_ID, CHAT_BINDING_ID,
+                "Title", true, null, false))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
     // ========== createRoutingRule tests ==========
 
     @Test

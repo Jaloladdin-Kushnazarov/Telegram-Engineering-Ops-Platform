@@ -14,6 +14,8 @@ import java.util.UUID;
 @Repository
 public interface TelegramChatBindingRepository extends JpaRepository<TelegramChatBinding, UUID> {
 
+    Optional<TelegramChatBinding> findByIdAndTenantId(UUID id, UUID tenantId);
+
     List<TelegramChatBinding> findByTenantId(UUID tenantId);
 
     Optional<TelegramChatBinding> findByTenantIdAndChatId(UUID tenantId, long chatId);

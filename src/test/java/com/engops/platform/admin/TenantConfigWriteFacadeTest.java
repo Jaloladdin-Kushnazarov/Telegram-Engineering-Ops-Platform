@@ -487,6 +487,152 @@ class TenantConfigWriteFacadeTest {
                 TENANT_ID, -1001234567890L, "Dev Chat", ChatBindingType.MAIN_GROUP);
     }
 
+    // ========== updateChatBinding tests ==========
+
+    private static final UUID CB_ID = UUID.fromString("55555555-5555-5555-5555-555555555551");
+
+    private UpdateChatBindingRequest updateChatBindingRequest() {
+        return new UpdateChatBindingRequest();
+    }
+
+    @Test
+    void updateChatBindingThrowsIllegalArgumentWhenTenantIdNull() {
+        var request = updateChatBindingRequest();
+        request.setChatTitle("Title");
+
+        assertThatThrownBy(() -> facade.updateChatBinding(null, CB_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void updateChatBindingThrowsIllegalArgumentWhenChatBindingIdNull() {
+        var request = updateChatBindingRequest();
+        request.setChatTitle("Title");
+
+        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, null, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("chatBindingId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void updateChatBindingThrowsIllegalArgumentWhenRequestNull() {
+        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, CB_ID, (UpdateChatBindingRequest) null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void updateChatBindingThrowsIllegalArgumentWhenNoFieldProvided() {
+        var request = updateChatBindingRequest();
+
+        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, CB_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Kamida bitta");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void updateChatBindingThrowsIllegalArgumentWhenBindingTypeInvalid() {
+        var request = updateChatBindingRequest();
+        request.setBindingType("PRIVATE_CHAT");
+
+        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, CB_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("bindingType");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void updateChatBindingDelegatesWithChatTitleOnly() {
+        var request = updateChatBindingRequest();
+        request.setChatTitle("New Title");
+
+        TelegramChatBinding binding = new TelegramChatBinding(TENANT_ID, -1001234567890L, "New Title");
+        binding.setBindingType(ChatBindingType.MAIN_GROUP);
+
+        when(commandService.updateChatBinding(
+                eq(TENANT_ID), eq(CB_ID),
+                eq("New Title"), eq(true),
+                eq(null), eq(false)))
+                .thenReturn(binding);
+
+        var result = facade.updateChatBinding(TENANT_ID, CB_ID, request);
+
+        assertThat(result.chatTitle()).isEqualTo("New Title");
+        assertThat(result.bindingType()).isEqualTo("MAIN_GROUP");
+    }
+
+    @Test
+    void updateChatBindingDelegatesWithBindingTypeOnly() {
+        var request = updateChatBindingRequest();
+        request.setBindingType("NOTIFICATION_GROUP");
+
+        TelegramChatBinding binding = new TelegramChatBinding(TENANT_ID, -1001234567890L, "Chat");
+        binding.setBindingType(ChatBindingType.NOTIFICATION_GROUP);
+
+        when(commandService.updateChatBinding(
+                eq(TENANT_ID), eq(CB_ID),
+                eq(null), eq(false),
+                eq(ChatBindingType.NOTIFICATION_GROUP), eq(true)))
+                .thenReturn(binding);
+
+        var result = facade.updateChatBinding(TENANT_ID, CB_ID, request);
+
+        assertThat(result.bindingType()).isEqualTo("NOTIFICATION_GROUP");
+    }
+
+    @Test
+    void updateChatBindingDelegatesWithBothFields() {
+        var request = updateChatBindingRequest();
+        request.setChatTitle("Updated");
+        request.setBindingType("MAIN_GROUP");
+
+        TelegramChatBinding binding = new TelegramChatBinding(TENANT_ID, -1001234567890L, "Updated");
+        binding.setBindingType(ChatBindingType.MAIN_GROUP);
+
+        when(commandService.updateChatBinding(
+                eq(TENANT_ID), eq(CB_ID),
+                eq("Updated"), eq(true),
+                eq(ChatBindingType.MAIN_GROUP), eq(true)))
+                .thenReturn(binding);
+
+        var result = facade.updateChatBinding(TENANT_ID, CB_ID, request);
+
+        assertThat(result.chatTitle()).isEqualTo("Updated");
+        assertThat(result.bindingType()).isEqualTo("MAIN_GROUP");
+    }
+
+    @Test
+    void updateChatBindingExplicitNullChatTitleClearSemantics() {
+        var request = updateChatBindingRequest();
+        request.setChatTitle(null);
+
+        TelegramChatBinding binding = new TelegramChatBinding(TENANT_ID, -1001234567890L, null);
+        binding.setBindingType(ChatBindingType.MAIN_GROUP);
+
+        when(commandService.updateChatBinding(
+                eq(TENANT_ID), eq(CB_ID),
+                eq(null), eq(true),
+                eq(null), eq(false)))
+                .thenReturn(binding);
+
+        facade.updateChatBinding(TENANT_ID, CB_ID, request);
+
+        verify(commandService).updateChatBinding(
+                eq(TENANT_ID), eq(CB_ID),
+                eq(null), eq(true),
+                eq(null), eq(false));
+    }
+
     // ========== createRoutingRule tests ==========
 
     @Test
