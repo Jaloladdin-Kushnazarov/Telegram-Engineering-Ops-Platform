@@ -353,6 +353,66 @@ public class TenantConfigCommandService {
     }
 
     /**
+     * Routing rule'ni aktiv holatga o'tkazadi.
+     *
+     * Idempotent: allaqachon aktiv bo'lsa, hech narsa o'zgarmaydi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ruleId routing rule identifikatori
+     * @return yangilangan RoutingRule
+     * @throws ResourceNotFoundException agar tenant yoki routing rule topilmasa
+     */
+    public RoutingRule activateRoutingRule(UUID tenantId, UUID ruleId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        RoutingRule rule = routingRuleRepository.findByIdAndTenantId(ruleId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("RoutingRule", ruleId));
+
+        if (rule.isActive()) {
+            return rule;
+        }
+
+        rule.setActive(true);
+        rule = routingRuleRepository.save(rule);
+
+        auditService.recordEvent(tenantId, "ROUTING_RULE", rule.getId(),
+                "ACTIVATED", null, "ADMIN_API", "false", "true");
+
+        return rule;
+    }
+
+    /**
+     * Routing rule'ni noaktiv holatga o'tkazadi.
+     *
+     * Idempotent: allaqachon noaktiv bo'lsa, hech narsa o'zgarmaydi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ruleId routing rule identifikatori
+     * @return yangilangan RoutingRule
+     * @throws ResourceNotFoundException agar tenant yoki routing rule topilmasa
+     */
+    public RoutingRule deactivateRoutingRule(UUID tenantId, UUID ruleId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        RoutingRule rule = routingRuleRepository.findByIdAndTenantId(ruleId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("RoutingRule", ruleId));
+
+        if (!rule.isActive()) {
+            return rule;
+        }
+
+        rule.setActive(false);
+        rule = routingRuleRepository.save(rule);
+
+        auditService.recordEvent(tenantId, "ROUTING_RULE", rule.getId(),
+                "DEACTIVATED", null, "ADMIN_API", "true", "false");
+
+        return rule;
+    }
+
+    /**
      * DataIntegrityViolationException workflow_definition (tenant_id, name) unique
      * constraint violation ekanligini tekshiradi.
      *

@@ -33,6 +33,8 @@ import java.util.UUID;
  * - POST /workflow-definitions/{definitionId}/deactivate — workflow definition deaktivlashtirish
  * - POST /routing-rules — yangi routing rule yaratish
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
+ * - POST /routing-rules/{ruleId}/activate — routing rule aktivlashtirish
+ * - POST /routing-rules/{ruleId}/deactivate — routing rule deaktivlashtirish
  *
  * Bu controller thin adapter:
  * - HTTP request parametrlarini facade'ga uzatadi
@@ -277,6 +279,42 @@ public class TenantConfigController {
 
         TenantConfigWriteFacade.RoutingRuleUpdatedView view =
                 writeFacade.updateRoutingRule(tenantId, ruleId, request);
+
+        return ResponseEntity.ok(toRoutingRuleUpdatedResponse(view));
+    }
+
+    /**
+     * Routing rule'ni aktiv holatga o'tkazadi.
+     *
+     * @param ruleId routing rule identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan routing rule (200 OK)
+     */
+    @PostMapping("/routing-rules/{ruleId}/activate")
+    public ResponseEntity<TenantConfigRoutingRuleUpdatedResponse> activateRoutingRule(
+            @PathVariable UUID ruleId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.RoutingRuleUpdatedView view =
+                writeFacade.activateRoutingRule(tenantId, ruleId);
+
+        return ResponseEntity.ok(toRoutingRuleUpdatedResponse(view));
+    }
+
+    /**
+     * Routing rule'ni noaktiv holatga o'tkazadi.
+     *
+     * @param ruleId routing rule identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan routing rule (200 OK)
+     */
+    @PostMapping("/routing-rules/{ruleId}/deactivate")
+    public ResponseEntity<TenantConfigRoutingRuleUpdatedResponse> deactivateRoutingRule(
+            @PathVariable UUID ruleId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.RoutingRuleUpdatedView view =
+                writeFacade.deactivateRoutingRule(tenantId, ruleId);
 
         return ResponseEntity.ok(toRoutingRuleUpdatedResponse(view));
     }

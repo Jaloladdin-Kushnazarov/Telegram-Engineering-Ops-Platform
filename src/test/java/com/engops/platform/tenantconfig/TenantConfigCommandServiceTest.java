@@ -835,4 +835,132 @@ class TenantConfigCommandServiceTest {
         assertThat(result.getName()).isEqualTo("Old Rule");
         verify(routingRuleRepository).save(existing);
     }
+
+    // ========== activateRoutingRule tests ==========
+
+    @Test
+    void activateRoutingRuleSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+        existing.setActive(false);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.activateRoutingRule(TENANT_ID, RULE_ID);
+
+        assertThat(result.isActive()).isTrue();
+        verify(routingRuleRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("ROUTING_RULE"), eq(existing.getId()),
+                eq("ACTIVATED"), eq(null), eq("ADMIN_API"), eq("false"), eq("true"));
+    }
+
+    @Test
+    void activateRoutingRuleAlreadyActiveIsIdempotent() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        RoutingRule result = service.activateRoutingRule(TENANT_ID, RULE_ID);
+
+        assertThat(result.isActive()).isTrue();
+        verify(routingRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void activateRoutingRuleThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.activateRoutingRule(TENANT_ID, RULE_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(routingRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void activateRoutingRuleThrowsResourceNotFoundWhenRuleMissing() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.activateRoutingRule(TENANT_ID, RULE_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(routingRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    // ========== deactivateRoutingRule tests ==========
+
+    @Test
+    void deactivateRoutingRuleSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(routingRuleRepository.save(any(RoutingRule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RoutingRule result = service.deactivateRoutingRule(TENANT_ID, RULE_ID);
+
+        assertThat(result.isActive()).isFalse();
+        verify(routingRuleRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("ROUTING_RULE"), eq(existing.getId()),
+                eq("DEACTIVATED"), eq(null), eq("ADMIN_API"), eq("true"), eq("false"));
+    }
+
+    @Test
+    void deactivateRoutingRuleAlreadyInactiveIsIdempotent() {
+        Tenant tenant = mock(Tenant.class);
+        RoutingRule existing = existingRule();
+        existing.setActive(false);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        RoutingRule result = service.deactivateRoutingRule(TENANT_ID, RULE_ID);
+
+        assertThat(result.isActive()).isFalse();
+        verify(routingRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deactivateRoutingRuleThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deactivateRoutingRule(TENANT_ID, RULE_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(routingRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deactivateRoutingRuleThrowsResourceNotFoundWhenRuleMissing() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(routingRuleRepository.findByIdAndTenantId(RULE_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deactivateRoutingRule(TENANT_ID, RULE_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(routingRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
 }

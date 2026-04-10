@@ -280,6 +280,58 @@ public class TenantConfigWriteFacade {
     }
 
     /**
+     * Routing rule'ni aktiv holatga o'tkazadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ruleId routing rule identifikatori
+     * @return yangilangan routing rule view
+     * @throws IllegalArgumentException tenantId yoki ruleId null bo'lsa
+     */
+    public RoutingRuleUpdatedView activateRoutingRule(UUID tenantId, UUID ruleId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (ruleId == null) {
+            throw new IllegalArgumentException("ruleId null bo'lishi mumkin emas");
+        }
+
+        RoutingRule rule = commandService.activateRoutingRule(tenantId, ruleId);
+        return toRoutingRuleUpdatedView(rule);
+    }
+
+    /**
+     * Routing rule'ni noaktiv holatga o'tkazadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ruleId routing rule identifikatori
+     * @return yangilangan routing rule view
+     * @throws IllegalArgumentException tenantId yoki ruleId null bo'lsa
+     */
+    public RoutingRuleUpdatedView deactivateRoutingRule(UUID tenantId, UUID ruleId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (ruleId == null) {
+            throw new IllegalArgumentException("ruleId null bo'lishi mumkin emas");
+        }
+
+        RoutingRule rule = commandService.deactivateRoutingRule(tenantId, ruleId);
+        return toRoutingRuleUpdatedView(rule);
+    }
+
+    private RoutingRuleUpdatedView toRoutingRuleUpdatedView(RoutingRule rule) {
+        return new RoutingRuleUpdatedView(
+                rule.getTenantId(),
+                rule.getId(),
+                rule.getName(),
+                rule.getPriority(),
+                rule.getTargetTopicBindingId(),
+                rule.getConditionExpression(),
+                rule.isActive(),
+                rule.getCreatedAt());
+    }
+
+    /**
      * Facade natija modeli — yangilangan routing rule.
      */
     public record RoutingRuleUpdatedView(

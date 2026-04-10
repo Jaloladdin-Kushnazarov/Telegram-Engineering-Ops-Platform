@@ -1449,4 +1449,100 @@ class TenantConfigControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
+
+    // ========== POST /routing-rules/{ruleId}/activate endpoint ==========
+
+    @Test
+    void activateRoutingRuleReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.RoutingRuleUpdatedView(
+                TENANT_ID, RULE_ID, "Rule", 10, null, null, true,
+                Instant.parse("2026-04-08T12:00:00Z"));
+
+        when(writeFacade.activateRoutingRule(TENANT_ID, RULE_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.ruleId").value(RULE_ID.toString()))
+                .andExpect(jsonPath("$.name").value("Rule"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.workItemType").doesNotExist());
+    }
+
+    @Test
+    void activateRoutingRuleMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void activateRoutingRuleTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.activateRoutingRule(TENANT_ID, RULE_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void activateRoutingRuleNotFoundReturns404() throws Exception {
+        when(writeFacade.activateRoutingRule(TENANT_ID, RULE_ID))
+                .thenThrow(new ResourceNotFoundException("RoutingRule", RULE_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    // ========== POST /routing-rules/{ruleId}/deactivate endpoint ==========
+
+    @Test
+    void deactivateRoutingRuleReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.RoutingRuleUpdatedView(
+                TENANT_ID, RULE_ID, "Rule", 10, null, null, false,
+                Instant.parse("2026-04-08T12:00:00Z"));
+
+        when(writeFacade.deactivateRoutingRule(TENANT_ID, RULE_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.ruleId").value(RULE_ID.toString()))
+                .andExpect(jsonPath("$.name").value("Rule"))
+                .andExpect(jsonPath("$.active").value(false))
+                .andExpect(jsonPath("$.workItemType").doesNotExist());
+    }
+
+    @Test
+    void deactivateRoutingRuleMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deactivateRoutingRuleTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.deactivateRoutingRule(TENANT_ID, RULE_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void deactivateRoutingRuleNotFoundReturns404() throws Exception {
+        when(writeFacade.deactivateRoutingRule(TENANT_ID, RULE_ID))
+                .thenThrow(new ResourceNotFoundException("RoutingRule", RULE_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
 }

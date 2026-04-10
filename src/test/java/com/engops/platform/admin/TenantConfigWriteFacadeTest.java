@@ -661,4 +661,78 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(false),
                 eq(null), eq(true));
     }
+
+    // ========== activateRoutingRule tests ==========
+
+    @Test
+    void activateRoutingRuleThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.activateRoutingRule(null, RULE_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void activateRoutingRuleThrowsIllegalArgumentWhenRuleIdNull() {
+        assertThatThrownBy(() -> facade.activateRoutingRule(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("ruleId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void activateRoutingRuleDelegatesToCommandService() {
+        RoutingRule rule = new RoutingRule(TENANT_ID, "Rule", "BUG");
+        rule.setPriority(10);
+
+        when(commandService.activateRoutingRule(TENANT_ID, RULE_ID)).thenReturn(rule);
+
+        var result = facade.activateRoutingRule(TENANT_ID, RULE_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.ruleId()).isEqualTo(rule.getId());
+        assertThat(result.name()).isEqualTo("Rule");
+        assertThat(result.active()).isTrue();
+
+        verify(commandService).activateRoutingRule(TENANT_ID, RULE_ID);
+    }
+
+    // ========== deactivateRoutingRule tests ==========
+
+    @Test
+    void deactivateRoutingRuleThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.deactivateRoutingRule(null, RULE_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deactivateRoutingRuleThrowsIllegalArgumentWhenRuleIdNull() {
+        assertThatThrownBy(() -> facade.deactivateRoutingRule(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("ruleId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deactivateRoutingRuleDelegatesToCommandService() {
+        RoutingRule rule = new RoutingRule(TENANT_ID, "Rule", "BUG");
+        rule.setPriority(5);
+        rule.setActive(false);
+
+        when(commandService.deactivateRoutingRule(TENANT_ID, RULE_ID)).thenReturn(rule);
+
+        var result = facade.deactivateRoutingRule(TENANT_ID, RULE_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.ruleId()).isEqualTo(rule.getId());
+        assertThat(result.active()).isFalse();
+
+        verify(commandService).deactivateRoutingRule(TENANT_ID, RULE_ID);
+    }
 }
