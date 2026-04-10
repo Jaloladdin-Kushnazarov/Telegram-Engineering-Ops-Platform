@@ -413,6 +413,28 @@ public class TenantConfigCommandService {
     }
 
     /**
+     * Routing rule'ni o'chiradi (hard delete).
+     *
+     * @param tenantId tenant identifikatori
+     * @param ruleId routing rule identifikatori
+     * @throws ResourceNotFoundException agar tenant yoki routing rule topilmasa
+     */
+    public void deleteRoutingRule(UUID tenantId, UUID ruleId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        RoutingRule rule = routingRuleRepository.findByIdAndTenantId(ruleId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("RoutingRule", ruleId));
+
+        String oldValue = rule.getName() + " | p=" + rule.getPriority();
+
+        routingRuleRepository.delete(rule);
+
+        auditService.recordEvent(tenantId, "ROUTING_RULE", ruleId,
+                "DELETED", null, "ADMIN_API", oldValue, null);
+    }
+
+    /**
      * DataIntegrityViolationException workflow_definition (tenant_id, name) unique
      * constraint violation ekanligini tekshiradi.
      *

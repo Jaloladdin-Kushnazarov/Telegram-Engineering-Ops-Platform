@@ -735,4 +735,31 @@ class TenantConfigWriteFacadeTest {
 
         verify(commandService).deactivateRoutingRule(TENANT_ID, RULE_ID);
     }
+
+    // ========== deleteRoutingRule tests ==========
+
+    @Test
+    void deleteRoutingRuleThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.deleteRoutingRule(null, RULE_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deleteRoutingRuleThrowsIllegalArgumentWhenRuleIdNull() {
+        assertThatThrownBy(() -> facade.deleteRoutingRule(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("ruleId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deleteRoutingRuleDelegatesToCommandService() {
+        facade.deleteRoutingRule(TENANT_ID, RULE_ID);
+
+        verify(commandService).deleteRoutingRule(TENANT_ID, RULE_ID);
+    }
 }

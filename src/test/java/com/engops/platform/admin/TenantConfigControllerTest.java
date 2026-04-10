@@ -15,7 +15,9 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -1541,6 +1543,44 @@ class TenantConfigControllerTest {
                 .thenThrow(new ResourceNotFoundException("RoutingRule", RULE_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    // ========== DELETE /routing-rules/{ruleId} endpoint ==========
+
+    @Test
+    void deleteRoutingRuleReturns204() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+    }
+
+    @Test
+    void deleteRoutingRuleMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deleteRoutingRuleTenantNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("Tenant", TENANT_ID))
+                .when(writeFacade).deleteRoutingRule(TENANT_ID, RULE_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void deleteRoutingRuleNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("RoutingRule", RULE_ID))
+                .when(writeFacade).deleteRoutingRule(TENANT_ID, RULE_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
                         .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));

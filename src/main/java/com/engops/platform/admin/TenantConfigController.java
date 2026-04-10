@@ -2,6 +2,7 @@ package com.engops.platform.admin;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,6 +36,7 @@ import java.util.UUID;
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
  * - POST /routing-rules/{ruleId}/activate — routing rule aktivlashtirish
  * - POST /routing-rules/{ruleId}/deactivate — routing rule deaktivlashtirish
+ * - DELETE /routing-rules/{ruleId} — routing rule o'chirish
  *
  * Bu controller thin adapter:
  * - HTTP request parametrlarini facade'ga uzatadi
@@ -317,6 +319,23 @@ public class TenantConfigController {
                 writeFacade.deactivateRoutingRule(tenantId, ruleId);
 
         return ResponseEntity.ok(toRoutingRuleUpdatedResponse(view));
+    }
+
+    /**
+     * Routing rule'ni o'chiradi.
+     *
+     * @param ruleId routing rule identifikatori
+     * @param tenantId tenant identifikatori
+     * @return 204 No Content
+     */
+    @DeleteMapping("/routing-rules/{ruleId}")
+    public ResponseEntity<Void> deleteRoutingRule(
+            @PathVariable UUID ruleId,
+            @RequestParam UUID tenantId) {
+
+        writeFacade.deleteRoutingRule(tenantId, ruleId);
+
+        return ResponseEntity.noContent().build();
     }
 
     private TenantConfigRoutingRuleUpdatedResponse toRoutingRuleUpdatedResponse(

@@ -319,6 +319,24 @@ public class TenantConfigWriteFacade {
         return toRoutingRuleUpdatedView(rule);
     }
 
+    /**
+     * Routing rule'ni o'chiradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ruleId routing rule identifikatori
+     * @throws IllegalArgumentException tenantId yoki ruleId null bo'lsa
+     */
+    public void deleteRoutingRule(UUID tenantId, UUID ruleId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (ruleId == null) {
+            throw new IllegalArgumentException("ruleId null bo'lishi mumkin emas");
+        }
+
+        commandService.deleteRoutingRule(tenantId, ruleId);
+    }
+
     private RoutingRuleUpdatedView toRoutingRuleUpdatedView(RoutingRule rule) {
         return new RoutingRuleUpdatedView(
                 rule.getTenantId(),
