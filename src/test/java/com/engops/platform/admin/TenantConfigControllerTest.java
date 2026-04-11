@@ -1857,6 +1857,161 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
+    // ========== Membership role binding endpoints ==========
+
+    private static final UUID ROLE_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
+    private static final UUID BINDING_ID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1");
+
+    @Test
+    void assignRoleToMembershipReturns201() throws Exception {
+        var view = new TenantConfigWriteFacade.MembershipRoleBindingView(
+                TENANT_ID, MEMBERSHIP_ID, BINDING_ID, ROLE_ID, "BUG_TRIAGER",
+                Instant.parse("2026-04-12T12:00:00Z"));
+
+        when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
+                any(CreateMembershipRoleBindingRequest.class))).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.membershipId").value(MEMBERSHIP_ID.toString()))
+                .andExpect(jsonPath("$.bindingId").value(BINDING_ID.toString()))
+                .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
+                .andExpect(jsonPath("$.roleCode").value("BUG_TRIAGER"));
+    }
+
+    @Test
+    void assignRoleToMembershipMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void assignRoleToMembershipTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
+                any(CreateMembershipRoleBindingRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void assignRoleToMembershipMembershipNotFoundReturns404() throws Exception {
+        when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
+                any(CreateMembershipRoleBindingRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void assignRoleToMembershipRoleNotFoundReturns404() throws Exception {
+        when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
+                any(CreateMembershipRoleBindingRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void assignRoleToMembershipDuplicateReturns422() throws Exception {
+        when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
+                any(CreateMembershipRoleBindingRequest.class)))
+                .thenThrow(new BusinessRuleException("DUPLICATE_MEMBERSHIP_ROLE",
+                        "Membership uchun rol allaqachon tayinlangan"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_MEMBERSHIP_ROLE"));
+    }
+
+    @Test
+    void unassignRoleFromMembershipReturns204() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
+                        MEMBERSHIP_ID, ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+    }
+
+    @Test
+    void unassignRoleFromMembershipMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
+                        MEMBERSHIP_ID, ROLE_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void unassignRoleFromMembershipTenantNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("Tenant", TENANT_ID))
+                .when(writeFacade).unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
+                        MEMBERSHIP_ID, ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void unassignRoleFromMembershipMembershipNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID))
+                .when(writeFacade).unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
+                        MEMBERSHIP_ID, ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void unassignRoleFromMembershipBindingNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("MembershipRoleBinding", "x"))
+                .when(writeFacade).unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
+                        MEMBERSHIP_ID, ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
     // ========== POST /routing-rules endpoint ==========
 
     @Test

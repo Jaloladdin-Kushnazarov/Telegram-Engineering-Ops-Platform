@@ -2,6 +2,7 @@ package com.engops.platform.admin;
 
 import com.engops.platform.identity.IdentityCommandService;
 import com.engops.platform.identity.model.Membership;
+import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
@@ -811,5 +812,83 @@ public class TenantConfigWriteFacade {
             UUID membershipId,
             UUID userId,
             String status,
+            java.time.Instant createdAt) {}
+
+    // ========== MembershipRoleBinding lifecycle ==========
+
+    /**
+     * A'zolikka global rolni tayinlaydi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param membershipId a'zolik identifikatori
+     * @param request yaratish so'rovi (roleId bilan)
+     * @return yaratilgan binding view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public MembershipRoleBindingView assignRoleToMembership(UUID tenantId, UUID membershipId,
+                                                              CreateMembershipRoleBindingRequest request) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (membershipId == null) {
+            throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.roleId() == null) {
+            throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
+        }
+
+        MembershipRoleBinding binding = identityCommandService.assignRoleToMembership(
+                tenantId, membershipId, request.roleId());
+
+        return toMembershipRoleBindingView(tenantId, membershipId, binding);
+    }
+
+    /**
+     * A'zolikdan rolni olib tashlaydi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param membershipId a'zolik identifikatori
+     * @param roleId rol identifikatori
+     * @throws IllegalArgumentException tenantId, membershipId yoki roleId null bo'lsa
+     */
+    public void unassignRoleFromMembership(UUID tenantId, UUID membershipId, UUID roleId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (membershipId == null) {
+            throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
+        }
+        if (roleId == null) {
+            throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
+        }
+
+        identityCommandService.unassignRoleFromMembership(tenantId, membershipId, roleId);
+    }
+
+    private MembershipRoleBindingView toMembershipRoleBindingView(UUID tenantId, UUID membershipId,
+                                                                    MembershipRoleBinding binding) {
+        UUID roleId = binding.getRole() != null ? binding.getRole().getId() : null;
+        String roleCode = binding.getRole() != null ? binding.getRole().getCode() : null;
+        return new MembershipRoleBindingView(
+                tenantId,
+                membershipId,
+                binding.getId(),
+                roleId,
+                roleCode,
+                binding.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — membership-role binding.
+     */
+    public record MembershipRoleBindingView(
+            UUID tenantId,
+            UUID membershipId,
+            UUID bindingId,
+            UUID roleId,
+            String roleCode,
             java.time.Instant createdAt) {}
 }

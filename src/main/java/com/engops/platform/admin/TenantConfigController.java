@@ -45,6 +45,8 @@ import java.util.UUID;
  * - DELETE /topic-bindings/{topicBindingId} — topic binding o'chirish
  * - POST /memberships/{membershipId}/activate — a'zolikni aktivlashtirish
  * - POST /memberships/{membershipId}/suspend — a'zolikni SUSPENDED holatga o'tkazish
+ * - POST /memberships/{membershipId}/roles — a'zolikka rol tayinlash
+ * - DELETE /memberships/{membershipId}/roles/{roleId} — a'zolikdan rolni olib tashlash
  * - POST /routing-rules — yangi routing rule yaratish
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
  * - POST /routing-rules/{ruleId}/activate — routing rule aktivlashtirish
@@ -523,6 +525,57 @@ public class TenantConfigController {
                 writeFacade.suspendMembership(tenantId, membershipId);
 
         return ResponseEntity.ok(toMembershipStatusResponse(view));
+    }
+
+    /**
+     * A'zolikka global rolni tayinlaydi (membership-role binding yaratadi).
+     *
+     * @param membershipId a'zolik identifikatori
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan binding (201 Created)
+     */
+    @PostMapping("/memberships/{membershipId}/roles")
+    public ResponseEntity<TenantConfigMembershipRoleBindingCreatedResponse> assignRoleToMembership(
+            @PathVariable UUID membershipId,
+            @RequestParam UUID tenantId,
+            @RequestBody CreateMembershipRoleBindingRequest request) {
+
+        TenantConfigWriteFacade.MembershipRoleBindingView view =
+                writeFacade.assignRoleToMembership(tenantId, membershipId, request);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(toMembershipRoleBindingResponse(view));
+    }
+
+    /**
+     * A'zolikdan rolni olib tashlaydi (membership-role binding o'chiradi).
+     *
+     * @param membershipId a'zolik identifikatori
+     * @param roleId rol identifikatori
+     * @param tenantId tenant identifikatori
+     * @return 204 No Content
+     */
+    @DeleteMapping("/memberships/{membershipId}/roles/{roleId}")
+    public ResponseEntity<Void> unassignRoleFromMembership(
+            @PathVariable UUID membershipId,
+            @PathVariable UUID roleId,
+            @RequestParam UUID tenantId) {
+
+        writeFacade.unassignRoleFromMembership(tenantId, membershipId, roleId);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    private TenantConfigMembershipRoleBindingCreatedResponse toMembershipRoleBindingResponse(
+            TenantConfigWriteFacade.MembershipRoleBindingView view) {
+        return new TenantConfigMembershipRoleBindingCreatedResponse(
+                view.tenantId(),
+                view.membershipId(),
+                view.bindingId(),
+                view.roleId(),
+                view.roleCode(),
+                view.createdAt());
     }
 
     private TenantConfigMembershipStatusResponse toMembershipStatusResponse(

@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -16,4 +17,6 @@ public interface MembershipRoleBindingRepository extends JpaRepository<Membershi
     List<MembershipRoleBinding> findByMembershipId(UUID membershipId);
 
     boolean existsByMembershipIdAndRoleId(UUID membershipId, UUID roleId);
+
+    Optional<MembershipRoleBinding> findByMembershipIdAndRoleId(UUID membershipId, UUID roleId);
 }

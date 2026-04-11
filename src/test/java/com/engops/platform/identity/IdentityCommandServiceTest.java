@@ -2,14 +2,22 @@ package com.engops.platform.identity;
 
 import com.engops.platform.audit.AuditService;
 import com.engops.platform.identity.model.Membership;
+import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.MembershipStatus;
+import com.engops.platform.identity.model.Role;
 import com.engops.platform.identity.repository.MembershipRepository;
+import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
+import com.engops.platform.identity.repository.RoleRepository;
+import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.Tenant;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 
+import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -34,12 +42,18 @@ class IdentityCommandServiceTest {
     private static final UUID MEMBERSHIP_ID = UUID.fromString("88888888-8888-8888-8888-888888888881");
     private static final UUID USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999991");
 
+    private static final UUID ROLE_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
+
     private final MembershipRepository membershipRepository = mock(MembershipRepository.class);
+    private final MembershipRoleBindingRepository membershipRoleBindingRepository =
+            mock(MembershipRoleBindingRepository.class);
+    private final RoleRepository roleRepository = mock(RoleRepository.class);
     private final AuditService auditService = mock(AuditService.class);
     private final TenantConfigQueryService tenantConfigQueryService =
             mock(TenantConfigQueryService.class);
     private final IdentityCommandService service =
-            new IdentityCommandService(membershipRepository, auditService, tenantConfigQueryService);
+            new IdentityCommandService(membershipRepository, membershipRoleBindingRepository,
+                    roleRepository, auditService, tenantConfigQueryService);
 
     @BeforeEach
     void stubTenantExists() {
@@ -188,6 +202,200 @@ class IdentityCommandServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(membershipRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    // ========== assignRoleToMembership tests ==========
+
+    private Role existingRole() {
+        return new Role("BUG_TRIAGER", "Bug Triager", false);
+    }
+
+    private Membership existingMembership() {
+        return existingMembership(MembershipStatus.ACTIVE);
+    }
+
+    @Test
+    void assignRoleToMembershipSuccess() {
+        Membership membership = existingMembership();
+        Role role = existingRole();
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(membership));
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(role));
+        when(membershipRoleBindingRepository.existsByMembershipIdAndRoleId(MEMBERSHIP_ID, ROLE_ID))
+                .thenReturn(false);
+        when(membershipRoleBindingRepository.save(any(MembershipRoleBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        MembershipRoleBinding result = service.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+
+        assertThat(result.getMembership()).isSameAs(membership);
+        assertThat(result.getRole()).isSameAs(role);
+
+        verify(membershipRoleBindingRepository).save(any(MembershipRoleBinding.class));
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("MEMBERSHIP_ROLE_BINDING"), eq(result.getId()),
+                eq("CREATED"), eq(null), eq("ADMIN_API"),
+                eq(null), eq("BUG_TRIAGER"));
+    }
+
+    @Test
+    void assignRoleToMembershipThrowsTenantNotFoundWhenTenantMissing() {
+        UUID badTenant = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        when(tenantConfigQueryService.findTenantById(badTenant)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.assignRoleToMembership(badTenant, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Tenant");
+
+        verify(membershipRoleBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void assignRoleToMembershipThrowsMembershipNotFoundWhenMembershipMissing() {
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Membership");
+
+        verify(membershipRoleBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void assignRoleToMembershipThrowsRoleNotFoundWhenRoleMissing() {
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(existingMembership()));
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Role");
+
+        verify(membershipRoleBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void assignRoleToMembershipThrowsBusinessRuleWhenDuplicatePreCheck() {
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(existingMembership()));
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(existingRole()));
+        when(membershipRoleBindingRepository.existsByMembershipIdAndRoleId(MEMBERSHIP_ID, ROLE_ID))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> service.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("allaqachon");
+
+        verify(membershipRoleBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void assignRoleToMembershipTranslatesDbDuplicateConstraint() {
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(existingMembership()));
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(existingRole()));
+        when(membershipRoleBindingRepository.existsByMembershipIdAndRoleId(MEMBERSHIP_ID, ROLE_ID))
+                .thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "duplicate key", new SQLException(),
+                "membership_role_binding_membership_id_role_id_key");
+        when(membershipRoleBindingRepository.save(any(MembershipRoleBinding.class)))
+                .thenThrow(new DataIntegrityViolationException("unique", cause));
+
+        assertThatThrownBy(() -> service.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("allaqachon");
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void assignRoleToMembershipRethrowsUnrelatedIntegrityViolation() {
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(existingMembership()));
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(existingRole()));
+        when(membershipRoleBindingRepository.existsByMembershipIdAndRoleId(MEMBERSHIP_ID, ROLE_ID))
+                .thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "other", new SQLException(), "some_other_constraint");
+        when(membershipRoleBindingRepository.save(any(MembershipRoleBinding.class)))
+                .thenThrow(new DataIntegrityViolationException("other", cause));
+
+        assertThatThrownBy(() -> service.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    // ========== unassignRoleFromMembership tests ==========
+
+    @Test
+    void unassignRoleFromMembershipSuccess() {
+        Membership membership = existingMembership();
+        Role role = existingRole();
+        MembershipRoleBinding binding = new MembershipRoleBinding(membership, role);
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(membership));
+        when(membershipRoleBindingRepository.findByMembershipIdAndRoleId(MEMBERSHIP_ID, ROLE_ID))
+                .thenReturn(Optional.of(binding));
+
+        service.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+
+        verify(membershipRoleBindingRepository).delete(binding);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("MEMBERSHIP_ROLE_BINDING"), eq(binding.getId()),
+                eq("DELETED"), eq(null), eq("ADMIN_API"),
+                eq("BUG_TRIAGER"), eq(null));
+    }
+
+    @Test
+    void unassignRoleFromMembershipThrowsTenantNotFoundWhenTenantMissing() {
+        UUID badTenant = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        when(tenantConfigQueryService.findTenantById(badTenant)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.unassignRoleFromMembership(badTenant, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Tenant");
+
+        verify(membershipRoleBindingRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void unassignRoleFromMembershipThrowsMembershipNotFoundWhenMembershipMissing() {
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Membership");
+
+        verify(membershipRoleBindingRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void unassignRoleFromMembershipThrowsBindingNotFoundWhenBindingMissing() {
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(existingMembership()));
+        when(membershipRoleBindingRepository.findByMembershipIdAndRoleId(MEMBERSHIP_ID, ROLE_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("MembershipRoleBinding");
+
+        verify(membershipRoleBindingRepository, never()).delete(any());
         verifyNoInteractions(auditService);
     }
 }

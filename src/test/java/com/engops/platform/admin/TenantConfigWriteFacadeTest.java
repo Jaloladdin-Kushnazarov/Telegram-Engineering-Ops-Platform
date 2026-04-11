@@ -2,7 +2,9 @@ package com.engops.platform.admin;
 
 import com.engops.platform.identity.IdentityCommandService;
 import com.engops.platform.identity.model.Membership;
+import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.MembershipStatus;
+import com.engops.platform.identity.model.Role;
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
@@ -1413,5 +1415,105 @@ class TenantConfigWriteFacadeTest {
 
         assertThat(result.status()).isEqualTo("SUSPENDED");
         verify(identityCommandService).suspendMembership(TENANT_ID, MEMBERSHIP_ID);
+    }
+
+    // ========== MembershipRoleBinding lifecycle tests ==========
+
+    private static final UUID ROLE_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
+
+    @Test
+    void assignRoleToMembershipThrowsIllegalArgumentWhenTenantIdNull() {
+        var request = new CreateMembershipRoleBindingRequest(ROLE_ID);
+
+        assertThatThrownBy(() -> facade.assignRoleToMembership(null, MEMBERSHIP_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void assignRoleToMembershipThrowsIllegalArgumentWhenMembershipIdNull() {
+        var request = new CreateMembershipRoleBindingRequest(ROLE_ID);
+
+        assertThatThrownBy(() -> facade.assignRoleToMembership(TENANT_ID, null, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("membershipId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void assignRoleToMembershipThrowsIllegalArgumentWhenRequestNull() {
+        assertThatThrownBy(() -> facade.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void assignRoleToMembershipThrowsIllegalArgumentWhenRoleIdNull() {
+        var request = new CreateMembershipRoleBindingRequest(null);
+
+        assertThatThrownBy(() -> facade.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("roleId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void assignRoleToMembershipDelegatesToIdentityCommandService() {
+        Membership membership = new Membership(TENANT_ID, USER_ID);
+        Role role = new Role("BUG_TRIAGER", "Bug Triager", false);
+        MembershipRoleBinding binding = new MembershipRoleBinding(membership, role);
+
+        when(identityCommandService.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID))
+                .thenReturn(binding);
+
+        var result = facade.assignRoleToMembership(
+                TENANT_ID, MEMBERSHIP_ID, new CreateMembershipRoleBindingRequest(ROLE_ID));
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.membershipId()).isEqualTo(MEMBERSHIP_ID);
+        assertThat(result.bindingId()).isEqualTo(binding.getId());
+        assertThat(result.roleCode()).isEqualTo("BUG_TRIAGER");
+
+        verify(identityCommandService).assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+    }
+
+    @Test
+    void unassignRoleFromMembershipThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.unassignRoleFromMembership(null, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void unassignRoleFromMembershipThrowsIllegalArgumentWhenMembershipIdNull() {
+        assertThatThrownBy(() -> facade.unassignRoleFromMembership(TENANT_ID, null, ROLE_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("membershipId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void unassignRoleFromMembershipThrowsIllegalArgumentWhenRoleIdNull() {
+        assertThatThrownBy(() -> facade.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("roleId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void unassignRoleFromMembershipDelegatesToIdentityCommandService() {
+        facade.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+
+        verify(identityCommandService).unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
     }
 }
