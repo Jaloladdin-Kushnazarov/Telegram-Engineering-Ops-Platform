@@ -294,6 +294,57 @@ public class TenantConfigWriteFacade {
     }
 
     /**
+     * Chat binding'ni aktiv holatga o'tkazadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatBindingId chat binding identifikatori
+     * @return yangilangan chat binding view
+     * @throws IllegalArgumentException tenantId yoki chatBindingId null bo'lsa
+     */
+    public ChatBindingCreatedView activateChatBinding(UUID tenantId, UUID chatBindingId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (chatBindingId == null) {
+            throw new IllegalArgumentException("chatBindingId null bo'lishi mumkin emas");
+        }
+
+        TelegramChatBinding binding = commandService.activateChatBinding(tenantId, chatBindingId);
+        return toChatBindingView(binding);
+    }
+
+    /**
+     * Chat binding'ni noaktiv holatga o'tkazadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatBindingId chat binding identifikatori
+     * @return yangilangan chat binding view
+     * @throws IllegalArgumentException tenantId yoki chatBindingId null bo'lsa
+     */
+    public ChatBindingCreatedView deactivateChatBinding(UUID tenantId, UUID chatBindingId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (chatBindingId == null) {
+            throw new IllegalArgumentException("chatBindingId null bo'lishi mumkin emas");
+        }
+
+        TelegramChatBinding binding = commandService.deactivateChatBinding(tenantId, chatBindingId);
+        return toChatBindingView(binding);
+    }
+
+    private ChatBindingCreatedView toChatBindingView(TelegramChatBinding binding) {
+        return new ChatBindingCreatedView(
+                binding.getTenantId(),
+                binding.getId(),
+                binding.getChatId(),
+                binding.getChatTitle(),
+                binding.getBindingType().name(),
+                binding.isActive(),
+                binding.getCreatedAt());
+    }
+
+    /**
      * Facade natija modeli — yaratilgan chat binding.
      */
     public record ChatBindingCreatedView(

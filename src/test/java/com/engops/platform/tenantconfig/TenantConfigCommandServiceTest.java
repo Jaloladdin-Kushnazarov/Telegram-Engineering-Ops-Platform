@@ -759,6 +759,134 @@ class TenantConfigCommandServiceTest {
         verifyNoInteractions(auditService);
     }
 
+    // ========== activateChatBinding tests ==========
+
+    @Test
+    void activateChatBindingSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = existingChatBinding();
+        existing.setActive(false);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramChatBindingRepository.save(any(TelegramChatBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramChatBinding result = service.activateChatBinding(TENANT_ID, CHAT_BINDING_ID);
+
+        assertThat(result.isActive()).isTrue();
+        verify(telegramChatBindingRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("CHAT_BINDING"), eq(existing.getId()),
+                eq("ACTIVATED"), eq(null), eq("ADMIN_API"), eq("false"), eq("true"));
+    }
+
+    @Test
+    void activateChatBindingAlreadyActiveIsIdempotent() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = existingChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        TelegramChatBinding result = service.activateChatBinding(TENANT_ID, CHAT_BINDING_ID);
+
+        assertThat(result.isActive()).isTrue();
+        verify(telegramChatBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void activateChatBindingThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.activateChatBinding(TENANT_ID, CHAT_BINDING_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(telegramChatBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void activateChatBindingThrowsResourceNotFoundWhenBindingMissing() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.activateChatBinding(TENANT_ID, CHAT_BINDING_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(telegramChatBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    // ========== deactivateChatBinding tests ==========
+
+    @Test
+    void deactivateChatBindingSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = existingChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramChatBindingRepository.save(any(TelegramChatBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramChatBinding result = service.deactivateChatBinding(TENANT_ID, CHAT_BINDING_ID);
+
+        assertThat(result.isActive()).isFalse();
+        verify(telegramChatBindingRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("CHAT_BINDING"), eq(existing.getId()),
+                eq("DEACTIVATED"), eq(null), eq("ADMIN_API"), eq("true"), eq("false"));
+    }
+
+    @Test
+    void deactivateChatBindingAlreadyInactiveIsIdempotent() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = existingChatBinding();
+        existing.setActive(false);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        TelegramChatBinding result = service.deactivateChatBinding(TENANT_ID, CHAT_BINDING_ID);
+
+        assertThat(result.isActive()).isFalse();
+        verify(telegramChatBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deactivateChatBindingThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deactivateChatBinding(TENANT_ID, CHAT_BINDING_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(telegramChatBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deactivateChatBindingThrowsResourceNotFoundWhenBindingMissing() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deactivateChatBinding(TENANT_ID, CHAT_BINDING_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(telegramChatBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
     // ========== createRoutingRule tests ==========
 
     @Test

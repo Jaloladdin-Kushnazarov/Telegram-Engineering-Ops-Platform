@@ -633,6 +633,83 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(false));
     }
 
+    // ========== activateChatBinding tests ==========
+
+    @Test
+    void activateChatBindingThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.activateChatBinding(null, CB_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void activateChatBindingThrowsIllegalArgumentWhenChatBindingIdNull() {
+        assertThatThrownBy(() -> facade.activateChatBinding(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("chatBindingId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void activateChatBindingDelegatesToCommandService() {
+        TelegramChatBinding binding = new TelegramChatBinding(TENANT_ID, -1001234567890L, "Dev Chat");
+        binding.setBindingType(ChatBindingType.MAIN_GROUP);
+
+        when(commandService.activateChatBinding(TENANT_ID, CB_ID)).thenReturn(binding);
+
+        var result = facade.activateChatBinding(TENANT_ID, CB_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.chatBindingId()).isEqualTo(binding.getId());
+        assertThat(result.chatId()).isEqualTo(-1001234567890L);
+        assertThat(result.chatTitle()).isEqualTo("Dev Chat");
+        assertThat(result.bindingType()).isEqualTo("MAIN_GROUP");
+        assertThat(result.active()).isTrue();
+
+        verify(commandService).activateChatBinding(TENANT_ID, CB_ID);
+    }
+
+    // ========== deactivateChatBinding tests ==========
+
+    @Test
+    void deactivateChatBindingThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.deactivateChatBinding(null, CB_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deactivateChatBindingThrowsIllegalArgumentWhenChatBindingIdNull() {
+        assertThatThrownBy(() -> facade.deactivateChatBinding(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("chatBindingId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deactivateChatBindingDelegatesToCommandService() {
+        TelegramChatBinding binding = new TelegramChatBinding(TENANT_ID, -1001234567890L, "Dev Chat");
+        binding.setBindingType(ChatBindingType.MAIN_GROUP);
+        binding.setActive(false);
+
+        when(commandService.deactivateChatBinding(TENANT_ID, CB_ID)).thenReturn(binding);
+
+        var result = facade.deactivateChatBinding(TENANT_ID, CB_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.chatBindingId()).isEqualTo(binding.getId());
+        assertThat(result.bindingType()).isEqualTo("MAIN_GROUP");
+        assertThat(result.active()).isFalse();
+
+        verify(commandService).deactivateChatBinding(TENANT_ID, CB_ID);
+    }
+
     // ========== createRoutingRule tests ==========
 
     @Test

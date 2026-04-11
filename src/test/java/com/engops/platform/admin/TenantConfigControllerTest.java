@@ -1402,6 +1402,106 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
 
+    // ========== POST /chat-bindings/{chatBindingId}/activate endpoint ==========
+
+    @Test
+    void activateChatBindingReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.ChatBindingCreatedView(
+                TENANT_ID, CB_ID, -1001234567890L, "Dev Chat", "MAIN_GROUP", true,
+                Instant.parse("2026-04-11T12:00:00Z"));
+
+        when(writeFacade.activateChatBinding(TENANT_ID, CB_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.chatBindingId").value(CB_ID.toString()))
+                .andExpect(jsonPath("$.chatId").value(-1001234567890L))
+                .andExpect(jsonPath("$.chatTitle").value("Dev Chat"))
+                .andExpect(jsonPath("$.bindingType").value("MAIN_GROUP"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").value("2026-04-11T12:00:00Z"));
+    }
+
+    @Test
+    void activateChatBindingMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void activateChatBindingTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.activateChatBinding(TENANT_ID, CB_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void activateChatBindingNotFoundReturns404() throws Exception {
+        when(writeFacade.activateChatBinding(TENANT_ID, CB_ID))
+                .thenThrow(new ResourceNotFoundException("ChatBinding", CB_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    // ========== POST /chat-bindings/{chatBindingId}/deactivate endpoint ==========
+
+    @Test
+    void deactivateChatBindingReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.ChatBindingCreatedView(
+                TENANT_ID, CB_ID, -1001234567890L, "Dev Chat", "MAIN_GROUP", false,
+                Instant.parse("2026-04-11T12:00:00Z"));
+
+        when(writeFacade.deactivateChatBinding(TENANT_ID, CB_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.chatBindingId").value(CB_ID.toString()))
+                .andExpect(jsonPath("$.chatId").value(-1001234567890L))
+                .andExpect(jsonPath("$.chatTitle").value("Dev Chat"))
+                .andExpect(jsonPath("$.bindingType").value("MAIN_GROUP"))
+                .andExpect(jsonPath("$.active").value(false))
+                .andExpect(jsonPath("$.createdAt").value("2026-04-11T12:00:00Z"));
+    }
+
+    @Test
+    void deactivateChatBindingMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deactivateChatBindingTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.deactivateChatBinding(TENANT_ID, CB_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void deactivateChatBindingNotFoundReturns404() throws Exception {
+        when(writeFacade.deactivateChatBinding(TENANT_ID, CB_ID))
+                .thenThrow(new ResourceNotFoundException("ChatBinding", CB_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
     // ========== POST /routing-rules endpoint ==========
 
     @Test

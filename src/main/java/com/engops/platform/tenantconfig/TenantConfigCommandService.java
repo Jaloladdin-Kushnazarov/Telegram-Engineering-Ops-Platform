@@ -354,6 +354,66 @@ public class TenantConfigCommandService {
         return binding;
     }
 
+    /**
+     * Chat binding'ni aktiv holatga o'tkazadi.
+     *
+     * Idempotent: allaqachon aktiv bo'lsa, hech narsa o'zgarmaydi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatBindingId chat binding identifikatori
+     * @return yangilangan TelegramChatBinding
+     * @throws ResourceNotFoundException agar tenant yoki chat binding topilmasa
+     */
+    public TelegramChatBinding activateChatBinding(UUID tenantId, UUID chatBindingId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramChatBinding binding = telegramChatBindingRepository.findByIdAndTenantId(chatBindingId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("ChatBinding", chatBindingId));
+
+        if (binding.isActive()) {
+            return binding;
+        }
+
+        binding.setActive(true);
+        binding = telegramChatBindingRepository.save(binding);
+
+        auditService.recordEvent(tenantId, "CHAT_BINDING", binding.getId(),
+                "ACTIVATED", null, "ADMIN_API", "false", "true");
+
+        return binding;
+    }
+
+    /**
+     * Chat binding'ni noaktiv holatga o'tkazadi.
+     *
+     * Idempotent: allaqachon noaktiv bo'lsa, hech narsa o'zgarmaydi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatBindingId chat binding identifikatori
+     * @return yangilangan TelegramChatBinding
+     * @throws ResourceNotFoundException agar tenant yoki chat binding topilmasa
+     */
+    public TelegramChatBinding deactivateChatBinding(UUID tenantId, UUID chatBindingId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramChatBinding binding = telegramChatBindingRepository.findByIdAndTenantId(chatBindingId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("ChatBinding", chatBindingId));
+
+        if (!binding.isActive()) {
+            return binding;
+        }
+
+        binding.setActive(false);
+        binding = telegramChatBindingRepository.save(binding);
+
+        auditService.recordEvent(tenantId, "CHAT_BINDING", binding.getId(),
+                "DEACTIVATED", null, "ADMIN_API", "true", "false");
+
+        return binding;
+    }
+
     // ========== RoutingRule operations ==========
 
     /**

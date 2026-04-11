@@ -35,6 +35,8 @@ import java.util.UUID;
  * - DELETE /workflow-definitions/{definitionId} — workflow definition o'chirish
  * - POST /chat-bindings — yangi chat binding yaratish
  * - PATCH /chat-bindings/{chatBindingId} — chat binding metadata yangilash
+ * - POST /chat-bindings/{chatBindingId}/activate — chat binding aktivlashtirish
+ * - POST /chat-bindings/{chatBindingId}/deactivate — chat binding deaktivlashtirish
  * - POST /routing-rules — yangi routing rule yaratish
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
  * - POST /routing-rules/{ruleId}/activate — routing rule aktivlashtirish
@@ -301,6 +303,42 @@ public class TenantConfigController {
 
         TenantConfigWriteFacade.ChatBindingCreatedView view =
                 writeFacade.updateChatBinding(tenantId, chatBindingId, request);
+
+        return ResponseEntity.ok(toChatBindingCreatedResponse(view));
+    }
+
+    /**
+     * Chat binding'ni aktiv holatga o'tkazadi.
+     *
+     * @param chatBindingId chat binding identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan chat binding (200 OK)
+     */
+    @PostMapping("/chat-bindings/{chatBindingId}/activate")
+    public ResponseEntity<TenantConfigChatBindingCreatedResponse> activateChatBinding(
+            @PathVariable UUID chatBindingId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.ChatBindingCreatedView view =
+                writeFacade.activateChatBinding(tenantId, chatBindingId);
+
+        return ResponseEntity.ok(toChatBindingCreatedResponse(view));
+    }
+
+    /**
+     * Chat binding'ni noaktiv holatga o'tkazadi.
+     *
+     * @param chatBindingId chat binding identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan chat binding (200 OK)
+     */
+    @PostMapping("/chat-bindings/{chatBindingId}/deactivate")
+    public ResponseEntity<TenantConfigChatBindingCreatedResponse> deactivateChatBinding(
+            @PathVariable UUID chatBindingId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.ChatBindingCreatedView view =
+                writeFacade.deactivateChatBinding(tenantId, chatBindingId);
 
         return ResponseEntity.ok(toChatBindingCreatedResponse(view));
     }
