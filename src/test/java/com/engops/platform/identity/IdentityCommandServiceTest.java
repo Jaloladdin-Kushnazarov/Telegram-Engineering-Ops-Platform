@@ -205,6 +205,86 @@ class IdentityCommandServiceTest {
         verifyNoInteractions(auditService);
     }
 
+    // ========== removeMembership tests ==========
+
+    @Test
+    void removeMembershipSuccessFromActive() {
+        Membership existing = existingMembership(MembershipStatus.ACTIVE);
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(membershipRepository.save(any(Membership.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Membership result = service.removeMembership(TENANT_ID, MEMBERSHIP_ID);
+
+        assertThat(result.getStatus()).isEqualTo(MembershipStatus.REMOVED);
+        verify(membershipRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("MEMBERSHIP"), eq(existing.getId()),
+                eq("REMOVED"), eq(null), eq("ADMIN_API"),
+                eq("ACTIVE"), eq("REMOVED"));
+    }
+
+    @Test
+    void removeMembershipSuccessFromSuspended() {
+        Membership existing = existingMembership(MembershipStatus.SUSPENDED);
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(membershipRepository.save(any(Membership.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Membership result = service.removeMembership(TENANT_ID, MEMBERSHIP_ID);
+
+        assertThat(result.getStatus()).isEqualTo(MembershipStatus.REMOVED);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("MEMBERSHIP"), eq(existing.getId()),
+                eq("REMOVED"), eq(null), eq("ADMIN_API"),
+                eq("SUSPENDED"), eq("REMOVED"));
+    }
+
+    @Test
+    void removeMembershipAlreadyRemovedIsIdempotent() {
+        Membership existing = existingMembership(MembershipStatus.REMOVED);
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        Membership result = service.removeMembership(TENANT_ID, MEMBERSHIP_ID);
+
+        assertThat(result.getStatus()).isEqualTo(MembershipStatus.REMOVED);
+        verify(membershipRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void removeMembershipThrowsTenantNotFoundWhenTenantMissing() {
+        UUID badTenant = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        when(tenantConfigQueryService.findTenantById(badTenant)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.removeMembership(badTenant, MEMBERSHIP_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Tenant");
+
+        verify(membershipRepository, never()).findByIdAndTenantId(any(), any());
+        verify(membershipRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void removeMembershipThrowsResourceNotFoundWhenMembershipMissing() {
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.removeMembership(TENANT_ID, MEMBERSHIP_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Membership");
+
+        verify(membershipRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
     // ========== assignRoleToMembership tests ==========
 
     private Role existingRole() {

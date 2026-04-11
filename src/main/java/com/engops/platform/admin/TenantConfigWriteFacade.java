@@ -795,6 +795,26 @@ public class TenantConfigWriteFacade {
         return toMembershipStatusView(membership);
     }
 
+    /**
+     * A'zolikni REMOVED holatga o'tkazadi (lifecycle status transition).
+     *
+     * @param tenantId tenant identifikatori
+     * @param membershipId a'zolik identifikatori
+     * @return yangilangan membership view
+     * @throws IllegalArgumentException tenantId yoki membershipId null bo'lsa
+     */
+    public MembershipStatusView removeMembership(UUID tenantId, UUID membershipId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (membershipId == null) {
+            throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
+        }
+
+        Membership membership = identityCommandService.removeMembership(tenantId, membershipId);
+        return toMembershipStatusView(membership);
+    }
+
     private MembershipStatusView toMembershipStatusView(Membership membership) {
         return new MembershipStatusView(
                 membership.getTenantId(),

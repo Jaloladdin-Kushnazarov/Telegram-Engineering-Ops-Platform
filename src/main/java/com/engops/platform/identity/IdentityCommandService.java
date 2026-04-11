@@ -121,6 +121,38 @@ public class IdentityCommandService {
         return membership;
     }
 
+    /**
+     * A'zolikni REMOVED holatga o'tkazadi (lifecycle status transition — hard delete emas).
+     *
+     * Idempotent: allaqachon REMOVED bo'lsa, hech narsa o'zgarmaydi.
+     * Tenant-safe lookup.
+     *
+     * @param tenantId tenant identifikatori
+     * @param membershipId a'zolik identifikatori
+     * @return yangilangan Membership
+     * @throws ResourceNotFoundException tenant yoki membership topilmasa
+     */
+    public Membership removeMembership(UUID tenantId, UUID membershipId) {
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        Membership membership = membershipRepository.findByIdAndTenantId(membershipId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Membership", membershipId));
+
+        if (membership.getStatus() == MembershipStatus.REMOVED) {
+            return membership;
+        }
+
+        MembershipStatus oldStatus = membership.getStatus();
+        membership.setStatus(MembershipStatus.REMOVED);
+        membership = membershipRepository.save(membership);
+
+        auditService.recordEvent(tenantId, "MEMBERSHIP", membership.getId(),
+                "REMOVED", null, "ADMIN_API", oldStatus.name(), MembershipStatus.REMOVED.name());
+
+        return membership;
+    }
+
     // ========== MembershipRoleBinding operations ==========
 
     /**

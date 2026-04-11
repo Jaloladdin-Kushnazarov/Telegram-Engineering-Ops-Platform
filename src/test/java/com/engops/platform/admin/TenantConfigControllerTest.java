@@ -1857,6 +1857,53 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
+    // ========== POST /memberships/{membershipId}/remove endpoint ==========
+
+    @Test
+    void removeMembershipReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.MembershipStatusView(
+                TENANT_ID, MEMBERSHIP_ID, USER_ID, "REMOVED",
+                Instant.parse("2026-04-12T10:00:00Z"));
+
+        when(writeFacade.removeMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.membershipId").value(MEMBERSHIP_ID.toString()))
+                .andExpect(jsonPath("$.userId").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.status").value("REMOVED"));
+    }
+
+    @Test
+    void removeMembershipMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void removeMembershipTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.removeMembership(TENANT_ID, MEMBERSHIP_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void removeMembershipNotFoundReturns404() throws Exception {
+        when(writeFacade.removeMembership(TENANT_ID, MEMBERSHIP_ID))
+                .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
     // ========== Membership role binding endpoints ==========
 
     private static final UUID ROLE_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");

@@ -1417,6 +1417,37 @@ class TenantConfigWriteFacadeTest {
         verify(identityCommandService).suspendMembership(TENANT_ID, MEMBERSHIP_ID);
     }
 
+    @Test
+    void removeMembershipThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.removeMembership(null, MEMBERSHIP_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void removeMembershipThrowsIllegalArgumentWhenMembershipIdNull() {
+        assertThatThrownBy(() -> facade.removeMembership(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("membershipId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void removeMembershipDelegatesToIdentityCommandService() {
+        Membership membership = new Membership(TENANT_ID, USER_ID);
+        membership.setStatus(MembershipStatus.REMOVED);
+
+        when(identityCommandService.removeMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(membership);
+
+        var result = facade.removeMembership(TENANT_ID, MEMBERSHIP_ID);
+
+        assertThat(result.status()).isEqualTo("REMOVED");
+        verify(identityCommandService).removeMembership(TENANT_ID, MEMBERSHIP_ID);
+    }
+
     // ========== MembershipRoleBinding lifecycle tests ==========
 
     private static final UUID ROLE_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");

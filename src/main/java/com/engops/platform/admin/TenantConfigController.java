@@ -45,6 +45,7 @@ import java.util.UUID;
  * - DELETE /topic-bindings/{topicBindingId} — topic binding o'chirish
  * - POST /memberships/{membershipId}/activate — a'zolikni aktivlashtirish
  * - POST /memberships/{membershipId}/suspend — a'zolikni SUSPENDED holatga o'tkazish
+ * - POST /memberships/{membershipId}/remove — a'zolikni REMOVED holatga o'tkazish
  * - POST /memberships/{membershipId}/roles — a'zolikka rol tayinlash
  * - DELETE /memberships/{membershipId}/roles/{roleId} — a'zolikdan rolni olib tashlash
  * - POST /routing-rules — yangi routing rule yaratish
@@ -523,6 +524,24 @@ public class TenantConfigController {
 
         TenantConfigWriteFacade.MembershipStatusView view =
                 writeFacade.suspendMembership(tenantId, membershipId);
+
+        return ResponseEntity.ok(toMembershipStatusResponse(view));
+    }
+
+    /**
+     * A'zolikni REMOVED holatga o'tkazadi (lifecycle status transition — hard delete emas).
+     *
+     * @param membershipId a'zolik identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan membership (200 OK)
+     */
+    @PostMapping("/memberships/{membershipId}/remove")
+    public ResponseEntity<TenantConfigMembershipStatusResponse> removeMembership(
+            @PathVariable UUID membershipId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.MembershipStatusView view =
+                writeFacade.removeMembership(tenantId, membershipId);
 
         return ResponseEntity.ok(toMembershipStatusResponse(view));
     }
