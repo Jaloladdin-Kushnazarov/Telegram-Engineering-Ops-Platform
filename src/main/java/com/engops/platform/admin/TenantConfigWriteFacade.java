@@ -333,6 +333,24 @@ public class TenantConfigWriteFacade {
         return toChatBindingView(binding);
     }
 
+    /**
+     * Chat binding'ni o'chiradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatBindingId chat binding identifikatori
+     * @throws IllegalArgumentException tenantId yoki chatBindingId null bo'lsa
+     */
+    public void deleteChatBinding(UUID tenantId, UUID chatBindingId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (chatBindingId == null) {
+            throw new IllegalArgumentException("chatBindingId null bo'lishi mumkin emas");
+        }
+
+        commandService.deleteChatBinding(tenantId, chatBindingId);
+    }
+
     private ChatBindingCreatedView toChatBindingView(TelegramChatBinding binding) {
         return new ChatBindingCreatedView(
                 binding.getTenantId(),

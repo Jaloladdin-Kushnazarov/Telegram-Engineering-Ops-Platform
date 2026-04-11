@@ -37,6 +37,7 @@ import java.util.UUID;
  * - PATCH /chat-bindings/{chatBindingId} — chat binding metadata yangilash
  * - POST /chat-bindings/{chatBindingId}/activate — chat binding aktivlashtirish
  * - POST /chat-bindings/{chatBindingId}/deactivate — chat binding deaktivlashtirish
+ * - DELETE /chat-bindings/{chatBindingId} — chat binding o'chirish
  * - POST /routing-rules — yangi routing rule yaratish
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
  * - POST /routing-rules/{ruleId}/activate — routing rule aktivlashtirish
@@ -341,6 +342,23 @@ public class TenantConfigController {
                 writeFacade.deactivateChatBinding(tenantId, chatBindingId);
 
         return ResponseEntity.ok(toChatBindingCreatedResponse(view));
+    }
+
+    /**
+     * Chat binding'ni o'chiradi.
+     *
+     * @param chatBindingId chat binding identifikatori
+     * @param tenantId tenant identifikatori
+     * @return 204 No Content
+     */
+    @DeleteMapping("/chat-bindings/{chatBindingId}")
+    public ResponseEntity<Void> deleteChatBinding(
+            @PathVariable UUID chatBindingId,
+            @RequestParam UUID tenantId) {
+
+        writeFacade.deleteChatBinding(tenantId, chatBindingId);
+
+        return ResponseEntity.noContent().build();
     }
 
     private TenantConfigChatBindingCreatedResponse toChatBindingCreatedResponse(

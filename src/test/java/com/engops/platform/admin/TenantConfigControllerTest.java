@@ -1502,6 +1502,44 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
+    // ========== DELETE /chat-bindings/{chatBindingId} endpoint ==========
+
+    @Test
+    void deleteChatBindingReturns204() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+    }
+
+    @Test
+    void deleteChatBindingMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deleteChatBindingTenantNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("Tenant", TENANT_ID))
+                .when(writeFacade).deleteChatBinding(TENANT_ID, CB_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void deleteChatBindingNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("ChatBinding", CB_ID))
+                .when(writeFacade).deleteChatBinding(TENANT_ID, CB_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
     // ========== POST /routing-rules endpoint ==========
 
     @Test

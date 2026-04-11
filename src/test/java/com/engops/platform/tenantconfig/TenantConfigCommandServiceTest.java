@@ -887,6 +887,51 @@ class TenantConfigCommandServiceTest {
         verifyNoInteractions(auditService);
     }
 
+    // ========== deleteChatBinding tests ==========
+
+    @Test
+    void deleteChatBindingSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding existing = existingChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        service.deleteChatBinding(TENANT_ID, CHAT_BINDING_ID);
+
+        verify(telegramChatBindingRepository).delete(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("CHAT_BINDING"), eq(CHAT_BINDING_ID),
+                eq("DELETED"), eq(null), eq("ADMIN_API"),
+                any(String.class), eq(null));
+    }
+
+    @Test
+    void deleteChatBindingThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteChatBinding(TENANT_ID, CHAT_BINDING_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(telegramChatBindingRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deleteChatBindingThrowsResourceNotFoundWhenBindingMissing() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(CHAT_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteChatBinding(TENANT_ID, CHAT_BINDING_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(telegramChatBindingRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
     // ========== createRoutingRule tests ==========
 
     @Test

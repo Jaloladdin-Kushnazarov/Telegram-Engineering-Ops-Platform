@@ -414,6 +414,29 @@ public class TenantConfigCommandService {
         return binding;
     }
 
+    /**
+     * Chat binding'ni o'chiradi (hard delete).
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatBindingId chat binding identifikatori
+     * @throws ResourceNotFoundException agar tenant yoki chat binding topilmasa
+     */
+    public void deleteChatBinding(UUID tenantId, UUID chatBindingId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramChatBinding binding = telegramChatBindingRepository.findByIdAndTenantId(chatBindingId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("ChatBinding", chatBindingId));
+
+        String oldValue = binding.getChatId() + " | " + binding.getBindingType().name()
+                + (binding.getChatTitle() != null ? " | " + binding.getChatTitle() : "");
+
+        telegramChatBindingRepository.delete(binding);
+
+        auditService.recordEvent(tenantId, "CHAT_BINDING", chatBindingId,
+                "DELETED", null, "ADMIN_API", oldValue, null);
+    }
+
     // ========== RoutingRule operations ==========
 
     /**

@@ -710,6 +710,33 @@ class TenantConfigWriteFacadeTest {
         verify(commandService).deactivateChatBinding(TENANT_ID, CB_ID);
     }
 
+    // ========== deleteChatBinding tests ==========
+
+    @Test
+    void deleteChatBindingThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.deleteChatBinding(null, CB_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deleteChatBindingThrowsIllegalArgumentWhenChatBindingIdNull() {
+        assertThatThrownBy(() -> facade.deleteChatBinding(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("chatBindingId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deleteChatBindingDelegatesToCommandService() {
+        facade.deleteChatBinding(TENANT_ID, CB_ID);
+
+        verify(commandService).deleteChatBinding(TENANT_ID, CB_ID);
+    }
+
     // ========== createRoutingRule tests ==========
 
     @Test
