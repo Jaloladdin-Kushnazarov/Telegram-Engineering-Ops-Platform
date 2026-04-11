@@ -1,5 +1,8 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.identity.IdentityCommandService;
+import com.engops.platform.identity.model.Membership;
+import com.engops.platform.identity.model.MembershipStatus;
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
@@ -31,8 +34,10 @@ class TenantConfigWriteFacadeTest {
 
     private final TenantConfigCommandService commandService =
             mock(TenantConfigCommandService.class);
+    private final IdentityCommandService identityCommandService =
+            mock(IdentityCommandService.class);
     private final TenantConfigWriteFacade facade =
-            new TenantConfigWriteFacade(commandService);
+            new TenantConfigWriteFacade(commandService, identityCommandService);
 
     @Test
     void throwsIllegalArgumentWhenTenantIdNull() {
@@ -1338,5 +1343,75 @@ class TenantConfigWriteFacadeTest {
         facade.deleteRoutingRule(TENANT_ID, RULE_ID);
 
         verify(commandService).deleteRoutingRule(TENANT_ID, RULE_ID);
+    }
+
+    // ========== Membership status lifecycle tests ==========
+
+    private static final UUID MEMBERSHIP_ID = UUID.fromString("88888888-8888-8888-8888-888888888881");
+    private static final UUID USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999991");
+
+    @Test
+    void activateMembershipThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.activateMembership(null, MEMBERSHIP_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void activateMembershipThrowsIllegalArgumentWhenMembershipIdNull() {
+        assertThatThrownBy(() -> facade.activateMembership(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("membershipId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void activateMembershipDelegatesToIdentityCommandService() {
+        Membership membership = new Membership(TENANT_ID, USER_ID);
+        membership.setStatus(MembershipStatus.ACTIVE);
+
+        when(identityCommandService.activateMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(membership);
+
+        var result = facade.activateMembership(TENANT_ID, MEMBERSHIP_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.userId()).isEqualTo(USER_ID);
+        assertThat(result.status()).isEqualTo("ACTIVE");
+
+        verify(identityCommandService).activateMembership(TENANT_ID, MEMBERSHIP_ID);
+    }
+
+    @Test
+    void suspendMembershipThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.suspendMembership(null, MEMBERSHIP_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void suspendMembershipThrowsIllegalArgumentWhenMembershipIdNull() {
+        assertThatThrownBy(() -> facade.suspendMembership(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("membershipId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void suspendMembershipDelegatesToIdentityCommandService() {
+        Membership membership = new Membership(TENANT_ID, USER_ID);
+        membership.setStatus(MembershipStatus.SUSPENDED);
+
+        when(identityCommandService.suspendMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(membership);
+
+        var result = facade.suspendMembership(TENANT_ID, MEMBERSHIP_ID);
+
+        assertThat(result.status()).isEqualTo("SUSPENDED");
+        verify(identityCommandService).suspendMembership(TENANT_ID, MEMBERSHIP_ID);
     }
 }

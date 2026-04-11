@@ -43,6 +43,8 @@ import java.util.UUID;
  * - POST /topic-bindings/{topicBindingId}/activate — topic binding aktivlashtirish
  * - POST /topic-bindings/{topicBindingId}/deactivate — topic binding deaktivlashtirish
  * - DELETE /topic-bindings/{topicBindingId} — topic binding o'chirish
+ * - POST /memberships/{membershipId}/activate — a'zolikni aktivlashtirish
+ * - POST /memberships/{membershipId}/suspend — a'zolikni SUSPENDED holatga o'tkazish
  * - POST /routing-rules — yangi routing rule yaratish
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
  * - POST /routing-rules/{ruleId}/activate — routing rule aktivlashtirish
@@ -482,6 +484,54 @@ public class TenantConfigController {
                 view.topicName(),
                 view.purpose(),
                 view.active(),
+                view.createdAt());
+    }
+
+    // ========== Membership status lifecycle endpoint'lar ==========
+
+    /**
+     * A'zolikni aktiv holatga o'tkazadi.
+     *
+     * @param membershipId a'zolik identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan membership (200 OK)
+     */
+    @PostMapping("/memberships/{membershipId}/activate")
+    public ResponseEntity<TenantConfigMembershipStatusResponse> activateMembership(
+            @PathVariable UUID membershipId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.MembershipStatusView view =
+                writeFacade.activateMembership(tenantId, membershipId);
+
+        return ResponseEntity.ok(toMembershipStatusResponse(view));
+    }
+
+    /**
+     * A'zolikni SUSPENDED holatga o'tkazadi.
+     *
+     * @param membershipId a'zolik identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan membership (200 OK)
+     */
+    @PostMapping("/memberships/{membershipId}/suspend")
+    public ResponseEntity<TenantConfigMembershipStatusResponse> suspendMembership(
+            @PathVariable UUID membershipId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.MembershipStatusView view =
+                writeFacade.suspendMembership(tenantId, membershipId);
+
+        return ResponseEntity.ok(toMembershipStatusResponse(view));
+    }
+
+    private TenantConfigMembershipStatusResponse toMembershipStatusResponse(
+            TenantConfigWriteFacade.MembershipStatusView view) {
+        return new TenantConfigMembershipStatusResponse(
+                view.tenantId(),
+                view.membershipId(),
+                view.userId(),
+                view.status(),
                 view.createdAt());
     }
 

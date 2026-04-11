@@ -15,6 +15,8 @@ import java.util.UUID;
 @Repository
 public interface MembershipRepository extends JpaRepository<Membership, UUID> {
 
+    Optional<Membership> findByIdAndTenantId(UUID id, UUID tenantId);
+
     Optional<Membership> findByTenantIdAndUserId(UUID tenantId, UUID userId);
 
     boolean existsByTenantIdAndUserId(UUID tenantId, UUID userId);

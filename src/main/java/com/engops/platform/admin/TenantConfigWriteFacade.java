@@ -1,5 +1,7 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.identity.IdentityCommandService;
+import com.engops.platform.identity.model.Membership;
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
@@ -30,9 +32,12 @@ public class TenantConfigWriteFacade {
     private static final Set<String> ALLOWED_BINDING_TYPES = Set.of("MAIN_GROUP", "NOTIFICATION_GROUP");
 
     private final TenantConfigCommandService commandService;
+    private final IdentityCommandService identityCommandService;
 
-    public TenantConfigWriteFacade(TenantConfigCommandService commandService) {
+    public TenantConfigWriteFacade(TenantConfigCommandService commandService,
+                                    IdentityCommandService identityCommandService) {
         this.commandService = commandService;
+        this.identityCommandService = identityCommandService;
     }
 
     /**
@@ -745,5 +750,66 @@ public class TenantConfigWriteFacade {
             String workItemType,
             String description,
             boolean active,
+            java.time.Instant createdAt) {}
+
+    // ========== Membership status lifecycle ==========
+
+    /**
+     * A'zolikni aktiv holatga o'tkazadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param membershipId a'zolik identifikatori
+     * @return yangilangan membership view
+     * @throws IllegalArgumentException tenantId yoki membershipId null bo'lsa
+     */
+    public MembershipStatusView activateMembership(UUID tenantId, UUID membershipId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (membershipId == null) {
+            throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
+        }
+
+        Membership membership = identityCommandService.activateMembership(tenantId, membershipId);
+        return toMembershipStatusView(membership);
+    }
+
+    /**
+     * A'zolikni SUSPENDED holatga o'tkazadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param membershipId a'zolik identifikatori
+     * @return yangilangan membership view
+     * @throws IllegalArgumentException tenantId yoki membershipId null bo'lsa
+     */
+    public MembershipStatusView suspendMembership(UUID tenantId, UUID membershipId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (membershipId == null) {
+            throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
+        }
+
+        Membership membership = identityCommandService.suspendMembership(tenantId, membershipId);
+        return toMembershipStatusView(membership);
+    }
+
+    private MembershipStatusView toMembershipStatusView(Membership membership) {
+        return new MembershipStatusView(
+                membership.getTenantId(),
+                membership.getId(),
+                membership.getUserId(),
+                membership.getStatus().name(),
+                membership.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — membership status o'zgarishi.
+     */
+    public record MembershipStatusView(
+            UUID tenantId,
+            UUID membershipId,
+            UUID userId,
+            String status,
             java.time.Instant createdAt) {}
 }

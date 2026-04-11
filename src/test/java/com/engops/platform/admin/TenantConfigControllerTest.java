@@ -1765,6 +1765,98 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
+    // ========== Membership status lifecycle endpoints ==========
+
+    private static final UUID MEMBERSHIP_ID = UUID.fromString("88888888-8888-8888-8888-888888888881");
+    private static final UUID USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999991");
+
+    @Test
+    void activateMembershipReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.MembershipStatusView(
+                TENANT_ID, MEMBERSHIP_ID, USER_ID, "ACTIVE",
+                Instant.parse("2026-04-12T10:00:00Z"));
+
+        when(writeFacade.activateMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.membershipId").value(MEMBERSHIP_ID.toString()))
+                .andExpect(jsonPath("$.userId").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    void activateMembershipMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void activateMembershipNotFoundReturns404() throws Exception {
+        when(writeFacade.activateMembership(TENANT_ID, MEMBERSHIP_ID))
+                .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void activateMembershipTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.activateMembership(TENANT_ID, MEMBERSHIP_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void suspendMembershipReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.MembershipStatusView(
+                TENANT_ID, MEMBERSHIP_ID, USER_ID, "SUSPENDED",
+                Instant.parse("2026-04-12T10:00:00Z"));
+
+        when(writeFacade.suspendMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUSPENDED"));
+    }
+
+    @Test
+    void suspendMembershipMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void suspendMembershipNotFoundReturns404() throws Exception {
+        when(writeFacade.suspendMembership(TENANT_ID, MEMBERSHIP_ID))
+                .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void suspendMembershipTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.suspendMembership(TENANT_ID, MEMBERSHIP_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
     // ========== POST /routing-rules endpoint ==========
 
     @Test
