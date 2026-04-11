@@ -38,6 +38,11 @@ import java.util.UUID;
  * - POST /chat-bindings/{chatBindingId}/activate — chat binding aktivlashtirish
  * - POST /chat-bindings/{chatBindingId}/deactivate — chat binding deaktivlashtirish
  * - DELETE /chat-bindings/{chatBindingId} — chat binding o'chirish
+ * - POST /topic-bindings — yangi topic binding yaratish
+ * - PATCH /topic-bindings/{topicBindingId} — topic binding metadata yangilash
+ * - POST /topic-bindings/{topicBindingId}/activate — topic binding aktivlashtirish
+ * - POST /topic-bindings/{topicBindingId}/deactivate — topic binding deaktivlashtirish
+ * - DELETE /topic-bindings/{topicBindingId} — topic binding o'chirish
  * - POST /routing-rules — yangi routing rule yaratish
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
  * - POST /routing-rules/{ruleId}/activate — routing rule aktivlashtirish
@@ -369,6 +374,113 @@ public class TenantConfigController {
                 view.chatId(),
                 view.chatTitle(),
                 view.bindingType(),
+                view.active(),
+                view.createdAt());
+    }
+
+    // ========== TelegramTopicBinding write endpoint'lar ==========
+
+    /**
+     * Yangi topic binding yaratadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan topic binding (201 Created)
+     */
+    @PostMapping("/topic-bindings")
+    public ResponseEntity<TenantConfigTopicBindingCreatedResponse> createTopicBinding(
+            @RequestParam UUID tenantId,
+            @RequestBody CreateTopicBindingRequest request) {
+
+        TenantConfigWriteFacade.TopicBindingView view =
+                writeFacade.createTopicBinding(tenantId, request);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(toTopicBindingResponse(view));
+    }
+
+    /**
+     * Topic binding metadata'sini yangilaydi (topicName).
+     *
+     * @param topicBindingId topic binding identifikatori
+     * @param tenantId tenant identifikatori
+     * @param request yangilash so'rovi
+     * @return yangilangan topic binding (200 OK)
+     */
+    @PatchMapping("/topic-bindings/{topicBindingId}")
+    public ResponseEntity<TenantConfigTopicBindingCreatedResponse> updateTopicBinding(
+            @PathVariable UUID topicBindingId,
+            @RequestParam UUID tenantId,
+            @RequestBody UpdateTopicBindingRequest request) {
+
+        TenantConfigWriteFacade.TopicBindingView view =
+                writeFacade.updateTopicBinding(tenantId, topicBindingId, request);
+
+        return ResponseEntity.ok(toTopicBindingResponse(view));
+    }
+
+    /**
+     * Topic binding'ni aktiv holatga o'tkazadi.
+     *
+     * @param topicBindingId topic binding identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan topic binding (200 OK)
+     */
+    @PostMapping("/topic-bindings/{topicBindingId}/activate")
+    public ResponseEntity<TenantConfigTopicBindingCreatedResponse> activateTopicBinding(
+            @PathVariable UUID topicBindingId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.TopicBindingView view =
+                writeFacade.activateTopicBinding(tenantId, topicBindingId);
+
+        return ResponseEntity.ok(toTopicBindingResponse(view));
+    }
+
+    /**
+     * Topic binding'ni noaktiv holatga o'tkazadi.
+     *
+     * @param topicBindingId topic binding identifikatori
+     * @param tenantId tenant identifikatori
+     * @return yangilangan topic binding (200 OK)
+     */
+    @PostMapping("/topic-bindings/{topicBindingId}/deactivate")
+    public ResponseEntity<TenantConfigTopicBindingCreatedResponse> deactivateTopicBinding(
+            @PathVariable UUID topicBindingId,
+            @RequestParam UUID tenantId) {
+
+        TenantConfigWriteFacade.TopicBindingView view =
+                writeFacade.deactivateTopicBinding(tenantId, topicBindingId);
+
+        return ResponseEntity.ok(toTopicBindingResponse(view));
+    }
+
+    /**
+     * Topic binding'ni o'chiradi.
+     *
+     * @param topicBindingId topic binding identifikatori
+     * @param tenantId tenant identifikatori
+     * @return 204 No Content
+     */
+    @DeleteMapping("/topic-bindings/{topicBindingId}")
+    public ResponseEntity<Void> deleteTopicBinding(
+            @PathVariable UUID topicBindingId,
+            @RequestParam UUID tenantId) {
+
+        writeFacade.deleteTopicBinding(tenantId, topicBindingId);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    private TenantConfigTopicBindingCreatedResponse toTopicBindingResponse(
+            TenantConfigWriteFacade.TopicBindingView view) {
+        return new TenantConfigTopicBindingCreatedResponse(
+                view.tenantId(),
+                view.topicBindingId(),
+                view.chatBindingId(),
+                view.topicId(),
+                view.topicName(),
+                view.purpose(),
                 view.active(),
                 view.createdAt());
     }

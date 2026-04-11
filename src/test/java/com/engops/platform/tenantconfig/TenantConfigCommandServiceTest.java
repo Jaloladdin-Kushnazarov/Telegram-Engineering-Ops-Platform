@@ -932,6 +932,325 @@ class TenantConfigCommandServiceTest {
         verifyNoInteractions(auditService);
     }
 
+    // ========== TelegramTopicBinding tests ==========
+
+    private static final UUID TOPIC_BINDING_ID = UUID.fromString("77777777-7777-7777-7777-777777777771");
+    private static final UUID PARENT_CB_ID = UUID.fromString("55555555-5555-5555-5555-555555555551");
+
+    private TelegramChatBinding parentChatBinding() {
+        TelegramChatBinding cb = new TelegramChatBinding(TENANT_ID, -1001234567890L, "Parent Chat");
+        cb.setBindingType(ChatBindingType.MAIN_GROUP);
+        return cb;
+    }
+
+    private TelegramTopicBinding existingTopicBinding() {
+        return new TelegramTopicBinding(parentChatBinding(), 42L, "bugs-topic", "BUG_TRIAGE");
+    }
+
+    @Test
+    void createTopicBindingSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding cb = parentChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(PARENT_CB_ID, TENANT_ID))
+                .thenReturn(Optional.of(cb));
+        when(telegramTopicBindingRepository.findByChatBindingIdAndTopicId(PARENT_CB_ID, 42L))
+                .thenReturn(Optional.empty());
+        when(telegramTopicBindingRepository.save(any(TelegramTopicBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramTopicBinding result = service.createTopicBinding(
+                TENANT_ID, PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE");
+
+        assertThat(result.getTopicId()).isEqualTo(42L);
+        assertThat(result.getTopicName()).isEqualTo("bugs-topic");
+        assertThat(result.getPurpose()).isEqualTo("BUG_TRIAGE");
+        assertThat(result.isActive()).isTrue();
+
+        verify(telegramTopicBindingRepository).save(any(TelegramTopicBinding.class));
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("TOPIC_BINDING"), eq(result.getId()),
+                eq("CREATED"), eq(null), eq("ADMIN_API"),
+                eq(null), eq("42 | BUG_TRIAGE | bugs-topic"));
+    }
+
+    @Test
+    void createTopicBindingThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createTopicBinding(
+                TENANT_ID, PARENT_CB_ID, 42L, "name", "PURPOSE"))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(telegramTopicBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createTopicBindingThrowsBusinessRuleWhenChatBindingInvalid() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(PARENT_CB_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createTopicBinding(
+                TENANT_ID, PARENT_CB_ID, 42L, "name", "PURPOSE"))
+                .isInstanceOf(BusinessRuleException.class);
+
+        verify(telegramTopicBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createTopicBindingThrowsBusinessRuleWhenDuplicate() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding cb = parentChatBinding();
+        TelegramTopicBinding existing = mock(TelegramTopicBinding.class);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(PARENT_CB_ID, TENANT_ID))
+                .thenReturn(Optional.of(cb));
+        when(telegramTopicBindingRepository.findByChatBindingIdAndTopicId(PARENT_CB_ID, 42L))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.createTopicBinding(
+                TENANT_ID, PARENT_CB_ID, 42L, "name", "PURPOSE"))
+                .isInstanceOf(BusinessRuleException.class);
+
+        verify(telegramTopicBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createTopicBindingTranslatesDbDuplicateConstraint() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding cb = parentChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(PARENT_CB_ID, TENANT_ID))
+                .thenReturn(Optional.of(cb));
+        when(telegramTopicBindingRepository.findByChatBindingIdAndTopicId(PARENT_CB_ID, 42L))
+                .thenReturn(Optional.empty());
+
+        var cause = new ConstraintViolationException(
+                "duplicate key", new SQLException(),
+                "telegram_topic_binding_chat_binding_id_topic_id_key");
+        when(telegramTopicBindingRepository.save(any(TelegramTopicBinding.class)))
+                .thenThrow(new DataIntegrityViolationException("unique constraint", cause));
+
+        assertThatThrownBy(() -> service.createTopicBinding(
+                TENANT_ID, PARENT_CB_ID, 42L, "name", "BUG_TRIAGE"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("42");
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createTopicBindingRethrowsUnrelatedIntegrityViolation() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramChatBinding cb = parentChatBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramChatBindingRepository.findByIdAndTenantId(PARENT_CB_ID, TENANT_ID))
+                .thenReturn(Optional.of(cb));
+        when(telegramTopicBindingRepository.findByChatBindingIdAndTopicId(PARENT_CB_ID, 42L))
+                .thenReturn(Optional.empty());
+
+        var cause = new ConstraintViolationException(
+                "other error", new SQLException(),
+                "some_other_constraint");
+        when(telegramTopicBindingRepository.save(any(TelegramTopicBinding.class)))
+                .thenThrow(new DataIntegrityViolationException("other violation", cause));
+
+        assertThatThrownBy(() -> service.createTopicBinding(
+                TENANT_ID, PARENT_CB_ID, 42L, "name", "BUG_TRIAGE"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void updateTopicBindingTopicNameSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramTopicBinding existing = existingTopicBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(TOPIC_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramTopicBindingRepository.save(any(TelegramTopicBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramTopicBinding result = service.updateTopicBinding(
+                TENANT_ID, TOPIC_BINDING_ID, "new-name", true);
+
+        assertThat(result.getTopicName()).isEqualTo("new-name");
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("TOPIC_BINDING"), eq(existing.getId()),
+                eq("UPDATED"), eq(null), eq("ADMIN_API"),
+                eq("BUG_TRIAGE | bugs-topic"), eq("BUG_TRIAGE | new-name"));
+    }
+
+    @Test
+    void updateTopicBindingExplicitNullClearsTopicName() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramTopicBinding existing = existingTopicBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(TOPIC_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramTopicBindingRepository.save(any(TelegramTopicBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramTopicBinding result = service.updateTopicBinding(
+                TENANT_ID, TOPIC_BINDING_ID, null, true);
+
+        assertThat(result.getTopicName()).isNull();
+    }
+
+    @Test
+    void updateTopicBindingThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateTopicBinding(
+                TENANT_ID, TOPIC_BINDING_ID, "name", true))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void updateTopicBindingThrowsResourceNotFoundWhenBindingMissing() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(TOPIC_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateTopicBinding(
+                TENANT_ID, TOPIC_BINDING_ID, "name", true))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void activateTopicBindingSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramTopicBinding existing = existingTopicBinding();
+        existing.setActive(false);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(TOPIC_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramTopicBindingRepository.save(any(TelegramTopicBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramTopicBinding result = service.activateTopicBinding(TENANT_ID, TOPIC_BINDING_ID);
+
+        assertThat(result.isActive()).isTrue();
+        verify(telegramTopicBindingRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("TOPIC_BINDING"), eq(existing.getId()),
+                eq("ACTIVATED"), eq(null), eq("ADMIN_API"), eq("false"), eq("true"));
+    }
+
+    @Test
+    void activateTopicBindingAlreadyActiveIsIdempotent() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramTopicBinding existing = existingTopicBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(TOPIC_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        TelegramTopicBinding result = service.activateTopicBinding(TENANT_ID, TOPIC_BINDING_ID);
+
+        assertThat(result.isActive()).isTrue();
+        verify(telegramTopicBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deactivateTopicBindingSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramTopicBinding existing = existingTopicBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(TOPIC_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+        when(telegramTopicBindingRepository.save(any(TelegramTopicBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TelegramTopicBinding result = service.deactivateTopicBinding(TENANT_ID, TOPIC_BINDING_ID);
+
+        assertThat(result.isActive()).isFalse();
+        verify(telegramTopicBindingRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("TOPIC_BINDING"), eq(existing.getId()),
+                eq("DEACTIVATED"), eq(null), eq("ADMIN_API"), eq("true"), eq("false"));
+    }
+
+    @Test
+    void deactivateTopicBindingAlreadyInactiveIsIdempotent() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramTopicBinding existing = existingTopicBinding();
+        existing.setActive(false);
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(TOPIC_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        TelegramTopicBinding result = service.deactivateTopicBinding(TENANT_ID, TOPIC_BINDING_ID);
+
+        assertThat(result.isActive()).isFalse();
+        verify(telegramTopicBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deleteTopicBindingSuccess() {
+        Tenant tenant = mock(Tenant.class);
+        TelegramTopicBinding existing = existingTopicBinding();
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(TOPIC_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        service.deleteTopicBinding(TENANT_ID, TOPIC_BINDING_ID);
+
+        verify(telegramTopicBindingRepository).delete(existing);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("TOPIC_BINDING"), eq(TOPIC_BINDING_ID),
+                eq("DELETED"), eq(null), eq("ADMIN_API"),
+                any(String.class), eq(null));
+    }
+
+    @Test
+    void deleteTopicBindingThrowsResourceNotFoundWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteTopicBinding(TENANT_ID, TOPIC_BINDING_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(telegramTopicBindingRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deleteTopicBindingThrowsResourceNotFoundWhenBindingMissing() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(telegramTopicBindingRepository.findByIdAndChatBinding_TenantId(TOPIC_BINDING_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteTopicBinding(TENANT_ID, TOPIC_BINDING_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(telegramTopicBindingRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
     // ========== createRoutingRule tests ==========
 
     @Test

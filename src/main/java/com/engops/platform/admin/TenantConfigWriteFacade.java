@@ -4,6 +4,7 @@ import com.engops.platform.tenantconfig.TenantConfigCommandService;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
+import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import org.springframework.stereotype.Service;
 
@@ -371,6 +372,156 @@ public class TenantConfigWriteFacade {
             long chatId,
             String chatTitle,
             String bindingType,
+            boolean active,
+            java.time.Instant createdAt) {}
+
+    // ========== TelegramTopicBinding operations ==========
+
+    /**
+     * Yangi topic binding yaratish uchun request boundary validatsiyasi va delegation.
+     *
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan topic binding view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public TopicBindingView createTopicBinding(UUID tenantId,
+                                                 CreateTopicBindingRequest request) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.chatBindingId() == null) {
+            throw new IllegalArgumentException("chatBindingId null bo'lishi mumkin emas");
+        }
+        if (request.topicId() == null) {
+            throw new IllegalArgumentException("topicId null bo'lishi mumkin emas");
+        }
+        if (request.purpose() == null || request.purpose().isBlank()) {
+            throw new IllegalArgumentException("purpose null yoki bo'sh bo'lishi mumkin emas");
+        }
+
+        TelegramTopicBinding binding = commandService.createTopicBinding(
+                tenantId, request.chatBindingId(), request.topicId(),
+                request.topicName(), request.purpose());
+
+        return toTopicBindingView(tenantId, binding);
+    }
+
+    /**
+     * Topic binding metadata'sini PATCH yangilash uchun request boundary validatsiyasi va delegation.
+     *
+     * @param tenantId tenant identifikatori
+     * @param topicBindingId topic binding identifikatori
+     * @param request yangilash so'rovi
+     * @return yangilangan topic binding view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public TopicBindingView updateTopicBinding(UUID tenantId, UUID topicBindingId,
+                                                 UpdateTopicBindingRequest request) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (topicBindingId == null) {
+            throw new IllegalArgumentException("topicBindingId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (!request.isTopicNameProvided()) {
+            throw new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak");
+        }
+
+        TelegramTopicBinding binding = commandService.updateTopicBinding(
+                tenantId, topicBindingId,
+                request.getTopicName(), request.isTopicNameProvided());
+
+        return toTopicBindingView(tenantId, binding);
+    }
+
+    /**
+     * Topic binding'ni aktiv holatga o'tkazadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param topicBindingId topic binding identifikatori
+     * @return yangilangan topic binding view
+     * @throws IllegalArgumentException tenantId yoki topicBindingId null bo'lsa
+     */
+    public TopicBindingView activateTopicBinding(UUID tenantId, UUID topicBindingId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (topicBindingId == null) {
+            throw new IllegalArgumentException("topicBindingId null bo'lishi mumkin emas");
+        }
+
+        TelegramTopicBinding binding = commandService.activateTopicBinding(tenantId, topicBindingId);
+        return toTopicBindingView(tenantId, binding);
+    }
+
+    /**
+     * Topic binding'ni noaktiv holatga o'tkazadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param topicBindingId topic binding identifikatori
+     * @return yangilangan topic binding view
+     * @throws IllegalArgumentException tenantId yoki topicBindingId null bo'lsa
+     */
+    public TopicBindingView deactivateTopicBinding(UUID tenantId, UUID topicBindingId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (topicBindingId == null) {
+            throw new IllegalArgumentException("topicBindingId null bo'lishi mumkin emas");
+        }
+
+        TelegramTopicBinding binding = commandService.deactivateTopicBinding(tenantId, topicBindingId);
+        return toTopicBindingView(tenantId, binding);
+    }
+
+    /**
+     * Topic binding'ni o'chiradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param topicBindingId topic binding identifikatori
+     * @throws IllegalArgumentException tenantId yoki topicBindingId null bo'lsa
+     */
+    public void deleteTopicBinding(UUID tenantId, UUID topicBindingId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (topicBindingId == null) {
+            throw new IllegalArgumentException("topicBindingId null bo'lishi mumkin emas");
+        }
+
+        commandService.deleteTopicBinding(tenantId, topicBindingId);
+    }
+
+    private TopicBindingView toTopicBindingView(UUID tenantId, TelegramTopicBinding binding) {
+        UUID chatBindingId = binding.getChatBinding() != null ? binding.getChatBinding().getId() : null;
+        return new TopicBindingView(
+                tenantId,
+                binding.getId(),
+                chatBindingId,
+                binding.getTopicId(),
+                binding.getTopicName(),
+                binding.getPurpose(),
+                binding.isActive(),
+                binding.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — topic binding write natijasi.
+     */
+    public record TopicBindingView(
+            UUID tenantId,
+            UUID topicBindingId,
+            UUID chatBindingId,
+            long topicId,
+            String topicName,
+            String purpose,
             boolean active,
             java.time.Instant createdAt) {}
 

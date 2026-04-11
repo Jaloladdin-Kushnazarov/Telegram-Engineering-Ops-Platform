@@ -4,6 +4,7 @@ import com.engops.platform.tenantconfig.TenantConfigCommandService;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
+import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import org.junit.jupiter.api.Test;
 
@@ -735,6 +736,224 @@ class TenantConfigWriteFacadeTest {
         facade.deleteChatBinding(TENANT_ID, CB_ID);
 
         verify(commandService).deleteChatBinding(TENANT_ID, CB_ID);
+    }
+
+    // ========== TelegramTopicBinding tests ==========
+
+    private static final UUID TB_ID = UUID.fromString("77777777-7777-7777-7777-777777777771");
+    private static final UUID PARENT_CB_ID = UUID.fromString("55555555-5555-5555-5555-555555555551");
+
+    private TelegramTopicBinding sampleTopicBinding() {
+        TelegramChatBinding cb = new TelegramChatBinding(TENANT_ID, -1001234567890L, "Parent");
+        cb.setBindingType(ChatBindingType.MAIN_GROUP);
+        return new TelegramTopicBinding(cb, 42L, "bugs-topic", "BUG_TRIAGE");
+    }
+
+    @Test
+    void createTopicBindingThrowsIllegalArgumentWhenTenantIdNull() {
+        var request = new CreateTopicBindingRequest(PARENT_CB_ID, 42L, "name", "BUG_TRIAGE");
+
+        assertThatThrownBy(() -> facade.createTopicBinding(null, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createTopicBindingThrowsIllegalArgumentWhenRequestNull() {
+        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createTopicBindingThrowsIllegalArgumentWhenChatBindingIdNull() {
+        var request = new CreateTopicBindingRequest(null, 42L, "name", "BUG_TRIAGE");
+
+        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("chatBindingId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createTopicBindingThrowsIllegalArgumentWhenTopicIdNull() {
+        var request = new CreateTopicBindingRequest(PARENT_CB_ID, null, "name", "BUG_TRIAGE");
+
+        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("topicId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createTopicBindingThrowsIllegalArgumentWhenPurposeBlank() {
+        var request = new CreateTopicBindingRequest(PARENT_CB_ID, 42L, "name", "   ");
+
+        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("purpose");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createTopicBindingDelegatesToCommandService() {
+        var request = new CreateTopicBindingRequest(PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE");
+        TelegramTopicBinding binding = sampleTopicBinding();
+
+        when(commandService.createTopicBinding(TENANT_ID, PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE"))
+                .thenReturn(binding);
+
+        var result = facade.createTopicBinding(TENANT_ID, request);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.topicId()).isEqualTo(42L);
+        assertThat(result.topicName()).isEqualTo("bugs-topic");
+        assertThat(result.purpose()).isEqualTo("BUG_TRIAGE");
+        assertThat(result.active()).isTrue();
+
+        verify(commandService).createTopicBinding(TENANT_ID, PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE");
+    }
+
+    @Test
+    void updateTopicBindingThrowsIllegalArgumentWhenTenantIdNull() {
+        var request = new UpdateTopicBindingRequest();
+        request.setTopicName("x");
+
+        assertThatThrownBy(() -> facade.updateTopicBinding(null, TB_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void updateTopicBindingThrowsIllegalArgumentWhenTopicBindingIdNull() {
+        var request = new UpdateTopicBindingRequest();
+        request.setTopicName("x");
+
+        assertThatThrownBy(() -> facade.updateTopicBinding(TENANT_ID, null, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("topicBindingId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void updateTopicBindingThrowsIllegalArgumentWhenNoFieldProvided() {
+        var request = new UpdateTopicBindingRequest();
+
+        assertThatThrownBy(() -> facade.updateTopicBinding(TENANT_ID, TB_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Kamida bitta");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void updateTopicBindingDelegatesToCommandService() {
+        var request = new UpdateTopicBindingRequest();
+        request.setTopicName("new-name");
+
+        TelegramTopicBinding binding = sampleTopicBinding();
+        binding.setTopicName("new-name");
+
+        when(commandService.updateTopicBinding(eq(TENANT_ID), eq(TB_ID), eq("new-name"), eq(true)))
+                .thenReturn(binding);
+
+        var result = facade.updateTopicBinding(TENANT_ID, TB_ID, request);
+
+        assertThat(result.topicName()).isEqualTo("new-name");
+    }
+
+    @Test
+    void activateTopicBindingThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.activateTopicBinding(null, TB_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void activateTopicBindingThrowsIllegalArgumentWhenTopicBindingIdNull() {
+        assertThatThrownBy(() -> facade.activateTopicBinding(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("topicBindingId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void activateTopicBindingDelegatesToCommandService() {
+        TelegramTopicBinding binding = sampleTopicBinding();
+        when(commandService.activateTopicBinding(TENANT_ID, TB_ID)).thenReturn(binding);
+
+        var result = facade.activateTopicBinding(TENANT_ID, TB_ID);
+
+        assertThat(result.active()).isTrue();
+        verify(commandService).activateTopicBinding(TENANT_ID, TB_ID);
+    }
+
+    @Test
+    void deactivateTopicBindingThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.deactivateTopicBinding(null, TB_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deactivateTopicBindingThrowsIllegalArgumentWhenTopicBindingIdNull() {
+        assertThatThrownBy(() -> facade.deactivateTopicBinding(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("topicBindingId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deactivateTopicBindingDelegatesToCommandService() {
+        TelegramTopicBinding binding = sampleTopicBinding();
+        binding.setActive(false);
+        when(commandService.deactivateTopicBinding(TENANT_ID, TB_ID)).thenReturn(binding);
+
+        var result = facade.deactivateTopicBinding(TENANT_ID, TB_ID);
+
+        assertThat(result.active()).isFalse();
+        verify(commandService).deactivateTopicBinding(TENANT_ID, TB_ID);
+    }
+
+    @Test
+    void deleteTopicBindingThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.deleteTopicBinding(null, TB_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deleteTopicBindingThrowsIllegalArgumentWhenTopicBindingIdNull() {
+        assertThatThrownBy(() -> facade.deleteTopicBinding(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("topicBindingId");
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deleteTopicBindingDelegatesToCommandService() {
+        facade.deleteTopicBinding(TENANT_ID, TB_ID);
+
+        verify(commandService).deleteTopicBinding(TENANT_ID, TB_ID);
     }
 
     // ========== createRoutingRule tests ==========

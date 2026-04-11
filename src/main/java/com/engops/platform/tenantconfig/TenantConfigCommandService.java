@@ -6,6 +6,7 @@ import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
+import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.repository.RoutingRuleRepository;
 import com.engops.platform.tenantconfig.repository.TelegramChatBindingRepository;
@@ -437,6 +438,197 @@ public class TenantConfigCommandService {
                 "DELETED", null, "ADMIN_API", oldValue, null);
     }
 
+    // ========== TelegramTopicBinding operations ==========
+
+    /**
+     * Yangi Telegram topic binding yaratadi.
+     *
+     * Validatsiyalar:
+     * 1. Tenant mavjud bo'lishi kerak
+     * 2. Ota chat binding mavjud va shu tenantga tegishli bo'lishi kerak (tenant-safe)
+     * 3. Shu chat binding ichida shu topicId uchun binding allaqachon mavjud bo'lmasligi kerak
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatBindingId ota chat binding identifikatori
+     * @param topicId Telegram topic identifikatori
+     * @param topicName topic nomi (nullable)
+     * @param purpose topic maqsadi
+     * @return yaratilgan TelegramTopicBinding
+     * @throws ResourceNotFoundException agar tenant topilmasa
+     * @throws BusinessRuleException agar chat binding yaroqsiz yoki duplicate topic bo'lsa
+     */
+    public TelegramTopicBinding createTopicBinding(UUID tenantId, UUID chatBindingId,
+                                                     long topicId, String topicName, String purpose) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramChatBinding chatBinding = telegramChatBindingRepository
+                .findByIdAndTenantId(chatBindingId, tenantId)
+                .orElseThrow(() -> new BusinessRuleException("INVALID_CHAT_BINDING",
+                        "Chat binding (id=" + chatBindingId
+                                + ") topilmadi yoki shu tenantga tegishli emas"));
+
+        telegramTopicBindingRepository.findByChatBindingIdAndTopicId(chatBindingId, topicId)
+                .ifPresent(existing -> {
+                    throw new BusinessRuleException("DUPLICATE_TOPIC_BINDING",
+                            "Chat binding ichida topicId=" + topicId
+                                    + " uchun binding allaqachon mavjud");
+                });
+
+        TelegramTopicBinding binding = new TelegramTopicBinding(
+                chatBinding, topicId,
+                topicName != null && !topicName.isBlank() ? topicName : null,
+                purpose);
+
+        try {
+            binding = telegramTopicBindingRepository.save(binding);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateTopicBindingConstraint(ex)) {
+                throw new BusinessRuleException("DUPLICATE_TOPIC_BINDING",
+                        "Chat binding ichida topicId=" + topicId
+                                + " uchun binding allaqachon mavjud");
+            }
+            throw ex;
+        }
+
+        String newValue = topicId + " | " + purpose
+                + (binding.getTopicName() != null ? " | " + binding.getTopicName() : "");
+
+        auditService.recordEvent(tenantId, "TOPIC_BINDING", binding.getId(),
+                "CREATED", null, "ADMIN_API", null, newValue);
+
+        return binding;
+    }
+
+    /**
+     * Topic binding metadata'sini partial yangilaydi (PATCH semantikasi).
+     *
+     * Faqat provided=true field'lar yangilanadi:
+     * - topicNameProvided=false → nom o'zgarmaydi
+     * - topicNameProvided=true, null/blank → nom tozalanadi
+     * - topicNameProvided=true, non-blank → nom yangilanadi
+     *
+     * @param tenantId tenant identifikatori
+     * @param topicBindingId topic binding identifikatori
+     * @param topicName yangi nom (faqat topicNameProvided=true bo'lganda)
+     * @param topicNameProvided topicName field JSON'da berilganmi
+     * @return yangilangan TelegramTopicBinding
+     * @throws ResourceNotFoundException agar tenant yoki topic binding topilmasa
+     */
+    public TelegramTopicBinding updateTopicBinding(UUID tenantId, UUID topicBindingId,
+                                                     String topicName, boolean topicNameProvided) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramTopicBinding binding = telegramTopicBindingRepository
+                .findByIdAndChatBinding_TenantId(topicBindingId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("TopicBinding", topicBindingId));
+
+        String oldTopicName = binding.getTopicName();
+
+        if (topicNameProvided) {
+            binding.setTopicName(topicName != null && !topicName.isBlank() ? topicName : null);
+        }
+
+        binding = telegramTopicBindingRepository.save(binding);
+
+        String oldValue = binding.getPurpose()
+                + (oldTopicName != null ? " | " + oldTopicName : "");
+        String newValue = binding.getPurpose()
+                + (binding.getTopicName() != null ? " | " + binding.getTopicName() : "");
+
+        auditService.recordEvent(tenantId, "TOPIC_BINDING", binding.getId(),
+                "UPDATED", null, "ADMIN_API", oldValue, newValue);
+
+        return binding;
+    }
+
+    /**
+     * Topic binding'ni aktiv holatga o'tkazadi.
+     *
+     * Idempotent: allaqachon aktiv bo'lsa, hech narsa o'zgarmaydi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param topicBindingId topic binding identifikatori
+     * @return yangilangan TelegramTopicBinding
+     * @throws ResourceNotFoundException agar tenant yoki topic binding topilmasa
+     */
+    public TelegramTopicBinding activateTopicBinding(UUID tenantId, UUID topicBindingId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramTopicBinding binding = telegramTopicBindingRepository
+                .findByIdAndChatBinding_TenantId(topicBindingId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("TopicBinding", topicBindingId));
+
+        if (binding.isActive()) {
+            return binding;
+        }
+
+        binding.setActive(true);
+        binding = telegramTopicBindingRepository.save(binding);
+
+        auditService.recordEvent(tenantId, "TOPIC_BINDING", binding.getId(),
+                "ACTIVATED", null, "ADMIN_API", "false", "true");
+
+        return binding;
+    }
+
+    /**
+     * Topic binding'ni noaktiv holatga o'tkazadi.
+     *
+     * Idempotent: allaqachon noaktiv bo'lsa, hech narsa o'zgarmaydi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param topicBindingId topic binding identifikatori
+     * @return yangilangan TelegramTopicBinding
+     * @throws ResourceNotFoundException agar tenant yoki topic binding topilmasa
+     */
+    public TelegramTopicBinding deactivateTopicBinding(UUID tenantId, UUID topicBindingId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramTopicBinding binding = telegramTopicBindingRepository
+                .findByIdAndChatBinding_TenantId(topicBindingId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("TopicBinding", topicBindingId));
+
+        if (!binding.isActive()) {
+            return binding;
+        }
+
+        binding.setActive(false);
+        binding = telegramTopicBindingRepository.save(binding);
+
+        auditService.recordEvent(tenantId, "TOPIC_BINDING", binding.getId(),
+                "DEACTIVATED", null, "ADMIN_API", "true", "false");
+
+        return binding;
+    }
+
+    /**
+     * Topic binding'ni o'chiradi (hard delete).
+     *
+     * @param tenantId tenant identifikatori
+     * @param topicBindingId topic binding identifikatori
+     * @throws ResourceNotFoundException agar tenant yoki topic binding topilmasa
+     */
+    public void deleteTopicBinding(UUID tenantId, UUID topicBindingId) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramTopicBinding binding = telegramTopicBindingRepository
+                .findByIdAndChatBinding_TenantId(topicBindingId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("TopicBinding", topicBindingId));
+
+        String oldValue = binding.getTopicId() + " | " + binding.getPurpose()
+                + (binding.getTopicName() != null ? " | " + binding.getTopicName() : "");
+
+        telegramTopicBindingRepository.delete(binding);
+
+        auditService.recordEvent(tenantId, "TOPIC_BINDING", topicBindingId,
+                "DELETED", null, "ADMIN_API", oldValue, null);
+    }
+
     // ========== RoutingRule operations ==========
 
     /**
@@ -669,6 +861,22 @@ public class TenantConfigCommandService {
      * DataIntegrityViolationException telegram_chat_binding (tenant_id, chat_id) unique
      * constraint violation ekanligini tekshiradi.
      */
+    /**
+     * DataIntegrityViolationException telegram_topic_binding (chat_binding_id, topic_id) unique
+     * constraint violation ekanligini tekshiradi.
+     */
+    private static boolean isDuplicateTopicBindingConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("telegram_topic_binding")
+                    && constraintName.contains("chat_binding_id")
+                    && constraintName.contains("topic_id");
+        }
+        return false;
+    }
+
     private static boolean isDuplicateChatBindingConstraint(DataIntegrityViolationException ex) {
         Throwable cause = ex.getCause();
         if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {

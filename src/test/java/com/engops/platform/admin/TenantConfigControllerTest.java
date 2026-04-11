@@ -1540,6 +1540,231 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
+    // ========== TelegramTopicBinding write endpoints ==========
+
+    private static final UUID TB_ID = UUID.fromString("77777777-7777-7777-7777-777777777771");
+    private static final UUID PARENT_CB_ID = UUID.fromString("55555555-5555-5555-5555-555555555551");
+
+    @Test
+    void createTopicBindingReturns201WithCreatedResource() throws Exception {
+        var view = new TenantConfigWriteFacade.TopicBindingView(
+                TENANT_ID, TB_ID, PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE", true,
+                Instant.parse("2026-04-12T10:00:00Z"));
+
+        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class)))
+                .thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatBindingId":"55555555-5555-5555-5555-555555555551",
+                                 "topicId":42,
+                                 "topicName":"bugs-topic",
+                                 "purpose":"BUG_TRIAGE"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.topicBindingId").value(TB_ID.toString()))
+                .andExpect(jsonPath("$.chatBindingId").value(PARENT_CB_ID.toString()))
+                .andExpect(jsonPath("$.topicId").value(42))
+                .andExpect(jsonPath("$.topicName").value("bugs-topic"))
+                .andExpect(jsonPath("$.purpose").value("BUG_TRIAGE"))
+                .andExpect(jsonPath("$.active").value(true));
+    }
+
+    @Test
+    void createTopicBindingMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatBindingId":"55555555-5555-5555-5555-555555555551",
+                                 "topicId":42,"purpose":"BUG_TRIAGE"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createTopicBindingTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatBindingId":"55555555-5555-5555-5555-555555555551",
+                                 "topicId":42,"purpose":"BUG_TRIAGE"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void createTopicBindingInvalidChatBindingReturns422() throws Exception {
+        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class)))
+                .thenThrow(new BusinessRuleException("INVALID_CHAT_BINDING", "chat binding topilmadi"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatBindingId":"55555555-5555-5555-5555-555555555551",
+                                 "topicId":42,"purpose":"BUG_TRIAGE"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_CHAT_BINDING"));
+    }
+
+    @Test
+    void createTopicBindingDuplicateReturns422() throws Exception {
+        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class)))
+                .thenThrow(new BusinessRuleException("DUPLICATE_TOPIC_BINDING",
+                        "Chat binding ichida topicId=42 uchun binding allaqachon mavjud"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"chatBindingId":"55555555-5555-5555-5555-555555555551",
+                                 "topicId":42,"purpose":"BUG_TRIAGE"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_TOPIC_BINDING"));
+    }
+
+    @Test
+    void updateTopicBindingReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.TopicBindingView(
+                TENANT_ID, TB_ID, PARENT_CB_ID, 42L, "new-name", "BUG_TRIAGE", true,
+                Instant.parse("2026-04-12T10:00:00Z"));
+
+        when(writeFacade.updateTopicBinding(eq(TENANT_ID), eq(TB_ID), any(UpdateTopicBindingRequest.class)))
+                .thenReturn(view);
+
+        mockMvc.perform(patch("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"topicName":"new-name"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.topicName").value("new-name"));
+    }
+
+    @Test
+    void updateTopicBindingMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(patch("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"topicName":"x"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateTopicBindingNotFoundReturns404() throws Exception {
+        when(writeFacade.updateTopicBinding(eq(TENANT_ID), eq(TB_ID), any(UpdateTopicBindingRequest.class)))
+                .thenThrow(new ResourceNotFoundException("TopicBinding", TB_ID));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"topicName":"x"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void activateTopicBindingReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.TopicBindingView(
+                TENANT_ID, TB_ID, PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE", true,
+                Instant.parse("2026-04-12T10:00:00Z"));
+
+        when(writeFacade.activateTopicBinding(TENANT_ID, TB_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/activate", TB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.topicBindingId").value(TB_ID.toString()))
+                .andExpect(jsonPath("$.active").value(true));
+    }
+
+    @Test
+    void activateTopicBindingMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/activate", TB_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void activateTopicBindingNotFoundReturns404() throws Exception {
+        when(writeFacade.activateTopicBinding(TENANT_ID, TB_ID))
+                .thenThrow(new ResourceNotFoundException("TopicBinding", TB_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/activate", TB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void deactivateTopicBindingReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.TopicBindingView(
+                TENANT_ID, TB_ID, PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE", false,
+                Instant.parse("2026-04-12T10:00:00Z"));
+
+        when(writeFacade.deactivateTopicBinding(TENANT_ID, TB_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/deactivate", TB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.active").value(false));
+    }
+
+    @Test
+    void deactivateTopicBindingMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/deactivate", TB_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deactivateTopicBindingTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.deactivateTopicBinding(TENANT_ID, TB_ID))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/deactivate", TB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void deleteTopicBindingReturns204() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+    }
+
+    @Test
+    void deleteTopicBindingMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deleteTopicBindingNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("TopicBinding", TB_ID))
+                .when(writeFacade).deleteTopicBinding(TENANT_ID, TB_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
     // ========== POST /routing-rules endpoint ==========
 
     @Test
