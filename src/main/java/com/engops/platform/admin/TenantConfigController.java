@@ -43,6 +43,7 @@ import java.util.UUID;
  * - POST /topic-bindings/{topicBindingId}/activate — topic binding aktivlashtirish
  * - POST /topic-bindings/{topicBindingId}/deactivate — topic binding deaktivlashtirish
  * - DELETE /topic-bindings/{topicBindingId} — topic binding o'chirish
+ * - POST /memberships — mavjud foydalanuvchi uchun yangi a'zolik yaratish
  * - POST /memberships/{membershipId}/activate — a'zolikni aktivlashtirish
  * - POST /memberships/{membershipId}/suspend — a'zolikni SUSPENDED holatga o'tkazish
  * - POST /memberships/{membershipId}/remove — a'zolikni REMOVED holatga o'tkazish
@@ -490,7 +491,26 @@ public class TenantConfigController {
                 view.createdAt());
     }
 
-    // ========== Membership status lifecycle endpoint'lar ==========
+    // ========== Membership lifecycle endpoint'lar ==========
+
+    /**
+     * Mavjud foydalanuvchi uchun tenantda yangi a'zolik yaratadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan membership (201 Created)
+     */
+    @PostMapping("/memberships")
+    public ResponseEntity<TenantConfigMembershipStatusResponse> createMembership(
+            @RequestParam UUID tenantId,
+            @RequestBody CreateMembershipRequest request) {
+
+        TenantConfigWriteFacade.MembershipStatusView view =
+                writeFacade.createMembership(tenantId, request);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(toMembershipStatusResponse(view));
+    }
 
     /**
      * A'zolikni aktiv holatga o'tkazadi.

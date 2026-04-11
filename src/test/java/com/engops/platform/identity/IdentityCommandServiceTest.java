@@ -1,10 +1,12 @@
 package com.engops.platform.identity;
 
 import com.engops.platform.audit.AuditService;
+import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.MembershipStatus;
 import com.engops.platform.identity.model.Role;
+import com.engops.platform.identity.repository.AppUserRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
 import com.engops.platform.identity.repository.RoleRepository;
@@ -48,12 +50,13 @@ class IdentityCommandServiceTest {
     private final MembershipRoleBindingRepository membershipRoleBindingRepository =
             mock(MembershipRoleBindingRepository.class);
     private final RoleRepository roleRepository = mock(RoleRepository.class);
+    private final AppUserRepository appUserRepository = mock(AppUserRepository.class);
     private final AuditService auditService = mock(AuditService.class);
     private final TenantConfigQueryService tenantConfigQueryService =
             mock(TenantConfigQueryService.class);
     private final IdentityCommandService service =
             new IdentityCommandService(membershipRepository, membershipRoleBindingRepository,
-                    roleRepository, auditService, tenantConfigQueryService);
+                    roleRepository, appUserRepository, auditService, tenantConfigQueryService);
 
     @BeforeEach
     void stubTenantExists() {
@@ -65,6 +68,109 @@ class IdentityCommandServiceTest {
         Membership m = new Membership(TENANT_ID, USER_ID);
         m.setStatus(status);
         return m;
+    }
+
+    // ========== createMembership tests ==========
+
+    @Test
+    void createMembershipSuccess() {
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(USER_ID);
+        when(appUserRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(membershipRepository.existsByTenantIdAndUserId(TENANT_ID, USER_ID)).thenReturn(false);
+        when(membershipRepository.save(any(Membership.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Membership result = service.createMembership(TENANT_ID, USER_ID);
+
+        assertThat(result.getTenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.getUserId()).isEqualTo(USER_ID);
+        assertThat(result.getStatus()).isEqualTo(MembershipStatus.ACTIVE);
+
+        verify(membershipRepository).save(any(Membership.class));
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("MEMBERSHIP"), eq(result.getId()),
+                eq("CREATED"), eq(null), eq("ADMIN_API"),
+                eq(null), eq(USER_ID + " | ACTIVE"));
+    }
+
+    @Test
+    void createMembershipThrowsTenantNotFoundWhenTenantMissing() {
+        UUID badTenant = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        when(tenantConfigQueryService.findTenantById(badTenant)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createMembership(badTenant, USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Tenant");
+
+        verify(appUserRepository, never()).findById(any());
+        verify(membershipRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createMembershipThrowsUserNotFoundWhenUserMissing() {
+        when(appUserRepository.findById(USER_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createMembership(TENANT_ID, USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("User");
+
+        verify(membershipRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createMembershipThrowsBusinessRuleWhenDuplicatePreCheck() {
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(USER_ID);
+        when(appUserRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(membershipRepository.existsByTenantIdAndUserId(TENANT_ID, USER_ID)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.createMembership(TENANT_ID, USER_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("allaqachon");
+
+        verify(membershipRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createMembershipTranslatesDbDuplicateConstraint() {
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(USER_ID);
+        when(appUserRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(membershipRepository.existsByTenantIdAndUserId(TENANT_ID, USER_ID)).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "duplicate key", new SQLException(),
+                "membership_tenant_id_user_id_key");
+        when(membershipRepository.save(any(Membership.class)))
+                .thenThrow(new DataIntegrityViolationException("unique", cause));
+
+        assertThatThrownBy(() -> service.createMembership(TENANT_ID, USER_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("allaqachon");
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createMembershipRethrowsUnrelatedIntegrityViolation() {
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(USER_ID);
+        when(appUserRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+        when(membershipRepository.existsByTenantIdAndUserId(TENANT_ID, USER_ID)).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "other", new SQLException(), "some_other_constraint");
+        when(membershipRepository.save(any(Membership.class)))
+                .thenThrow(new DataIntegrityViolationException("other", cause));
+
+        assertThatThrownBy(() -> service.createMembership(TENANT_ID, USER_ID))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        verifyNoInteractions(auditService);
     }
 
     // ========== activateMembership ==========

@@ -1765,10 +1765,101 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
-    // ========== Membership status lifecycle endpoints ==========
+    // ========== Membership lifecycle endpoints ==========
 
     private static final UUID MEMBERSHIP_ID = UUID.fromString("88888888-8888-8888-8888-888888888881");
     private static final UUID USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999991");
+
+    @Test
+    void createMembershipReturns201WithCreatedResource() throws Exception {
+        var view = new TenantConfigWriteFacade.MembershipStatusView(
+                TENANT_ID, MEMBERSHIP_ID, USER_ID, "ACTIVE",
+                Instant.parse("2026-04-12T10:00:00Z"));
+
+        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class)))
+                .thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":"99999999-9999-9999-9999-999999999991"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.membershipId").value(MEMBERSHIP_ID.toString()))
+                .andExpect(jsonPath("$.userId").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    void createMembershipMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/memberships")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":"99999999-9999-9999-9999-999999999991"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createMembershipEmptyBodyReturns400() throws Exception {
+        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class)))
+                .thenThrow(new IllegalArgumentException("userId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createMembershipTenantNotFoundReturns404() throws Exception {
+        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":"99999999-9999-9999-9999-999999999991"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void createMembershipUserNotFoundReturns404() throws Exception {
+        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class)))
+                .thenThrow(new ResourceNotFoundException("User", USER_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":"99999999-9999-9999-9999-999999999991"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void createMembershipDuplicateReturns422() throws Exception {
+        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class)))
+                .thenThrow(new BusinessRuleException("DUPLICATE_MEMBERSHIP",
+                        "Tenant ichida membership allaqachon mavjud"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":"99999999-9999-9999-9999-999999999991"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_MEMBERSHIP"));
+    }
 
     @Test
     void activateMembershipReturns200() throws Exception {

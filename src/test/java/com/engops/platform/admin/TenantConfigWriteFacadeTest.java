@@ -1347,10 +1347,56 @@ class TenantConfigWriteFacadeTest {
         verify(commandService).deleteRoutingRule(TENANT_ID, RULE_ID);
     }
 
-    // ========== Membership status lifecycle tests ==========
+    // ========== Membership lifecycle tests ==========
 
     private static final UUID MEMBERSHIP_ID = UUID.fromString("88888888-8888-8888-8888-888888888881");
     private static final UUID USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999991");
+
+    @Test
+    void createMembershipThrowsIllegalArgumentWhenTenantIdNull() {
+        var request = new CreateMembershipRequest(USER_ID);
+
+        assertThatThrownBy(() -> facade.createMembership(null, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void createMembershipThrowsIllegalArgumentWhenRequestNull() {
+        assertThatThrownBy(() -> facade.createMembership(TENANT_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void createMembershipThrowsIllegalArgumentWhenUserIdNull() {
+        var request = new CreateMembershipRequest(null);
+
+        assertThatThrownBy(() -> facade.createMembership(TENANT_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("userId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void createMembershipDelegatesToIdentityCommandService() {
+        Membership membership = new Membership(TENANT_ID, USER_ID);
+
+        when(identityCommandService.createMembership(TENANT_ID, USER_ID)).thenReturn(membership);
+
+        var result = facade.createMembership(TENANT_ID, new CreateMembershipRequest(USER_ID));
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.userId()).isEqualTo(USER_ID);
+        assertThat(result.status()).isEqualTo("ACTIVE");
+
+        verify(identityCommandService).createMembership(TENANT_ID, USER_ID);
+    }
 
     @Test
     void activateMembershipThrowsIllegalArgumentWhenTenantIdNull() {

@@ -1,10 +1,12 @@
 package com.engops.platform.identity;
 
 import com.engops.platform.audit.AuditService;
+import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.MembershipStatus;
 import com.engops.platform.identity.model.Role;
+import com.engops.platform.identity.repository.AppUserRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
 import com.engops.platform.identity.repository.RoleRepository;
@@ -40,19 +42,73 @@ public class IdentityCommandService {
     private final MembershipRepository membershipRepository;
     private final MembershipRoleBindingRepository membershipRoleBindingRepository;
     private final RoleRepository roleRepository;
+    private final AppUserRepository appUserRepository;
     private final AuditService auditService;
     private final TenantConfigQueryService tenantConfigQueryService;
 
     public IdentityCommandService(MembershipRepository membershipRepository,
                                    MembershipRoleBindingRepository membershipRoleBindingRepository,
                                    RoleRepository roleRepository,
+                                   AppUserRepository appUserRepository,
                                    AuditService auditService,
                                    TenantConfigQueryService tenantConfigQueryService) {
         this.membershipRepository = membershipRepository;
         this.membershipRoleBindingRepository = membershipRoleBindingRepository;
         this.roleRepository = roleRepository;
+        this.appUserRepository = appUserRepository;
         this.auditService = auditService;
         this.tenantConfigQueryService = tenantConfigQueryService;
+    }
+
+    /**
+     * Mavjud foydalanuvchi uchun tenantda yangi a'zolik yaratadi.
+     *
+     * Validatsiyalar:
+     * 1. Tenant mavjud bo'lishi kerak
+     * 2. Foydalanuvchi global identity katalogida mavjud bo'lishi kerak
+     * 3. (tenantId, userId) juftligi uchun membership allaqachon mavjud bo'lmasligi kerak
+     *
+     * Yangi a'zolik default status ACTIVE bilan yaratiladi.
+     *
+     * Concurrency: application-level pre-check + DB unique constraint fallback tarjimasi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param userId foydalanuvchi identifikatori
+     * @return yaratilgan Membership
+     * @throws ResourceNotFoundException tenant yoki foydalanuvchi topilmasa
+     * @throws BusinessRuleException duplicate membership bo'lsa
+     */
+    public Membership createMembership(UUID tenantId, UUID userId) {
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        AppUser user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+
+        if (membershipRepository.existsByTenantIdAndUserId(tenantId, user.getId())) {
+            throw new BusinessRuleException("DUPLICATE_MEMBERSHIP",
+                    "Tenant (id=" + tenantId + ") ichida userId=" + user.getId()
+                            + " uchun membership allaqachon mavjud");
+        }
+
+        Membership membership = new Membership(tenantId, user.getId());
+
+        try {
+            membership = membershipRepository.save(membership);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateMembershipConstraint(ex)) {
+                throw new BusinessRuleException("DUPLICATE_MEMBERSHIP",
+                        "Tenant (id=" + tenantId + ") ichida userId=" + user.getId()
+                                + " uchun membership allaqachon mavjud");
+            }
+            throw ex;
+        }
+
+        String newValue = user.getId() + " | " + membership.getStatus().name();
+        auditService.recordEvent(tenantId, "MEMBERSHIP", membership.getId(),
+                "CREATED", null, "ADMIN_API", null, newValue);
+
+        return membership;
     }
 
     /**
@@ -240,6 +296,22 @@ public class IdentityCommandService {
 
         auditService.recordEvent(tenantId, "MEMBERSHIP_ROLE_BINDING", bindingId,
                 "DELETED", null, "ADMIN_API", roleCode, null);
+    }
+
+    /**
+     * DataIntegrityViolationException membership (tenant_id, user_id) unique
+     * constraint violation ekanligini tekshiradi.
+     */
+    private static boolean isDuplicateMembershipConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("membership")
+                    && constraintName.contains("tenant_id")
+                    && constraintName.contains("user_id");
+        }
+        return false;
     }
 
     /**

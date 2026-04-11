@@ -753,7 +753,30 @@ public class TenantConfigWriteFacade {
             boolean active,
             java.time.Instant createdAt) {}
 
-    // ========== Membership status lifecycle ==========
+    // ========== Membership lifecycle ==========
+
+    /**
+     * Mavjud foydalanuvchi uchun tenantda yangi a'zolik yaratadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi (userId bilan)
+     * @return yaratilgan membership view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public MembershipStatusView createMembership(UUID tenantId, CreateMembershipRequest request) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.userId() == null) {
+            throw new IllegalArgumentException("userId null bo'lishi mumkin emas");
+        }
+
+        Membership membership = identityCommandService.createMembership(tenantId, request.userId());
+        return toMembershipStatusView(membership);
+    }
 
     /**
      * A'zolikni aktiv holatga o'tkazadi.
