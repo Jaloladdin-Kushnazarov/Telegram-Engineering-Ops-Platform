@@ -1593,4 +1593,165 @@ class TenantConfigWriteFacadeTest {
 
         verify(identityCommandService).unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
     }
+
+    // ========== Global Role catalog tests ==========
+
+    @Test
+    void createRoleThrowsIllegalArgumentWhenRequestNull() {
+        assertThatThrownBy(() -> facade.createRole(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void createRoleThrowsIllegalArgumentWhenCodeNull() {
+        assertThatThrownBy(() -> facade.createRole(new CreateRoleRequest(null, "Name", null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("code");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void createRoleThrowsIllegalArgumentWhenCodeBlank() {
+        assertThatThrownBy(() -> facade.createRole(new CreateRoleRequest("  ", "Name", null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("code");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void createRoleThrowsIllegalArgumentWhenNameNull() {
+        assertThatThrownBy(() -> facade.createRole(new CreateRoleRequest("CODE", null, null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void createRoleThrowsIllegalArgumentWhenNameBlank() {
+        assertThatThrownBy(() -> facade.createRole(new CreateRoleRequest("CODE", "  ", null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void createRoleDelegatesToIdentityCommandService() {
+        Role role = new Role("BUG_REVIEWER", "Bug Reviewer", false);
+        when(identityCommandService.createRole("BUG_REVIEWER", "Bug Reviewer", "desc"))
+                .thenReturn(role);
+
+        var result = facade.createRole(new CreateRoleRequest("BUG_REVIEWER", "Bug Reviewer", "desc"));
+
+        assertThat(result.code()).isEqualTo("BUG_REVIEWER");
+        assertThat(result.name()).isEqualTo("Bug Reviewer");
+        assertThat(result.systemRole()).isFalse();
+        assertThat(result.active()).isTrue();
+
+        verify(identityCommandService).createRole("BUG_REVIEWER", "Bug Reviewer", "desc");
+    }
+
+    @Test
+    void updateRoleThrowsIllegalArgumentWhenRoleIdNull() {
+        var request = new UpdateRoleRequest();
+        request.setName("Test");
+
+        assertThatThrownBy(() -> facade.updateRole(null, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("roleId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void updateRoleThrowsIllegalArgumentWhenRequestNull() {
+        assertThatThrownBy(() -> facade.updateRole(ROLE_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void updateRoleThrowsIllegalArgumentWhenNoFieldProvided() {
+        assertThatThrownBy(() -> facade.updateRole(ROLE_ID, new UpdateRoleRequest()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("field");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void updateRoleThrowsIllegalArgumentWhenNameProvidedButBlank() {
+        var request = new UpdateRoleRequest();
+        request.setName("  ");
+
+        assertThatThrownBy(() -> facade.updateRole(ROLE_ID, request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void updateRoleDelegatesToIdentityCommandService() {
+        Role role = new Role("BUG_TRIAGER", "Updated Name", false);
+        when(identityCommandService.updateRole(ROLE_ID, "Updated Name", true, null, false))
+                .thenReturn(role);
+
+        var request = new UpdateRoleRequest();
+        request.setName("Updated Name");
+
+        var result = facade.updateRole(ROLE_ID, request);
+
+        assertThat(result.name()).isEqualTo("Updated Name");
+        verify(identityCommandService).updateRole(ROLE_ID, "Updated Name", true, null, false);
+    }
+
+    @Test
+    void activateRoleThrowsIllegalArgumentWhenRoleIdNull() {
+        assertThatThrownBy(() -> facade.activateRole(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("roleId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void activateRoleDelegatesToIdentityCommandService() {
+        Role role = new Role("BUG_TRIAGER", "Bug Triager", false);
+        when(identityCommandService.activateRole(ROLE_ID)).thenReturn(role);
+
+        var result = facade.activateRole(ROLE_ID);
+
+        assertThat(result.code()).isEqualTo("BUG_TRIAGER");
+        verify(identityCommandService).activateRole(ROLE_ID);
+    }
+
+    @Test
+    void deactivateRoleThrowsIllegalArgumentWhenRoleIdNull() {
+        assertThatThrownBy(() -> facade.deactivateRole(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("roleId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void deactivateRoleDelegatesToIdentityCommandService() {
+        Role role = new Role("BUG_TRIAGER", "Bug Triager", false);
+        role.setActive(false);
+        when(identityCommandService.deactivateRole(ROLE_ID)).thenReturn(role);
+
+        var result = facade.deactivateRole(ROLE_ID);
+
+        assertThat(result.active()).isFalse();
+        verify(identityCommandService).deactivateRole(ROLE_ID);
+    }
 }

@@ -3,6 +3,7 @@ package com.engops.platform.admin;
 import com.engops.platform.identity.IdentityCommandService;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
+import com.engops.platform.identity.model.Role;
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
@@ -933,5 +934,116 @@ public class TenantConfigWriteFacade {
             UUID bindingId,
             UUID roleId,
             String roleCode,
+            java.time.Instant createdAt) {}
+
+    // ========== Global Role catalog operations ==========
+
+    /**
+     * Global rol katalogida yangi rol yaratadi.
+     *
+     * @param request yaratish so'rovi (code, name, description)
+     * @return yaratilgan rol view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public RoleCatalogView createRole(CreateRoleRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.code() == null || request.code().isBlank()) {
+            throw new IllegalArgumentException("code null yoki bo'sh bo'lishi mumkin emas");
+        }
+        if (request.name() == null || request.name().isBlank()) {
+            throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
+        }
+
+        Role role = identityCommandService.createRole(
+                request.code(), request.name(), request.description());
+
+        return toRoleCatalogView(role);
+    }
+
+    /**
+     * Global rol metadata'sini PATCH yangilash.
+     *
+     * @param roleId rol identifikatori
+     * @param request yangilash so'rovi
+     * @return yangilangan rol view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public RoleCatalogView updateRole(UUID roleId, UpdateRoleRequest request) {
+        if (roleId == null) {
+            throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (!request.isNameProvided() && !request.isDescriptionProvided()) {
+            throw new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak");
+        }
+        if (request.isNameProvided() && (request.getName() == null || request.getName().isBlank())) {
+            throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
+        }
+
+        Role role = identityCommandService.updateRole(
+                roleId,
+                request.getName(), request.isNameProvided(),
+                request.getDescription(), request.isDescriptionProvided());
+
+        return toRoleCatalogView(role);
+    }
+
+    /**
+     * Global rolni aktiv holatga o'tkazadi.
+     *
+     * @param roleId rol identifikatori
+     * @return yangilangan rol view
+     * @throws IllegalArgumentException roleId null bo'lsa
+     */
+    public RoleCatalogView activateRole(UUID roleId) {
+        if (roleId == null) {
+            throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
+        }
+
+        Role role = identityCommandService.activateRole(roleId);
+        return toRoleCatalogView(role);
+    }
+
+    /**
+     * Global rolni noaktiv holatga o'tkazadi.
+     *
+     * @param roleId rol identifikatori
+     * @return yangilangan rol view
+     * @throws IllegalArgumentException roleId null bo'lsa
+     */
+    public RoleCatalogView deactivateRole(UUID roleId) {
+        if (roleId == null) {
+            throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
+        }
+
+        Role role = identityCommandService.deactivateRole(roleId);
+        return toRoleCatalogView(role);
+    }
+
+    private RoleCatalogView toRoleCatalogView(Role role) {
+        return new RoleCatalogView(
+                role.getId(),
+                role.getCode(),
+                role.getName(),
+                role.getDescription(),
+                role.isSystemRole(),
+                role.isActive(),
+                role.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — global rol.
+     */
+    public record RoleCatalogView(
+            UUID roleId,
+            String code,
+            String name,
+            String description,
+            boolean systemRole,
+            boolean active,
             java.time.Instant createdAt) {}
 }

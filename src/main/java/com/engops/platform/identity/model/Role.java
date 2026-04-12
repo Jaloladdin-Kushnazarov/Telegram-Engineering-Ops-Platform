@@ -37,6 +37,9 @@ public class Role extends BaseEntity {
     @Column(name = "system_role", nullable = false)
     private boolean systemRole;
 
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
     protected Role() {}
 
     public Role(String code, String name) {
@@ -56,4 +59,6 @@ public class Role extends BaseEntity {
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
     public boolean isSystemRole() { return systemRole; }
+    public boolean isActive() { return active; }
+    public void setActive(boolean active) { this.active = active; }
 }

@@ -229,6 +229,150 @@ public class IdentityCommandService {
         return membership;
     }
 
+    // ========== Global Role catalog operations ==========
+
+    /**
+     * Global rol katalogida yangi rol yaratadi.
+     *
+     * Validatsiyalar:
+     * 1. code unique bo'lishi kerak (application pre-check + DB constraint fallback)
+     *
+     * Yangi rol default active=true, systemRole=false bilan yaratiladi.
+     * Code uppercase normalize qilinadi.
+     *
+     * @param code rol kodi (unique, uppercase normalize qilinadi)
+     * @param name rol nomi
+     * @param description ixtiyoriy tavsif (nullable)
+     * @return yaratilgan Role
+     * @throws BusinessRuleException duplicate code bo'lsa
+     */
+    public Role createRole(String code, String name, String description) {
+        String normalizedCode = code.strip().toUpperCase(java.util.Locale.ROOT);
+        String normalizedName = name.strip();
+        String normalizedDesc = (description != null && !description.isBlank())
+                ? description.strip() : null;
+
+        if (roleRepository.existsByCode(normalizedCode)) {
+            throw new BusinessRuleException("DUPLICATE_ROLE_CODE",
+                    "'" + normalizedCode + "' kodli rol allaqachon mavjud");
+        }
+
+        Role role = new Role(normalizedCode, normalizedName);
+        if (normalizedDesc != null) {
+            role.setDescription(normalizedDesc);
+        }
+
+        try {
+            role = roleRepository.save(role);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateRoleCodeConstraint(ex)) {
+                throw new BusinessRuleException("DUPLICATE_ROLE_CODE",
+                        "'" + normalizedCode + "' kodli rol allaqachon mavjud");
+            }
+            throw ex;
+        }
+
+        auditService.recordEvent(null, "ROLE", role.getId(),
+                "CREATED", null, "ADMIN_API", null,
+                normalizedCode + " | " + normalizedName);
+
+        return role;
+    }
+
+    /**
+     * Global rol metadata'sini partial yangilaydi (PATCH semantikasi).
+     *
+     * Faqat provided=true field'lar yangilanadi.
+     * Code va systemRole o'zgartirilmaydi (immutable).
+     *
+     * @param roleId rol identifikatori
+     * @param name yangi nom (faqat nameProvided=true bo'lganda)
+     * @param nameProvided name field berilganmi
+     * @param description yangi tavsif (faqat descriptionProvided=true bo'lganda)
+     * @param descriptionProvided description field berilganmi
+     * @return yangilangan Role
+     * @throws ResourceNotFoundException rol topilmasa
+     */
+    public Role updateRole(UUID roleId, String name, boolean nameProvided,
+                            String description, boolean descriptionProvided) {
+        Role role = roleRepository.findById(roleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+
+        String oldName = role.getName();
+        String oldDescription = role.getDescription();
+
+        if (nameProvided) {
+            role.setName(name.strip());
+        }
+
+        if (descriptionProvided) {
+            role.setDescription(description != null && !description.isBlank()
+                    ? description.strip() : null);
+        }
+
+        role = roleRepository.save(role);
+
+        String oldValue = oldName + (oldDescription != null ? " | " + oldDescription : "");
+        String newValue = role.getName() + (role.getDescription() != null ? " | " + role.getDescription() : "");
+
+        auditService.recordEvent(null, "ROLE", role.getId(),
+                "UPDATED", null, "ADMIN_API", oldValue, newValue);
+
+        return role;
+    }
+
+    /**
+     * Global rolni aktiv holatga o'tkazadi.
+     *
+     * Idempotent: allaqachon aktiv bo'lsa, hech narsa o'zgarmaydi.
+     *
+     * @param roleId rol identifikatori
+     * @return yangilangan Role
+     * @throws ResourceNotFoundException rol topilmasa
+     */
+    public Role activateRole(UUID roleId) {
+        Role role = roleRepository.findById(roleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+
+        if (role.isActive()) {
+            return role;
+        }
+
+        role.setActive(true);
+        role = roleRepository.save(role);
+
+        auditService.recordEvent(null, "ROLE", role.getId(),
+                "ACTIVATED", null, "ADMIN_API", "false", "true");
+
+        return role;
+    }
+
+    /**
+     * Global rolni noaktiv holatga o'tkazadi.
+     *
+     * Idempotent: allaqachon noaktiv bo'lsa, hech narsa o'zgarmaydi.
+     *
+     * @param roleId rol identifikatori
+     * @return yangilangan Role
+     * @throws ResourceNotFoundException rol topilmasa
+     */
+    public Role deactivateRole(UUID roleId) {
+        Role role = roleRepository.findById(roleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+
+        if (!role.isActive()) {
+            return role;
+        }
+
+        role.setActive(false);
+        role = roleRepository.save(role);
+
+        auditService.recordEvent(null, "ROLE", role.getId(),
+                "DEACTIVATED", null, "ADMIN_API", "true", "false");
+
+        return role;
+    }
+
     // ========== MembershipRoleBinding operations ==========
 
     /**
@@ -356,6 +500,20 @@ public class IdentityCommandService {
                     && constraintName.contains("membership_role_binding")
                     && constraintName.contains("membership_id")
                     && constraintName.contains("role_id");
+        }
+        return false;
+    }
+
+    /**
+     * DataIntegrityViolationException role code unique constraint violation ekanligini tekshiradi.
+     */
+    private static boolean isDuplicateRoleCodeConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("role")
+                    && constraintName.contains("code");
         }
         return false;
     }

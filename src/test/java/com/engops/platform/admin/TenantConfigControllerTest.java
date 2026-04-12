@@ -2685,4 +2685,153 @@ class TenantConfigControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
+
+    // ========== POST /roles — global role create endpoint ==========
+
+    @Test
+    void createRoleReturns201() throws Exception {
+        var view = new TenantConfigWriteFacade.RoleCatalogView(
+                ROLE_ID, "BUG_REVIEWER", "Bug Reviewer", "Reviews bugs",
+                false, true, Instant.parse("2026-04-12T12:00:00Z"));
+
+        when(writeFacade.createRole(any(CreateRoleRequest.class))).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"code":"BUG_REVIEWER","name":"Bug Reviewer","description":"Reviews bugs"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
+                .andExpect(jsonPath("$.code").value("BUG_REVIEWER"))
+                .andExpect(jsonPath("$.name").value("Bug Reviewer"))
+                .andExpect(jsonPath("$.description").value("Reviews bugs"))
+                .andExpect(jsonPath("$.systemRole").value(false))
+                .andExpect(jsonPath("$.active").value(true));
+    }
+
+    @Test
+    void createRoleDuplicateReturns422() throws Exception {
+        when(writeFacade.createRole(any(CreateRoleRequest.class)))
+                .thenThrow(new BusinessRuleException("DUPLICATE_ROLE_CODE",
+                        "ADMIN kodli rol allaqachon mavjud"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"code":"ADMIN","name":"Admin"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_ROLE_CODE"));
+    }
+
+    @Test
+    void createRoleEmptyBodyReturns400() throws Exception {
+        when(writeFacade.createRole(any(CreateRoleRequest.class)))
+                .thenThrow(new IllegalArgumentException("code null yoki bo'sh"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"code":null,"name":null}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== PATCH /roles/{roleId} — global role update endpoint ==========
+
+    @Test
+    void updateRoleReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.RoleCatalogView(
+                ROLE_ID, "BUG_REVIEWER", "Updated Name", null,
+                false, true, Instant.parse("2026-04-12T12:00:00Z"));
+
+        when(writeFacade.updateRole(eq(ROLE_ID), any(UpdateRoleRequest.class))).thenReturn(view);
+
+        mockMvc.perform(patch("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Updated Name"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
+                .andExpect(jsonPath("$.name").value("Updated Name"));
+    }
+
+    @Test
+    void updateRoleNotFoundReturns404() throws Exception {
+        when(writeFacade.updateRole(eq(ROLE_ID), any(UpdateRoleRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Updated"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void updateRoleEmptyPatchReturns400() throws Exception {
+        when(writeFacade.updateRole(eq(ROLE_ID), any(UpdateRoleRequest.class)))
+                .thenThrow(new IllegalArgumentException("Kamida bitta field berilishi kerak"));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== POST /roles/{roleId}/activate — global role activate endpoint ==========
+
+    @Test
+    void activateRoleReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.RoleCatalogView(
+                ROLE_ID, "BUG_REVIEWER", "Bug Reviewer", null,
+                false, true, Instant.parse("2026-04-12T12:00:00Z"));
+
+        when(writeFacade.activateRole(ROLE_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/activate", ROLE_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
+                .andExpect(jsonPath("$.active").value(true));
+    }
+
+    @Test
+    void activateRoleNotFoundReturns404() throws Exception {
+        when(writeFacade.activateRole(ROLE_ID))
+                .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/activate", ROLE_ID))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    // ========== POST /roles/{roleId}/deactivate — global role deactivate endpoint ==========
+
+    @Test
+    void deactivateRoleReturns200() throws Exception {
+        var view = new TenantConfigWriteFacade.RoleCatalogView(
+                ROLE_ID, "BUG_REVIEWER", "Bug Reviewer", null,
+                false, false, Instant.parse("2026-04-12T12:00:00Z"));
+
+        when(writeFacade.deactivateRole(ROLE_ID)).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
+                .andExpect(jsonPath("$.active").value(false));
+    }
+
+    @Test
+    void deactivateRoleNotFoundReturns404() throws Exception {
+        when(writeFacade.deactivateRole(ROLE_ID))
+                .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
 }

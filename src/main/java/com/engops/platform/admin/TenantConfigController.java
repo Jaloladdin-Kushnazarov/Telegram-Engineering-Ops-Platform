@@ -48,6 +48,10 @@ import java.util.UUID;
  * - POST /memberships/{membershipId}/suspend — a'zolikni SUSPENDED holatga o'tkazish
  * - POST /memberships/{membershipId}/remove — a'zolikni REMOVED holatga o'tkazish
  * - POST /memberships/{membershipId}/roles — a'zolikka rol tayinlash
+ * - POST /roles — yangi global rol yaratish
+ * - PATCH /roles/{roleId} — global rol metadata yangilash
+ * - POST /roles/{roleId}/activate — global rolni aktivlashtirish
+ * - POST /roles/{roleId}/deactivate — global rolni deaktivlashtirish
  * - DELETE /memberships/{membershipId}/roles/{roleId} — a'zolikdan rolni olib tashlash
  * - POST /routing-rules — yangi routing rule yaratish
  * - PATCH /routing-rules/{ruleId} — routing rule metadata yangilash
@@ -884,5 +888,84 @@ public class TenantConfigController {
                 new TenantConfigDetailsResponse.TelegramSummarySection(
                         view.activeChatBindingCount(),
                         view.activeTopicBindingCount()));
+    }
+
+    // ========== Global Role catalog write endpoints ==========
+
+    /**
+     * Yangi global rol yaratadi.
+     *
+     * @param request yaratish so'rovi
+     * @return yaratilgan rol (201 Created)
+     */
+    @PostMapping("/roles")
+    public ResponseEntity<RoleCatalogResponse> createRole(
+            @RequestBody CreateRoleRequest request) {
+
+        TenantConfigWriteFacade.RoleCatalogView view = writeFacade.createRole(request);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(toRoleCatalogResponse(view));
+    }
+
+    /**
+     * Global rol metadata'sini yangilaydi (name, description).
+     *
+     * @param roleId rol identifikatori
+     * @param request yangilash so'rovi
+     * @return yangilangan rol (200 OK)
+     */
+    @PatchMapping("/roles/{roleId}")
+    public ResponseEntity<RoleCatalogResponse> updateRole(
+            @PathVariable UUID roleId,
+            @RequestBody UpdateRoleRequest request) {
+
+        TenantConfigWriteFacade.RoleCatalogView view =
+                writeFacade.updateRole(roleId, request);
+
+        return ResponseEntity.ok(toRoleCatalogResponse(view));
+    }
+
+    /**
+     * Global rolni aktiv holatga o'tkazadi.
+     *
+     * @param roleId rol identifikatori
+     * @return yangilangan rol (200 OK)
+     */
+    @PostMapping("/roles/{roleId}/activate")
+    public ResponseEntity<RoleCatalogResponse> activateRole(
+            @PathVariable UUID roleId) {
+
+        TenantConfigWriteFacade.RoleCatalogView view =
+                writeFacade.activateRole(roleId);
+
+        return ResponseEntity.ok(toRoleCatalogResponse(view));
+    }
+
+    /**
+     * Global rolni noaktiv holatga o'tkazadi.
+     *
+     * @param roleId rol identifikatori
+     * @return yangilangan rol (200 OK)
+     */
+    @PostMapping("/roles/{roleId}/deactivate")
+    public ResponseEntity<RoleCatalogResponse> deactivateRole(
+            @PathVariable UUID roleId) {
+
+        TenantConfigWriteFacade.RoleCatalogView view =
+                writeFacade.deactivateRole(roleId);
+
+        return ResponseEntity.ok(toRoleCatalogResponse(view));
+    }
+
+    private RoleCatalogResponse toRoleCatalogResponse(TenantConfigWriteFacade.RoleCatalogView view) {
+        return new RoleCatalogResponse(
+                view.roleId(),
+                view.code(),
+                view.name(),
+                view.description(),
+                view.systemRole(),
+                view.active(),
+                view.createdAt());
     }
 }

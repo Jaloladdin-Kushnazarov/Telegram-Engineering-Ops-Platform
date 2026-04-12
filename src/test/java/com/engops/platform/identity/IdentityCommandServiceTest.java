@@ -703,4 +703,287 @@ class IdentityCommandServiceTest {
         verify(membershipRoleBindingRepository, never()).delete(any());
         verifyNoInteractions(auditService);
     }
+
+    // ========== createRole tests ==========
+
+    private static final UUID ROLE_ID_FIXED = UUID.fromString("cccccccc-cccc-cccc-cccc-ccccccccccc1");
+
+    @Test
+    void createRoleSuccess() {
+        when(roleRepository.existsByCode("BUG_REVIEWER")).thenReturn(false);
+        when(roleRepository.save(any(Role.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Role result = service.createRole("bug_reviewer", " Bug Reviewer ", " Reviews bugs ");
+
+        assertThat(result.getCode()).isEqualTo("BUG_REVIEWER");
+        assertThat(result.getName()).isEqualTo("Bug Reviewer");
+        assertThat(result.getDescription()).isEqualTo("Reviews bugs");
+        assertThat(result.isSystemRole()).isFalse();
+        assertThat(result.isActive()).isTrue();
+
+        verify(roleRepository).save(any(Role.class));
+        verify(auditService).recordEvent(
+                eq(null), eq("ROLE"), eq(result.getId()),
+                eq("CREATED"), eq(null), eq("ADMIN_API"),
+                eq(null), eq("BUG_REVIEWER | Bug Reviewer"));
+    }
+
+    @Test
+    void createRoleNormalizesCodeTrimAndUppercase() {
+        when(roleRepository.existsByCode("BUG_REVIEWER")).thenReturn(false);
+        when(roleRepository.save(any(Role.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Role result = service.createRole("  bug_reviewer  ", "  Bug Reviewer  ", "  Reviews bugs  ");
+
+        assertThat(result.getCode()).isEqualTo("BUG_REVIEWER");
+        assertThat(result.getName()).isEqualTo("Bug Reviewer");
+        assertThat(result.getDescription()).isEqualTo("Reviews bugs");
+
+        verify(roleRepository).existsByCode("BUG_REVIEWER");
+    }
+
+    @Test
+    void createRoleDuplicatePreCheckUsesNormalizedCode() {
+        when(roleRepository.existsByCode("ADMIN")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.createRole("  admin  ", "Admin", null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("ADMIN");
+
+        verify(roleRepository).existsByCode("ADMIN");
+        verify(roleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createRoleTranslatesDbDuplicateConstraint() {
+        when(roleRepository.existsByCode("REVIEWER")).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "duplicate key", new SQLException(), "role_code_key");
+        when(roleRepository.save(any(Role.class)))
+                .thenThrow(new DataIntegrityViolationException("unique", cause));
+
+        assertThatThrownBy(() -> service.createRole("reviewer", "Reviewer", null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("REVIEWER");
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createRoleRethrowsUnrelatedIntegrityViolation() {
+        when(roleRepository.existsByCode("TEST")).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "other", new SQLException(), "some_other_constraint");
+        when(roleRepository.save(any(Role.class)))
+                .thenThrow(new DataIntegrityViolationException("other", cause));
+
+        assertThatThrownBy(() -> service.createRole("test", "Test", null))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createRoleDescriptionNullOrBlankNotStored() {
+        when(roleRepository.existsByCode("PLAIN")).thenReturn(false);
+        when(roleRepository.save(any(Role.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Role result = service.createRole("plain", "Plain Role", "  ");
+
+        assertThat(result.getDescription()).isNull();
+    }
+
+    // ========== updateRole tests ==========
+
+    private Role existingRoleEntity() {
+        Role role = new Role("BUG_TRIAGER", "Bug Triager", false);
+        role.setDescription("Old description");
+        return role;
+    }
+
+    @Test
+    void updateRoleTrimsProvidedName() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(roleRepository.save(any(Role.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Role result = service.updateRole(existing.getId(),
+                "  New Name  ", true, null, false);
+
+        assertThat(result.getName()).isEqualTo("New Name");
+        assertThat(result.getDescription()).isEqualTo("Old description");
+
+        verify(auditService).recordEvent(
+                eq(null), eq("ROLE"), eq(existing.getId()),
+                eq("UPDATED"), eq(null), eq("ADMIN_API"),
+                eq("Bug Triager | Old description"), eq("New Name | Old description"));
+    }
+
+    @Test
+    void updateRoleTrimsProvidedDescription() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(roleRepository.save(any(Role.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Role result = service.updateRole(existing.getId(),
+                null, false, "  New desc  ", true);
+
+        assertThat(result.getName()).isEqualTo("Bug Triager");
+        assertThat(result.getDescription()).isEqualTo("New desc");
+    }
+
+    @Test
+    void updateRoleSuccessBothFields() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(roleRepository.save(any(Role.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Role result = service.updateRole(existing.getId(),
+                "Updated", true, "Updated desc", true);
+
+        assertThat(result.getName()).isEqualTo("Updated");
+        assertThat(result.getDescription()).isEqualTo("Updated desc");
+    }
+
+    @Test
+    void updateRoleClearsDescriptionWhenExplicitNull() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(roleRepository.save(any(Role.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Role result = service.updateRole(existing.getId(),
+                null, false, null, true);
+
+        assertThat(result.getDescription()).isNull();
+        verify(roleRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(null), eq("ROLE"), eq(existing.getId()),
+                eq("UPDATED"), eq(null), eq("ADMIN_API"),
+                eq("Bug Triager | Old description"), eq("Bug Triager"));
+    }
+
+    @Test
+    void updateRoleClearsDescriptionWhenBlank() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(roleRepository.save(any(Role.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Role result = service.updateRole(existing.getId(),
+                null, false, "  ", true);
+
+        assertThat(result.getDescription()).isNull();
+    }
+
+    @Test
+    void updateRoleThrowsNotFoundWhenRoleMissing() {
+        UUID missingId = UUID.fromString("dddddddd-dddd-dddd-dddd-ddddddddddd1");
+        when(roleRepository.findById(missingId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateRole(missingId,
+                "Name", true, null, false))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Role");
+
+        verify(roleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    // ========== activateRole tests ==========
+
+    @Test
+    void activateRoleSuccess() {
+        Role existing = existingRoleEntity();
+        existing.setActive(false);
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(roleRepository.save(any(Role.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Role result = service.activateRole(existing.getId());
+
+        assertThat(result.isActive()).isTrue();
+        verify(roleRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(null), eq("ROLE"), eq(existing.getId()),
+                eq("ACTIVATED"), eq(null), eq("ADMIN_API"),
+                eq("false"), eq("true"));
+    }
+
+    @Test
+    void activateRoleIdempotent() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+
+        Role result = service.activateRole(existing.getId());
+
+        assertThat(result.isActive()).isTrue();
+        verify(roleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void activateRoleThrowsNotFound() {
+        UUID missingId = UUID.fromString("dddddddd-dddd-dddd-dddd-ddddddddddd1");
+        when(roleRepository.findById(missingId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.activateRole(missingId))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(roleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    // ========== deactivateRole tests ==========
+
+    @Test
+    void deactivateRoleSuccess() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(roleRepository.save(any(Role.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Role result = service.deactivateRole(existing.getId());
+
+        assertThat(result.isActive()).isFalse();
+        verify(roleRepository).save(existing);
+        verify(auditService).recordEvent(
+                eq(null), eq("ROLE"), eq(existing.getId()),
+                eq("DEACTIVATED"), eq(null), eq("ADMIN_API"),
+                eq("true"), eq("false"));
+    }
+
+    @Test
+    void deactivateRoleIdempotent() {
+        Role existing = existingRoleEntity();
+        existing.setActive(false);
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+
+        Role result = service.deactivateRole(existing.getId());
+
+        assertThat(result.isActive()).isFalse();
+        verify(roleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deactivateRoleThrowsNotFound() {
+        UUID missingId = UUID.fromString("dddddddd-dddd-dddd-dddd-ddddddddddd1");
+        when(roleRepository.findById(missingId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deactivateRole(missingId))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(roleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
 }
