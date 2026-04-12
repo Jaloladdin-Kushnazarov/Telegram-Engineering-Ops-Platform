@@ -506,6 +506,9 @@ class IdentityCommandServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Tenant");
 
+        verify(membershipRepository, never()).findByIdAndTenantId(any(), any());
+        verify(roleRepository, never()).findById(any());
+        verify(membershipRoleBindingRepository, never()).existsByMembershipIdAndRoleId(any(), any());
         verify(membershipRoleBindingRepository, never()).save(any());
         verifyNoInteractions(auditService);
     }
@@ -519,6 +522,8 @@ class IdentityCommandServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Membership");
 
+        verify(roleRepository, never()).findById(any());
+        verify(membershipRoleBindingRepository, never()).existsByMembershipIdAndRoleId(any(), any());
         verify(membershipRoleBindingRepository, never()).save(any());
         verifyNoInteractions(auditService);
     }
@@ -664,6 +669,8 @@ class IdentityCommandServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Tenant");
 
+        verify(membershipRepository, never()).findByIdAndTenantId(any(), any());
+        verify(membershipRoleBindingRepository, never()).findByMembershipIdAndRoleId(any(), any());
         verify(membershipRoleBindingRepository, never()).delete(any());
         verifyNoInteractions(auditService);
     }
@@ -677,6 +684,7 @@ class IdentityCommandServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Membership");
 
+        verify(membershipRoleBindingRepository, never()).findByMembershipIdAndRoleId(any(), any());
         verify(membershipRoleBindingRepository, never()).delete(any());
         verifyNoInteractions(auditService);
     }
