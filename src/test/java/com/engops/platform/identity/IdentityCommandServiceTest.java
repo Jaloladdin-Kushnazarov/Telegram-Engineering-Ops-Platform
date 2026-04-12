@@ -457,6 +457,47 @@ class IdentityCommandServiceTest {
     }
 
     @Test
+    void assignRoleToMembershipThrowsBusinessRuleWhenMembershipRemoved() {
+        Membership membership = existingMembership(MembershipStatus.REMOVED);
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(membership));
+
+        assertThatThrownBy(() -> service.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("REMOVED");
+
+        verify(roleRepository, never()).findById(any());
+        verify(membershipRoleBindingRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void assignRoleToMembershipStillAllowedWhenMembershipSuspended() {
+        Membership membership = existingMembership(MembershipStatus.SUSPENDED);
+        Role role = existingRole();
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(membership));
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(role));
+        when(membershipRoleBindingRepository.existsByMembershipIdAndRoleId(MEMBERSHIP_ID, ROLE_ID))
+                .thenReturn(false);
+        when(membershipRoleBindingRepository.save(any(MembershipRoleBinding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        MembershipRoleBinding result = service.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+
+        assertThat(result.getMembership()).isSameAs(membership);
+        assertThat(result.getRole()).isSameAs(role);
+
+        verify(membershipRoleBindingRepository).save(any(MembershipRoleBinding.class));
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("MEMBERSHIP_ROLE_BINDING"), eq(result.getId()),
+                eq("CREATED"), eq(null), eq("ADMIN_API"),
+                eq(null), eq("BUG_TRIAGER"));
+    }
+
+    @Test
     void assignRoleToMembershipThrowsTenantNotFoundWhenTenantMissing() {
         UUID badTenant = UUID.fromString("33333333-3333-3333-3333-333333333333");
         when(tenantConfigQueryService.findTenantById(badTenant)).thenReturn(Optional.empty());
@@ -557,6 +598,26 @@ class IdentityCommandServiceTest {
     @Test
     void unassignRoleFromMembershipSuccess() {
         Membership membership = existingMembership();
+        Role role = existingRole();
+        MembershipRoleBinding binding = new MembershipRoleBinding(membership, role);
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(membership));
+        when(membershipRoleBindingRepository.findByMembershipIdAndRoleId(MEMBERSHIP_ID, ROLE_ID))
+                .thenReturn(Optional.of(binding));
+
+        service.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+
+        verify(membershipRoleBindingRepository).delete(binding);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("MEMBERSHIP_ROLE_BINDING"), eq(binding.getId()),
+                eq("DELETED"), eq(null), eq("ADMIN_API"),
+                eq("BUG_TRIAGER"), eq(null));
+    }
+
+    @Test
+    void unassignRoleFromMembershipStillAllowedWhenMembershipRemovedCleanupPath() {
+        Membership membership = existingMembership(MembershipStatus.REMOVED);
         Role role = existingRole();
         MembershipRoleBinding binding = new MembershipRoleBinding(membership, role);
 

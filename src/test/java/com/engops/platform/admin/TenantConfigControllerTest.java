@@ -2123,6 +2123,23 @@ class TenantConfigControllerTest {
     }
 
     @Test
+    void assignRoleToMembershipRemovedReturns422() throws Exception {
+        when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
+                any(CreateMembershipRoleBindingRequest.class)))
+                .thenThrow(new BusinessRuleException("INVALID_MEMBERSHIP_STATUS",
+                        "REMOVED holatdagi membershipga yangi rol tayinlab bo'lmaydi"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_MEMBERSHIP_STATUS"));
+    }
+
+    @Test
     void unassignRoleFromMembershipReturns204() throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
                         MEMBERSHIP_ID, ROLE_ID)

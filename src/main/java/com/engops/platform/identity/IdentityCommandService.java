@@ -237,8 +237,9 @@ public class IdentityCommandService {
      * Validatsiyalar:
      * 1. Tenant mavjud bo'lishi kerak
      * 2. Membership shu tenantga tegishli bo'lishi kerak (tenant-safe)
-     * 3. Rol global katalogda mavjud bo'lishi kerak
-     * 4. Shu (membership, role) juftligi uchun binding allaqachon mavjud bo'lmasligi kerak
+     * 3. Membership REMOVED holatda bo'lmasligi kerak (terminal holat — yangi rol qo'shib bo'lmaydi)
+     * 4. Rol global katalogda mavjud bo'lishi kerak
+     * 5. Shu (membership, role) juftligi uchun binding allaqachon mavjud bo'lmasligi kerak
      *
      * Concurrency: application-level pre-check + DB unique constraint fallback tarjimasi.
      *
@@ -247,7 +248,7 @@ public class IdentityCommandService {
      * @param roleId rol identifikatori
      * @return yaratilgan MembershipRoleBinding
      * @throws ResourceNotFoundException tenant, membership yoki rol topilmasa
-     * @throws BusinessRuleException duplicate binding bo'lsa
+     * @throws BusinessRuleException membership REMOVED holatda yoki duplicate binding bo'lsa
      */
     public MembershipRoleBinding assignRoleToMembership(UUID tenantId, UUID membershipId, UUID roleId) {
         tenantConfigQueryService.findTenantById(tenantId)
@@ -255,6 +256,12 @@ public class IdentityCommandService {
 
         Membership membership = membershipRepository.findByIdAndTenantId(membershipId, tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Membership", membershipId));
+
+        if (membership.getStatus() == MembershipStatus.REMOVED) {
+            throw new BusinessRuleException("INVALID_MEMBERSHIP_STATUS",
+                    "REMOVED holatdagi membershipga yangi rol tayinlab bo'lmaydi (membershipId="
+                            + membershipId + ")");
+        }
 
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
