@@ -294,10 +294,13 @@ public class IdentityCommandService {
     /**
      * A'zolikdan rolni olib tashlaydi (membership-role binding o'chiradi).
      *
+     * Barcha statuslarda (ACTIVE, SUSPENDED, REMOVED) ruxsat etiladi —
+     * REMOVED holatdagi membershiplar uchun cleanup sifatida ishlaydi.
+     *
      * Validatsiyalar:
      * 1. Tenant mavjud bo'lishi kerak
      * 2. Membership shu tenantga tegishli bo'lishi kerak (tenant-safe)
-     * 3. Binding mavjud bo'lishi kerak
+     * 3. Binding shu membership kontekstida mavjud bo'lishi kerak
      *
      * @param tenantId tenant identifikatori
      * @param membershipId a'zolik identifikatori

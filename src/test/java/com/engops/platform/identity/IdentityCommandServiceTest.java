@@ -616,6 +616,26 @@ class IdentityCommandServiceTest {
     }
 
     @Test
+    void unassignRoleFromMembershipSuccessForSuspendedMembership() {
+        Membership membership = existingMembership(MembershipStatus.SUSPENDED);
+        Role role = existingRole();
+        MembershipRoleBinding binding = new MembershipRoleBinding(membership, role);
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(membership));
+        when(membershipRoleBindingRepository.findByMembershipIdAndRoleId(MEMBERSHIP_ID, ROLE_ID))
+                .thenReturn(Optional.of(binding));
+
+        service.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+
+        verify(membershipRoleBindingRepository).delete(binding);
+        verify(auditService).recordEvent(
+                eq(TENANT_ID), eq("MEMBERSHIP_ROLE_BINDING"), eq(binding.getId()),
+                eq("DELETED"), eq(null), eq("ADMIN_API"),
+                eq("BUG_TRIAGER"), eq(null));
+    }
+
+    @Test
     void unassignRoleFromMembershipStillAllowedWhenMembershipRemovedCleanupPath() {
         Membership membership = existingMembership(MembershipStatus.REMOVED);
         Role role = existingRole();
