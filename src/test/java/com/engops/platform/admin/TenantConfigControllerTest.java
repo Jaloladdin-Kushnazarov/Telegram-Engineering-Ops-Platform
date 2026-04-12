@@ -1907,6 +1907,18 @@ class TenantConfigControllerTest {
     }
 
     @Test
+    void activateMembershipRemovedReturns422() throws Exception {
+        when(writeFacade.activateMembership(TENANT_ID, MEMBERSHIP_ID))
+                .thenThrow(new BusinessRuleException("INVALID_STATUS_TRANSITION",
+                        "REMOVED holatdagi membership aktivlashtirilmaydi"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_STATUS_TRANSITION"));
+    }
+
+    @Test
     void suspendMembershipReturns200() throws Exception {
         var view = new TenantConfigWriteFacade.MembershipStatusView(
                 TENANT_ID, MEMBERSHIP_ID, USER_ID, "SUSPENDED",
@@ -1946,6 +1958,18 @@ class TenantConfigControllerTest {
                         .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void suspendMembershipRemovedReturns422() throws Exception {
+        when(writeFacade.suspendMembership(TENANT_ID, MEMBERSHIP_ID))
+                .thenThrow(new BusinessRuleException("INVALID_STATUS_TRANSITION",
+                        "REMOVED holatdagi membership to'xtatilmaydi"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_STATUS_TRANSITION"));
     }
 
     // ========== POST /memberships/{membershipId}/remove endpoint ==========

@@ -114,6 +114,9 @@ public class IdentityCommandService {
     /**
      * A'zolikni aktiv holatga o'tkazadi.
      *
+     * Ruxsat etilgan o'tish: SUSPENDED -> ACTIVE.
+     * REMOVED terminal holat — aktivlashtirishga ruxsat berilmaydi.
+     *
      * Idempotent: allaqachon ACTIVE bo'lsa, hech narsa o'zgarmaydi.
      *
      * Tenant-safe: membership faqat shu tenantga tegishli bo'lsa topiladi.
@@ -122,6 +125,7 @@ public class IdentityCommandService {
      * @param membershipId a'zolik identifikatori
      * @return yangilangan Membership
      * @throws ResourceNotFoundException agar a'zolik shu tenantda topilmasa
+     * @throws BusinessRuleException agar membership REMOVED holatda bo'lsa
      */
     public Membership activateMembership(UUID tenantId, UUID membershipId) {
         tenantConfigQueryService.findTenantById(tenantId)
@@ -132,6 +136,12 @@ public class IdentityCommandService {
 
         if (membership.getStatus() == MembershipStatus.ACTIVE) {
             return membership;
+        }
+
+        if (membership.getStatus() == MembershipStatus.REMOVED) {
+            throw new BusinessRuleException("INVALID_STATUS_TRANSITION",
+                    "REMOVED holatdagi membership aktivlashtirilmaydi (membershipId="
+                            + membershipId + ")");
         }
 
         MembershipStatus oldStatus = membership.getStatus();
@@ -147,6 +157,9 @@ public class IdentityCommandService {
     /**
      * A'zolikni SUSPENDED holatga o'tkazadi.
      *
+     * Ruxsat etilgan o'tish: ACTIVE -> SUSPENDED.
+     * REMOVED terminal holat — to'xtatishga ruxsat berilmaydi.
+     *
      * Idempotent: allaqachon SUSPENDED bo'lsa, hech narsa o'zgarmaydi.
      *
      * Tenant-safe: membership faqat shu tenantga tegishli bo'lsa topiladi.
@@ -155,6 +168,7 @@ public class IdentityCommandService {
      * @param membershipId a'zolik identifikatori
      * @return yangilangan Membership
      * @throws ResourceNotFoundException agar a'zolik shu tenantda topilmasa
+     * @throws BusinessRuleException agar membership REMOVED holatda bo'lsa
      */
     public Membership suspendMembership(UUID tenantId, UUID membershipId) {
         tenantConfigQueryService.findTenantById(tenantId)
@@ -165,6 +179,12 @@ public class IdentityCommandService {
 
         if (membership.getStatus() == MembershipStatus.SUSPENDED) {
             return membership;
+        }
+
+        if (membership.getStatus() == MembershipStatus.REMOVED) {
+            throw new BusinessRuleException("INVALID_STATUS_TRANSITION",
+                    "REMOVED holatdagi membership to'xtatilmaydi (membershipId="
+                            + membershipId + ")");
         }
 
         MembershipStatus oldStatus = membership.getStatus();

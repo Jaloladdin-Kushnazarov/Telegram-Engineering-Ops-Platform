@@ -195,6 +195,21 @@ class IdentityCommandServiceTest {
     }
 
     @Test
+    void activateMembershipThrowsBusinessRuleWhenRemoved() {
+        Membership existing = existingMembership(MembershipStatus.REMOVED);
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.activateMembership(TENANT_ID, MEMBERSHIP_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("REMOVED");
+
+        verify(membershipRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
     void activateMembershipAlreadyActiveIsIdempotent() {
         Membership existing = existingMembership(MembershipStatus.ACTIVE);
 
@@ -283,6 +298,21 @@ class IdentityCommandServiceTest {
                 eq(TENANT_ID), eq("MEMBERSHIP"), eq(existing.getId()),
                 eq("SUSPENDED"), eq(null), eq("ADMIN_API"),
                 eq("ACTIVE"), eq("SUSPENDED"));
+    }
+
+    @Test
+    void suspendMembershipThrowsBusinessRuleWhenRemoved() {
+        Membership existing = existingMembership(MembershipStatus.REMOVED);
+
+        when(membershipRepository.findByIdAndTenantId(MEMBERSHIP_ID, TENANT_ID))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.suspendMembership(TENANT_ID, MEMBERSHIP_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("REMOVED");
+
+        verify(membershipRepository, never()).save(any());
+        verifyNoInteractions(auditService);
     }
 
     @Test
