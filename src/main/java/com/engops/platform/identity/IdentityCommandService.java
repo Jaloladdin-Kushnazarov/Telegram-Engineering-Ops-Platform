@@ -360,6 +360,11 @@ public class IdentityCommandService {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
 
+        if (role.isSystemRole()) {
+            throw new BusinessRuleException("SYSTEM_ROLE_DEACTIVATE_FORBIDDEN",
+                    "Tizim roli deaktivlashtirilmaydi (roleId=" + roleId + ")");
+        }
+
         if (!role.isActive()) {
             return role;
         }

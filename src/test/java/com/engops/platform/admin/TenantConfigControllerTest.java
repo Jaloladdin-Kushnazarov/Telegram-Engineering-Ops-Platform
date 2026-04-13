@@ -2835,6 +2835,17 @@ class TenantConfigControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
+    @Test
+    void deactivateRoleSystemRoleReturns422() throws Exception {
+        when(writeFacade.deactivateRole(ROLE_ID))
+                .thenThrow(new BusinessRuleException("SYSTEM_ROLE_DEACTIVATE_FORBIDDEN",
+                        "Tizim roli deaktivlashtirilmaydi"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("SYSTEM_ROLE_DEACTIVATE_FORBIDDEN"));
+    }
+
     // ========== DELETE /roles/{roleId} — global role delete endpoint ==========
 
     @Test

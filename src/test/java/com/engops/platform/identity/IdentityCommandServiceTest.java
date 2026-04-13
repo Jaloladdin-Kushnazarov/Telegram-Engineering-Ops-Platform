@@ -976,6 +976,19 @@ class IdentityCommandServiceTest {
     }
 
     @Test
+    void deactivateRoleRejectsSystemRole() {
+        Role systemRole = new Role("ADMIN", "Administrator", true);
+        when(roleRepository.findById(systemRole.getId())).thenReturn(Optional.of(systemRole));
+
+        assertThatThrownBy(() -> service.deactivateRole(systemRole.getId()))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Tizim roli");
+
+        verify(roleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
     void deactivateRoleThrowsNotFound() {
         UUID missingId = UUID.fromString("dddddddd-dddd-dddd-dddd-ddddddddddd1");
         when(roleRepository.findById(missingId)).thenReturn(Optional.empty());
