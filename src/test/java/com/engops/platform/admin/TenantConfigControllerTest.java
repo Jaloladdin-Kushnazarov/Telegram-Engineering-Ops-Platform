@@ -2834,4 +2834,45 @@ class TenantConfigControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
+
+    // ========== DELETE /roles/{roleId} — global role delete endpoint ==========
+
+    @Test
+    void deleteRoleReturns204() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+    }
+
+    @Test
+    void deleteRoleNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("Role", ROLE_ID))
+                .when(writeFacade).deleteRole(ROLE_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void deleteRoleSystemRoleReturns422() throws Exception {
+        doThrow(new BusinessRuleException("SYSTEM_ROLE_DELETE_FORBIDDEN",
+                "Tizim roli o'chirilmaydi"))
+                .when(writeFacade).deleteRole(ROLE_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("SYSTEM_ROLE_DELETE_FORBIDDEN"));
+    }
+
+    @Test
+    void deleteRoleInUseReturns422() throws Exception {
+        doThrow(new BusinessRuleException("ROLE_IN_USE",
+                "Rol hozirda membership'larga tayinlangan"))
+                .when(writeFacade).deleteRole(ROLE_ID);
+
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("ROLE_IN_USE"));
+    }
 }

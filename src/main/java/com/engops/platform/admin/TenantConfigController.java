@@ -958,6 +958,20 @@ public class TenantConfigController {
         return ResponseEntity.ok(toRoleCatalogResponse(view));
     }
 
+    /**
+     * Global rolni o'chiradi.
+     *
+     * @param roleId rol identifikatori
+     * @return 204 No Content
+     */
+    @DeleteMapping("/roles/{roleId}")
+    public ResponseEntity<Void> deleteRole(@PathVariable UUID roleId) {
+
+        writeFacade.deleteRole(roleId);
+
+        return ResponseEntity.noContent().build();
+    }
+
     private RoleCatalogResponse toRoleCatalogResponse(TenantConfigWriteFacade.RoleCatalogView view) {
         return new RoleCatalogResponse(
                 view.roleId(),

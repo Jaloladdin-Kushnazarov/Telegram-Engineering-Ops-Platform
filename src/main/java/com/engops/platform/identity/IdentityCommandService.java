@@ -373,6 +373,49 @@ public class IdentityCommandService {
         return role;
     }
 
+    /**
+     * Global rolni o'chiradi (hard delete).
+     *
+     * Validatsiyalar:
+     * 1. Rol mavjud bo'lishi kerak
+     * 2. Tizim roli (systemRole=true) o'chirilmaydi
+     * 3. Birorta membership-role binding mavjud bo'lsa, o'chirilmaydi
+     *
+     * @param roleId rol identifikatori
+     * @throws ResourceNotFoundException rol topilmasa
+     * @throws BusinessRuleException tizim roli yoki binding mavjud bo'lsa
+     */
+    public void deleteRole(UUID roleId) {
+        Role role = roleRepository.findById(roleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+
+        if (role.isSystemRole()) {
+            throw new BusinessRuleException("SYSTEM_ROLE_DELETE_FORBIDDEN",
+                    "Tizim roli o'chirilmaydi (roleId=" + roleId + ")");
+        }
+
+        if (membershipRoleBindingRepository.existsByRoleId(roleId)) {
+            throw new BusinessRuleException("ROLE_IN_USE",
+                    "Rol hozirda membership'larga tayinlangan, o'chirilmaydi (roleId=" + roleId + ")");
+        }
+
+        String oldValue = role.getCode() + " | " + role.getName();
+
+        try {
+            roleRepository.delete(role);
+            roleRepository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            if (isRoleReferencedByBindingConstraint(ex)) {
+                throw new BusinessRuleException("ROLE_IN_USE",
+                        "Rol hozirda membership'larga tayinlangan, o'chirilmaydi (roleId=" + roleId + ")");
+            }
+            throw ex;
+        }
+
+        auditService.recordEvent(null, "ROLE", role.getId(),
+                "DELETED", null, "ADMIN_API", oldValue, null);
+    }
+
     // ========== MembershipRoleBinding operations ==========
 
     /**
@@ -499,6 +542,21 @@ public class IdentityCommandService {
             return constraintName != null
                     && constraintName.contains("membership_role_binding")
                     && constraintName.contains("membership_id")
+                    && constraintName.contains("role_id");
+        }
+        return false;
+    }
+
+    /**
+     * DataIntegrityViolationException role o'chirishda membership_role_binding FK
+     * reference violation ekanligini tekshiradi.
+     */
+    private static boolean isRoleReferencedByBindingConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("membership_role_binding")
                     && constraintName.contains("role_id");
         }
         return false;

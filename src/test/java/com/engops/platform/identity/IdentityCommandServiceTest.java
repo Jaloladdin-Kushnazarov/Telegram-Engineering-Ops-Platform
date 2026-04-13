@@ -986,4 +986,99 @@ class IdentityCommandServiceTest {
         verify(roleRepository, never()).save(any());
         verifyNoInteractions(auditService);
     }
+
+    // ========== deleteRole tests ==========
+
+    @Test
+    void deleteRoleSuccessWhenNonSystemAndUnused() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(membershipRoleBindingRepository.existsByRoleId(existing.getId())).thenReturn(false);
+
+        service.deleteRole(existing.getId());
+
+        verify(roleRepository).delete(existing);
+        verify(auditService).recordEvent(
+                eq(null), eq("ROLE"), eq(existing.getId()),
+                eq("DELETED"), eq(null), eq("ADMIN_API"),
+                eq("BUG_TRIAGER | Bug Triager"), eq(null));
+    }
+
+    @Test
+    void deleteRoleThrowsNotFoundWhenRoleMissing() {
+        UUID missingId = UUID.fromString("dddddddd-dddd-dddd-dddd-ddddddddddd1");
+        when(roleRepository.findById(missingId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteRole(missingId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Role");
+
+        verify(roleRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deleteRoleRejectsSystemRole() {
+        Role systemRole = new Role("ADMIN", "Administrator", true);
+        when(roleRepository.findById(systemRole.getId())).thenReturn(Optional.of(systemRole));
+
+        assertThatThrownBy(() -> service.deleteRole(systemRole.getId()))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Tizim roli");
+
+        verify(membershipRoleBindingRepository, never()).existsByRoleId(any());
+        verify(roleRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deleteRoleRejectsRoleWhenMembershipBindingExists() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(membershipRoleBindingRepository.existsByRoleId(existing.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.deleteRole(existing.getId()))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("tayinlangan");
+
+        verify(roleRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deleteRoleTranslatesDeleteTimeIntegrityViolationWhenRoleBecomesInUse() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(membershipRoleBindingRepository.existsByRoleId(existing.getId())).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "FK violation", new SQLException(),
+                "fk_membership_role_binding_role_id");
+        doThrow(new DataIntegrityViolationException("FK", cause))
+                .when(roleRepository).flush();
+
+        assertThatThrownBy(() -> service.deleteRole(existing.getId()))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("tayinlangan")
+                .hasMessageContaining(existing.getId().toString());
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deleteRoleRethrowsUnrelatedIntegrityViolation() {
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(membershipRoleBindingRepository.existsByRoleId(existing.getId())).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "other", new SQLException(), "some_other_constraint");
+        doThrow(new DataIntegrityViolationException("other", cause))
+                .when(roleRepository).flush();
+
+        assertThatThrownBy(() -> service.deleteRole(existing.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        verifyNoInteractions(auditService);
+    }
 }

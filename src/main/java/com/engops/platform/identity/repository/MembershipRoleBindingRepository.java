@@ -19,4 +19,6 @@ public interface MembershipRoleBindingRepository extends JpaRepository<Membershi
     boolean existsByMembershipIdAndRoleId(UUID membershipId, UUID roleId);
 
     Optional<MembershipRoleBinding> findByMembershipIdAndRoleId(UUID membershipId, UUID roleId);
+
+    boolean existsByRoleId(UUID roleId);
 }

@@ -1754,4 +1754,22 @@ class TenantConfigWriteFacadeTest {
         assertThat(result.active()).isFalse();
         verify(identityCommandService).deactivateRole(ROLE_ID);
     }
+
+    // ========== deleteRole tests ==========
+
+    @Test
+    void deleteRoleThrowsIllegalArgumentWhenRoleIdNull() {
+        assertThatThrownBy(() -> facade.deleteRole(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("roleId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void deleteRoleDelegatesToIdentityCommandService() {
+        facade.deleteRole(ROLE_ID);
+
+        verify(identityCommandService).deleteRole(ROLE_ID);
+    }
 }

@@ -1024,6 +1024,20 @@ public class TenantConfigWriteFacade {
         return toRoleCatalogView(role);
     }
 
+    /**
+     * Global rolni o'chiradi.
+     *
+     * @param roleId rol identifikatori
+     * @throws IllegalArgumentException roleId null bo'lsa
+     */
+    public void deleteRole(UUID roleId) {
+        if (roleId == null) {
+            throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
+        }
+
+        identityCommandService.deleteRole(roleId);
+    }
+
     private RoleCatalogView toRoleCatalogView(Role role) {
         return new RoleCatalogView(
                 role.getId(),
