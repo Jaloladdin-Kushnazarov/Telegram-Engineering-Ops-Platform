@@ -298,6 +298,11 @@ public class IdentityCommandService {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
 
+        if (role.isSystemRole()) {
+            throw new BusinessRuleException("SYSTEM_ROLE_UPDATE_FORBIDDEN",
+                    "Tizim roli metadata'si o'zgartirilmaydi (roleId=" + roleId + ")");
+        }
+
         String oldName = role.getName();
         String oldDescription = role.getDescription();
 

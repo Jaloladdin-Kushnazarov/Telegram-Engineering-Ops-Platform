@@ -2783,6 +2783,21 @@ class TenantConfigControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void updateRoleSystemRoleReturns422() throws Exception {
+        when(writeFacade.updateRole(eq(ROLE_ID), any(UpdateRoleRequest.class)))
+                .thenThrow(new BusinessRuleException("SYSTEM_ROLE_UPDATE_FORBIDDEN",
+                        "Tizim roli metadata'si o'zgartirilmaydi"));
+
+        mockMvc.perform(patch("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"New Name"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("SYSTEM_ROLE_UPDATE_FORBIDDEN"));
+    }
+
     // ========== POST /roles/{roleId}/activate — global role activate endpoint ==========
 
     @Test

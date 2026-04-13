@@ -899,6 +899,20 @@ class IdentityCommandServiceTest {
         verifyNoInteractions(auditService);
     }
 
+    @Test
+    void updateRoleRejectsSystemRole() {
+        Role systemRole = new Role("ADMIN", "Administrator", true);
+        when(roleRepository.findById(systemRole.getId())).thenReturn(Optional.of(systemRole));
+
+        assertThatThrownBy(() -> service.updateRole(systemRole.getId(),
+                "New Name", true, null, false))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Tizim roli");
+
+        verify(roleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
     // ========== activateRole tests ==========
 
     @Test
