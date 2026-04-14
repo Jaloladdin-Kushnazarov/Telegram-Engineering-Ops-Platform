@@ -1,5 +1,6 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
@@ -35,7 +36,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(TenantConfigController.class)
 class TenantConfigControllerTest {
 
-    private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    
+private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID ACTOR_USER_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    private static final String ACTOR_HEADER = "X-Actor-User-Id";
+
 
     @Autowired
     private MockMvc mockMvc;
@@ -60,10 +65,11 @@ class TenantConfigControllerTest {
                 4, 2,     // routing: total, active
                 1, 3);    // telegram: chat bindings, topic bindings
 
-        when(detailsFacade.getDetails(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getDetails(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 // tenant section
                 .andExpect(jsonPath("$.tenant.tenantId").value(TENANT_ID.toString()))
@@ -97,10 +103,11 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-03-01T00:00:00Z"),
                 0, 0, 0, 0, 0, 0, 0, 0);
 
-        when(detailsFacade.getDetails(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getDetails(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenant.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.tenant.name").value("Empty Tenant"))
@@ -116,22 +123,24 @@ class TenantConfigControllerTest {
 
     @Test
     void detailsTenantNotFoundReturns404() throws Exception {
-        when(detailsFacade.getDetails(TENANT_ID))
+        when(detailsFacade.getDetails(eq(TENANT_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void detailsInvalidTenantIdReturns400() throws Exception {
-        when(detailsFacade.getDetails(TENANT_ID))
+        when(detailsFacade.getDetails(eq(TENANT_ID), any()))
                 .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -163,10 +172,11 @@ class TenantConfigControllerTest {
                         Instant.parse("2026-02-10T12:00:00Z")));
         var view = new TenantConfigDetailsFacade.WorkflowDefinitionListView(TENANT_ID, items);
 
-        when(detailsFacade.getWorkflowDefinitions(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getWorkflowDefinitions(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -189,10 +199,11 @@ class TenantConfigControllerTest {
         var view = new TenantConfigDetailsFacade.WorkflowDefinitionListView(
                 TENANT_ID, List.of());
 
-        when(detailsFacade.getWorkflowDefinitions(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getWorkflowDefinitions(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -201,22 +212,24 @@ class TenantConfigControllerTest {
 
     @Test
     void workflowDefinitionsTenantNotFoundReturns404() throws Exception {
-        when(detailsFacade.getWorkflowDefinitions(TENANT_ID))
+        when(detailsFacade.getWorkflowDefinitions(eq(TENANT_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void workflowDefinitionsInvalidTenantIdReturns400() throws Exception {
-        when(detailsFacade.getWorkflowDefinitions(TENANT_ID))
+        when(detailsFacade.getWorkflowDefinitions(eq(TENANT_ID), any()))
                 .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -250,10 +263,11 @@ class TenantConfigControllerTest {
                         Instant.parse("2026-03-05T12:00:00Z")));
         var view = new TenantConfigDetailsFacade.RoutingRuleListView(TENANT_ID, items);
 
-        when(detailsFacade.getRoutingRules(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getRoutingRules(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -278,10 +292,11 @@ class TenantConfigControllerTest {
         var view = new TenantConfigDetailsFacade.RoutingRuleListView(
                 TENANT_ID, List.of());
 
-        when(detailsFacade.getRoutingRules(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getRoutingRules(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -290,22 +305,24 @@ class TenantConfigControllerTest {
 
     @Test
     void routingRulesTenantNotFoundReturns404() throws Exception {
-        when(detailsFacade.getRoutingRules(TENANT_ID))
+        when(detailsFacade.getRoutingRules(eq(TENANT_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void routingRulesInvalidTenantIdReturns400() throws Exception {
-        when(detailsFacade.getRoutingRules(TENANT_ID))
+        when(detailsFacade.getRoutingRules(eq(TENANT_ID), any()))
                 .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -339,10 +356,11 @@ class TenantConfigControllerTest {
                         Instant.parse("2026-03-10T10:00:00Z")));
         var view = new TenantConfigDetailsFacade.ChatBindingListView(TENANT_ID, items);
 
-        when(detailsFacade.getChatBindings(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getChatBindings(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -367,10 +385,11 @@ class TenantConfigControllerTest {
         var view = new TenantConfigDetailsFacade.ChatBindingListView(
                 TENANT_ID, List.of());
 
-        when(detailsFacade.getChatBindings(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getChatBindings(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -379,22 +398,24 @@ class TenantConfigControllerTest {
 
     @Test
     void chatBindingsTenantNotFoundReturns404() throws Exception {
-        when(detailsFacade.getChatBindings(TENANT_ID))
+        when(detailsFacade.getChatBindings(eq(TENANT_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void chatBindingsInvalidTenantIdReturns400() throws Exception {
-        when(detailsFacade.getChatBindings(TENANT_ID))
+        when(detailsFacade.getChatBindings(eq(TENANT_ID), any()))
                 .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -432,10 +453,11 @@ class TenantConfigControllerTest {
                         Instant.parse("2026-03-25T12:00:00Z")));
         var view = new TenantConfigDetailsFacade.TopicBindingListView(TENANT_ID, items);
 
-        when(detailsFacade.getTopicBindings(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getTopicBindings(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -461,10 +483,11 @@ class TenantConfigControllerTest {
         var view = new TenantConfigDetailsFacade.TopicBindingListView(
                 TENANT_ID, List.of());
 
-        when(detailsFacade.getTopicBindings(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getTopicBindings(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -473,22 +496,24 @@ class TenantConfigControllerTest {
 
     @Test
     void topicBindingsTenantNotFoundReturns404() throws Exception {
-        when(detailsFacade.getTopicBindings(TENANT_ID))
+        when(detailsFacade.getTopicBindings(eq(TENANT_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void topicBindingsInvalidTenantIdReturns400() throws Exception {
-        when(detailsFacade.getTopicBindings(TENANT_ID))
+        when(detailsFacade.getTopicBindings(eq(TENANT_ID), any()))
                 .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -524,10 +549,11 @@ class TenantConfigControllerTest {
                         Instant.parse("2026-02-01T08:00:00Z")));
         var view = new TenantConfigDetailsFacade.MembershipListView(TENANT_ID, items);
 
-        when(detailsFacade.getMemberships(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getMemberships(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -552,10 +578,11 @@ class TenantConfigControllerTest {
         var view = new TenantConfigDetailsFacade.MembershipListView(
                 TENANT_ID, List.of());
 
-        when(detailsFacade.getMemberships(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getMemberships(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -564,22 +591,24 @@ class TenantConfigControllerTest {
 
     @Test
     void membershipsTenantNotFoundReturns404() throws Exception {
-        when(detailsFacade.getMemberships(TENANT_ID))
+        when(detailsFacade.getMemberships(eq(TENANT_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void membershipsInvalidTenantIdReturns400() throws Exception {
-        when(detailsFacade.getMemberships(TENANT_ID))
+        when(detailsFacade.getMemberships(eq(TENANT_ID), any()))
                 .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -611,10 +640,11 @@ class TenantConfigControllerTest {
                         Instant.parse("2026-01-10T08:00:00Z")));
         var view = new TenantConfigDetailsFacade.RoleListView(TENANT_ID, items);
 
-        when(detailsFacade.getRoles(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getRoles(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/roles")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -637,10 +667,11 @@ class TenantConfigControllerTest {
         var view = new TenantConfigDetailsFacade.RoleListView(
                 TENANT_ID, List.of());
 
-        when(detailsFacade.getRoles(TENANT_ID)).thenReturn(view);
+        when(detailsFacade.getRoles(eq(TENANT_ID), any())).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/tenant-config/roles")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -649,22 +680,24 @@ class TenantConfigControllerTest {
 
     @Test
     void rolesTenantNotFoundReturns404() throws Exception {
-        when(detailsFacade.getRoles(TENANT_ID))
+        when(detailsFacade.getRoles(eq(TENANT_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(get("/api/admin/tenant-config/roles")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void rolesInvalidTenantIdReturns400() throws Exception {
-        when(detailsFacade.getRoles(TENANT_ID))
+        when(detailsFacade.getRoles(eq(TENANT_ID), any()))
                 .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
 
         mockMvc.perform(get("/api/admin/tenant-config/roles")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -689,10 +722,11 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T10:00:00Z"));
 
         when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
-                any(CreateWorkflowDefinitionRequest.class))).thenReturn(view);
+                any(CreateWorkflowDefinitionRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG","description":"Bug workflow"}
@@ -719,10 +753,11 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T10:00:00Z"));
 
         when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
-                any(CreateWorkflowDefinitionRequest.class))).thenReturn(view);
+                any(CreateWorkflowDefinitionRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Incident Flow","workItemType":"INCIDENT"}
@@ -744,11 +779,12 @@ class TenantConfigControllerTest {
     @Test
     void createWorkflowDefinitionInvalidNameReturns400() throws Exception {
         when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
-                any(CreateWorkflowDefinitionRequest.class)))
+                any(CreateWorkflowDefinitionRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"","workItemType":"BUG"}
@@ -760,12 +796,13 @@ class TenantConfigControllerTest {
     @Test
     void createWorkflowDefinitionInvalidWorkItemTypeReturns400() throws Exception {
         when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
-                any(CreateWorkflowDefinitionRequest.class)))
+                any(CreateWorkflowDefinitionRequest.class), any()))
                 .thenThrow(new IllegalArgumentException(
                         "workItemType faqat BUG, INCIDENT, TASK bo'lishi mumkin: FEATURE"));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"FEATURE"}
@@ -777,11 +814,12 @@ class TenantConfigControllerTest {
     @Test
     void createWorkflowDefinitionTenantNotFoundReturns404() throws Exception {
         when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
-                any(CreateWorkflowDefinitionRequest.class)))
+                any(CreateWorkflowDefinitionRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG"}
@@ -793,11 +831,12 @@ class TenantConfigControllerTest {
     @Test
     void createWorkflowDefinitionEmptyBodyReturns400() throws Exception {
         when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
-                any(CreateWorkflowDefinitionRequest.class)))
+                any(CreateWorkflowDefinitionRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
@@ -806,12 +845,13 @@ class TenantConfigControllerTest {
     @Test
     void createWorkflowDefinitionDuplicateNameReturns422() throws Exception {
         when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
-                any(CreateWorkflowDefinitionRequest.class)))
+                any(CreateWorkflowDefinitionRequest.class), any()))
                 .thenThrow(new BusinessRuleException("DUPLICATE_WORKFLOW_NAME",
                         "Tenant ichida 'Bug Flow' nomli workflow allaqachon mavjud"));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG"}
@@ -836,7 +876,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T10:00:00Z"));
 
         when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
-                any(UpdateWorkflowDefinitionRequest.class))).thenReturn(view);
+                any(UpdateWorkflowDefinitionRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -861,7 +901,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T10:00:00Z"));
 
         when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
-                any(UpdateWorkflowDefinitionRequest.class))).thenReturn(view);
+                any(UpdateWorkflowDefinitionRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -880,7 +920,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T10:00:00Z"));
 
         when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
-                any(UpdateWorkflowDefinitionRequest.class))).thenReturn(view);
+                any(UpdateWorkflowDefinitionRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -896,7 +936,7 @@ class TenantConfigControllerTest {
     @Test
     void updateWorkflowDefinitionEmptyBodyReturns400() throws Exception {
         when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
-                any(UpdateWorkflowDefinitionRequest.class)))
+                any(UpdateWorkflowDefinitionRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak"));
 
         mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
@@ -914,7 +954,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T10:00:00Z"));
 
         when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
-                any(UpdateWorkflowDefinitionRequest.class))).thenReturn(view);
+                any(UpdateWorkflowDefinitionRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -939,7 +979,7 @@ class TenantConfigControllerTest {
     @Test
     void updateWorkflowDefinitionBlankNameReturns400() throws Exception {
         when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
-                any(UpdateWorkflowDefinitionRequest.class)))
+                any(UpdateWorkflowDefinitionRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
 
         mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
@@ -955,7 +995,7 @@ class TenantConfigControllerTest {
     @Test
     void updateWorkflowDefinitionTenantNotFoundReturns404() throws Exception {
         when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
-                any(UpdateWorkflowDefinitionRequest.class)))
+                any(UpdateWorkflowDefinitionRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
@@ -971,7 +1011,7 @@ class TenantConfigControllerTest {
     @Test
     void updateWorkflowDefinitionNotFoundReturns404() throws Exception {
         when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
-                any(UpdateWorkflowDefinitionRequest.class)))
+                any(UpdateWorkflowDefinitionRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("WorkflowDefinition", DEF_ID));
 
         mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
@@ -987,7 +1027,7 @@ class TenantConfigControllerTest {
     @Test
     void updateWorkflowDefinitionDuplicateNameReturns422() throws Exception {
         when(writeFacade.updateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID),
-                any(UpdateWorkflowDefinitionRequest.class)))
+                any(UpdateWorkflowDefinitionRequest.class), any()))
                 .thenThrow(new BusinessRuleException("DUPLICATE_WORKFLOW_NAME",
                         "Tenant ichida 'Taken' nomli workflow allaqachon mavjud"));
 
@@ -1009,7 +1049,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, DEF_ID, "Flow", "BUG", null, true,
                 Instant.parse("2026-04-08T10:00:00Z"));
 
-        when(writeFacade.activateWorkflowDefinition(TENANT_ID, DEF_ID)).thenReturn(view);
+        when(writeFacade.activateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1026,7 +1066,7 @@ class TenantConfigControllerTest {
 
     @Test
     void activateWorkflowDefinitionTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.activateWorkflowDefinition(TENANT_ID, DEF_ID))
+        when(writeFacade.activateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
@@ -1037,7 +1077,7 @@ class TenantConfigControllerTest {
 
     @Test
     void activateWorkflowDefinitionNotFoundReturns404() throws Exception {
-        when(writeFacade.activateWorkflowDefinition(TENANT_ID, DEF_ID))
+        when(writeFacade.activateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any()))
                 .thenThrow(new ResourceNotFoundException("WorkflowDefinition", DEF_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
@@ -1054,7 +1094,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, DEF_ID, "Flow", "BUG", null, false,
                 Instant.parse("2026-04-08T10:00:00Z"));
 
-        when(writeFacade.deactivateWorkflowDefinition(TENANT_ID, DEF_ID)).thenReturn(view);
+        when(writeFacade.deactivateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1071,7 +1111,7 @@ class TenantConfigControllerTest {
 
     @Test
     void deactivateWorkflowDefinitionTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.deactivateWorkflowDefinition(TENANT_ID, DEF_ID))
+        when(writeFacade.deactivateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID)
@@ -1082,7 +1122,7 @@ class TenantConfigControllerTest {
 
     @Test
     void deactivateWorkflowDefinitionNotFoundReturns404() throws Exception {
-        when(writeFacade.deactivateWorkflowDefinition(TENANT_ID, DEF_ID))
+        when(writeFacade.deactivateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any()))
                 .thenThrow(new ResourceNotFoundException("WorkflowDefinition", DEF_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID)
@@ -1110,7 +1150,7 @@ class TenantConfigControllerTest {
     @Test
     void deleteWorkflowDefinitionTenantNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("Tenant", TENANT_ID))
-                .when(writeFacade).deleteWorkflowDefinition(TENANT_ID, DEF_ID);
+                .when(writeFacade).deleteWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1121,7 +1161,7 @@ class TenantConfigControllerTest {
     @Test
     void deleteWorkflowDefinitionNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("WorkflowDefinition", DEF_ID))
-                .when(writeFacade).deleteWorkflowDefinition(TENANT_ID, DEF_ID);
+                .when(writeFacade).deleteWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1143,10 +1183,11 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-10T12:00:00Z"));
 
         when(writeFacade.createChatBinding(eq(TENANT_ID),
-                any(CreateChatBindingRequest.class))).thenReturn(view);
+                any(CreateChatBindingRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567890,"chatTitle":"Dev Team Chat","bindingType":"MAIN_GROUP"}
@@ -1173,10 +1214,11 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-10T12:00:00Z"));
 
         when(writeFacade.createChatBinding(eq(TENANT_ID),
-                any(CreateChatBindingRequest.class))).thenReturn(view);
+                any(CreateChatBindingRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567891,"bindingType":"NOTIFICATION_GROUP"}
@@ -1198,12 +1240,13 @@ class TenantConfigControllerTest {
     @Test
     void createChatBindingInvalidBindingTypeReturns400() throws Exception {
         when(writeFacade.createChatBinding(eq(TENANT_ID),
-                any(CreateChatBindingRequest.class)))
+                any(CreateChatBindingRequest.class), any()))
                 .thenThrow(new IllegalArgumentException(
                         "bindingType faqat MAIN_GROUP, NOTIFICATION_GROUP bo'lishi mumkin: PRIVATE_CHAT"));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567890,"bindingType":"PRIVATE_CHAT"}
@@ -1215,11 +1258,12 @@ class TenantConfigControllerTest {
     @Test
     void createChatBindingTenantNotFoundReturns404() throws Exception {
         when(writeFacade.createChatBinding(eq(TENANT_ID),
-                any(CreateChatBindingRequest.class)))
+                any(CreateChatBindingRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567890,"bindingType":"MAIN_GROUP"}
@@ -1231,12 +1275,13 @@ class TenantConfigControllerTest {
     @Test
     void createChatBindingDuplicateReturns422() throws Exception {
         when(writeFacade.createChatBinding(eq(TENANT_ID),
-                any(CreateChatBindingRequest.class)))
+                any(CreateChatBindingRequest.class), any()))
                 .thenThrow(new BusinessRuleException("DUPLICATE_CHAT_BINDING",
                         "Tenant ichida chatId=-1001234567890 uchun binding allaqachon mavjud"));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567890,"bindingType":"MAIN_GROUP"}
@@ -1256,7 +1301,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-10T12:00:00Z"));
 
         when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
-                any(UpdateChatBindingRequest.class))).thenReturn(view);
+                any(UpdateChatBindingRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -1278,7 +1323,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-10T12:00:00Z"));
 
         when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
-                any(UpdateChatBindingRequest.class))).thenReturn(view);
+                any(UpdateChatBindingRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -1297,7 +1342,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-10T12:00:00Z"));
 
         when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
-                any(UpdateChatBindingRequest.class))).thenReturn(view);
+                any(UpdateChatBindingRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -1317,7 +1362,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-10T12:00:00Z"));
 
         when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
-                any(UpdateChatBindingRequest.class))).thenReturn(view);
+                any(UpdateChatBindingRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -1342,7 +1387,7 @@ class TenantConfigControllerTest {
     @Test
     void updateChatBindingInvalidBindingTypeReturns400() throws Exception {
         when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
-                any(UpdateChatBindingRequest.class)))
+                any(UpdateChatBindingRequest.class), any()))
                 .thenThrow(new IllegalArgumentException(
                         "bindingType faqat MAIN_GROUP, NOTIFICATION_GROUP bo'lishi mumkin: PRIVATE"));
 
@@ -1359,7 +1404,7 @@ class TenantConfigControllerTest {
     @Test
     void updateChatBindingTenantNotFoundReturns404() throws Exception {
         when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
-                any(UpdateChatBindingRequest.class)))
+                any(UpdateChatBindingRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
@@ -1375,7 +1420,7 @@ class TenantConfigControllerTest {
     @Test
     void updateChatBindingNotFoundReturns404() throws Exception {
         when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
-                any(UpdateChatBindingRequest.class)))
+                any(UpdateChatBindingRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("ChatBinding", CB_ID));
 
         mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
@@ -1391,7 +1436,7 @@ class TenantConfigControllerTest {
     @Test
     void updateChatBindingEmptyBodyReturns400() throws Exception {
         when(writeFacade.updateChatBinding(eq(TENANT_ID), eq(CB_ID),
-                any(UpdateChatBindingRequest.class)))
+                any(UpdateChatBindingRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak"));
 
         mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
@@ -1410,7 +1455,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, CB_ID, -1001234567890L, "Dev Chat", "MAIN_GROUP", true,
                 Instant.parse("2026-04-11T12:00:00Z"));
 
-        when(writeFacade.activateChatBinding(TENANT_ID, CB_ID)).thenReturn(view);
+        when(writeFacade.activateChatBinding(eq(TENANT_ID), eq(CB_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1432,7 +1477,7 @@ class TenantConfigControllerTest {
 
     @Test
     void activateChatBindingTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.activateChatBinding(TENANT_ID, CB_ID))
+        when(writeFacade.activateChatBinding(eq(TENANT_ID), eq(CB_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID)
@@ -1443,7 +1488,7 @@ class TenantConfigControllerTest {
 
     @Test
     void activateChatBindingNotFoundReturns404() throws Exception {
-        when(writeFacade.activateChatBinding(TENANT_ID, CB_ID))
+        when(writeFacade.activateChatBinding(eq(TENANT_ID), eq(CB_ID), any()))
                 .thenThrow(new ResourceNotFoundException("ChatBinding", CB_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID)
@@ -1460,7 +1505,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, CB_ID, -1001234567890L, "Dev Chat", "MAIN_GROUP", false,
                 Instant.parse("2026-04-11T12:00:00Z"));
 
-        when(writeFacade.deactivateChatBinding(TENANT_ID, CB_ID)).thenReturn(view);
+        when(writeFacade.deactivateChatBinding(eq(TENANT_ID), eq(CB_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1482,7 +1527,7 @@ class TenantConfigControllerTest {
 
     @Test
     void deactivateChatBindingTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.deactivateChatBinding(TENANT_ID, CB_ID))
+        when(writeFacade.deactivateChatBinding(eq(TENANT_ID), eq(CB_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID)
@@ -1493,7 +1538,7 @@ class TenantConfigControllerTest {
 
     @Test
     void deactivateChatBindingNotFoundReturns404() throws Exception {
-        when(writeFacade.deactivateChatBinding(TENANT_ID, CB_ID))
+        when(writeFacade.deactivateChatBinding(eq(TENANT_ID), eq(CB_ID), any()))
                 .thenThrow(new ResourceNotFoundException("ChatBinding", CB_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID)
@@ -1521,7 +1566,7 @@ class TenantConfigControllerTest {
     @Test
     void deleteChatBindingTenantNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("Tenant", TENANT_ID))
-                .when(writeFacade).deleteChatBinding(TENANT_ID, CB_ID);
+                .when(writeFacade).deleteChatBinding(eq(TENANT_ID), eq(CB_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1532,7 +1577,7 @@ class TenantConfigControllerTest {
     @Test
     void deleteChatBindingNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("ChatBinding", CB_ID))
-                .when(writeFacade).deleteChatBinding(TENANT_ID, CB_ID);
+                .when(writeFacade).deleteChatBinding(eq(TENANT_ID), eq(CB_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1551,11 +1596,12 @@ class TenantConfigControllerTest {
                 TENANT_ID, TB_ID, PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE", true,
                 Instant.parse("2026-04-12T10:00:00Z"));
 
-        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class)))
+        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class), any()))
                 .thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatBindingId":"55555555-5555-5555-5555-555555555551",
@@ -1586,11 +1632,12 @@ class TenantConfigControllerTest {
 
     @Test
     void createTopicBindingTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class)))
+        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatBindingId":"55555555-5555-5555-5555-555555555551",
@@ -1602,11 +1649,12 @@ class TenantConfigControllerTest {
 
     @Test
     void createTopicBindingInvalidChatBindingReturns422() throws Exception {
-        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class)))
+        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class), any()))
                 .thenThrow(new BusinessRuleException("INVALID_CHAT_BINDING", "chat binding topilmadi"));
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatBindingId":"55555555-5555-5555-5555-555555555551",
@@ -1618,12 +1666,13 @@ class TenantConfigControllerTest {
 
     @Test
     void createTopicBindingDuplicateReturns422() throws Exception {
-        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class)))
+        when(writeFacade.createTopicBinding(eq(TENANT_ID), any(CreateTopicBindingRequest.class), any()))
                 .thenThrow(new BusinessRuleException("DUPLICATE_TOPIC_BINDING",
                         "Chat binding ichida topicId=42 uchun binding allaqachon mavjud"));
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatBindingId":"55555555-5555-5555-5555-555555555551",
@@ -1639,7 +1688,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, TB_ID, PARENT_CB_ID, 42L, "new-name", "BUG_TRIAGE", true,
                 Instant.parse("2026-04-12T10:00:00Z"));
 
-        when(writeFacade.updateTopicBinding(eq(TENANT_ID), eq(TB_ID), any(UpdateTopicBindingRequest.class)))
+        when(writeFacade.updateTopicBinding(eq(TENANT_ID), eq(TB_ID), any(UpdateTopicBindingRequest.class), any()))
                 .thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID)
@@ -1664,7 +1713,7 @@ class TenantConfigControllerTest {
 
     @Test
     void updateTopicBindingNotFoundReturns404() throws Exception {
-        when(writeFacade.updateTopicBinding(eq(TENANT_ID), eq(TB_ID), any(UpdateTopicBindingRequest.class)))
+        when(writeFacade.updateTopicBinding(eq(TENANT_ID), eq(TB_ID), any(UpdateTopicBindingRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("TopicBinding", TB_ID));
 
         mockMvc.perform(patch("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID)
@@ -1683,7 +1732,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, TB_ID, PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE", true,
                 Instant.parse("2026-04-12T10:00:00Z"));
 
-        when(writeFacade.activateTopicBinding(TENANT_ID, TB_ID)).thenReturn(view);
+        when(writeFacade.activateTopicBinding(eq(TENANT_ID), eq(TB_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/activate", TB_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1700,7 +1749,7 @@ class TenantConfigControllerTest {
 
     @Test
     void activateTopicBindingNotFoundReturns404() throws Exception {
-        when(writeFacade.activateTopicBinding(TENANT_ID, TB_ID))
+        when(writeFacade.activateTopicBinding(eq(TENANT_ID), eq(TB_ID), any()))
                 .thenThrow(new ResourceNotFoundException("TopicBinding", TB_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/activate", TB_ID)
@@ -1715,7 +1764,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, TB_ID, PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE", false,
                 Instant.parse("2026-04-12T10:00:00Z"));
 
-        when(writeFacade.deactivateTopicBinding(TENANT_ID, TB_ID)).thenReturn(view);
+        when(writeFacade.deactivateTopicBinding(eq(TENANT_ID), eq(TB_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/deactivate", TB_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1731,7 +1780,7 @@ class TenantConfigControllerTest {
 
     @Test
     void deactivateTopicBindingTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.deactivateTopicBinding(TENANT_ID, TB_ID))
+        when(writeFacade.deactivateTopicBinding(eq(TENANT_ID), eq(TB_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/deactivate", TB_ID)
@@ -1757,7 +1806,7 @@ class TenantConfigControllerTest {
     @Test
     void deleteTopicBindingNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("TopicBinding", TB_ID))
-                .when(writeFacade).deleteTopicBinding(TENANT_ID, TB_ID);
+                .when(writeFacade).deleteTopicBinding(eq(TENANT_ID), eq(TB_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1776,11 +1825,12 @@ class TenantConfigControllerTest {
                 TENANT_ID, MEMBERSHIP_ID, USER_ID, "ACTIVE",
                 Instant.parse("2026-04-12T10:00:00Z"));
 
-        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class)))
+        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class), any()))
                 .thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"99999999-9999-9999-9999-999999999991"}
@@ -1804,11 +1854,12 @@ class TenantConfigControllerTest {
 
     @Test
     void createMembershipEmptyBodyReturns400() throws Exception {
-        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class)))
+        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("userId null bo'lishi mumkin emas"));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest())
@@ -1817,11 +1868,12 @@ class TenantConfigControllerTest {
 
     @Test
     void createMembershipTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class)))
+        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"99999999-9999-9999-9999-999999999991"}
@@ -1832,11 +1884,12 @@ class TenantConfigControllerTest {
 
     @Test
     void createMembershipUserNotFoundReturns404() throws Exception {
-        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class)))
+        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("User", USER_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"99999999-9999-9999-9999-999999999991"}
@@ -1847,12 +1900,13 @@ class TenantConfigControllerTest {
 
     @Test
     void createMembershipDuplicateReturns422() throws Exception {
-        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class)))
+        when(writeFacade.createMembership(eq(TENANT_ID), any(CreateMembershipRequest.class), any()))
                 .thenThrow(new BusinessRuleException("DUPLICATE_MEMBERSHIP",
                         "Tenant ichida membership allaqachon mavjud"));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"99999999-9999-9999-9999-999999999991"}
@@ -1867,7 +1921,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, MEMBERSHIP_ID, USER_ID, "ACTIVE",
                 Instant.parse("2026-04-12T10:00:00Z"));
 
-        when(writeFacade.activateMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(view);
+        when(writeFacade.activateMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1886,7 +1940,7 @@ class TenantConfigControllerTest {
 
     @Test
     void activateMembershipNotFoundReturns404() throws Exception {
-        when(writeFacade.activateMembership(TENANT_ID, MEMBERSHIP_ID))
+        when(writeFacade.activateMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
@@ -1897,7 +1951,7 @@ class TenantConfigControllerTest {
 
     @Test
     void activateMembershipTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.activateMembership(TENANT_ID, MEMBERSHIP_ID))
+        when(writeFacade.activateMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
@@ -1908,7 +1962,7 @@ class TenantConfigControllerTest {
 
     @Test
     void activateMembershipRemovedReturns422() throws Exception {
-        when(writeFacade.activateMembership(TENANT_ID, MEMBERSHIP_ID))
+        when(writeFacade.activateMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any()))
                 .thenThrow(new BusinessRuleException("INVALID_STATUS_TRANSITION",
                         "REMOVED holatdagi membership aktivlashtirilmaydi"));
 
@@ -1924,7 +1978,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, MEMBERSHIP_ID, USER_ID, "SUSPENDED",
                 Instant.parse("2026-04-12T10:00:00Z"));
 
-        when(writeFacade.suspendMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(view);
+        when(writeFacade.suspendMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1940,7 +1994,7 @@ class TenantConfigControllerTest {
 
     @Test
     void suspendMembershipNotFoundReturns404() throws Exception {
-        when(writeFacade.suspendMembership(TENANT_ID, MEMBERSHIP_ID))
+        when(writeFacade.suspendMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
@@ -1951,7 +2005,7 @@ class TenantConfigControllerTest {
 
     @Test
     void suspendMembershipTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.suspendMembership(TENANT_ID, MEMBERSHIP_ID))
+        when(writeFacade.suspendMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
@@ -1962,7 +2016,7 @@ class TenantConfigControllerTest {
 
     @Test
     void suspendMembershipRemovedReturns422() throws Exception {
-        when(writeFacade.suspendMembership(TENANT_ID, MEMBERSHIP_ID))
+        when(writeFacade.suspendMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any()))
                 .thenThrow(new BusinessRuleException("INVALID_STATUS_TRANSITION",
                         "REMOVED holatdagi membership to'xtatilmaydi"));
 
@@ -1980,7 +2034,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, MEMBERSHIP_ID, USER_ID, "REMOVED",
                 Instant.parse("2026-04-12T10:00:00Z"));
 
-        when(writeFacade.removeMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(view);
+        when(writeFacade.removeMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -1999,7 +2053,7 @@ class TenantConfigControllerTest {
 
     @Test
     void removeMembershipTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.removeMembership(TENANT_ID, MEMBERSHIP_ID))
+        when(writeFacade.removeMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID)
@@ -2010,7 +2064,7 @@ class TenantConfigControllerTest {
 
     @Test
     void removeMembershipNotFoundReturns404() throws Exception {
-        when(writeFacade.removeMembership(TENANT_ID, MEMBERSHIP_ID))
+        when(writeFacade.removeMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID)
@@ -2031,7 +2085,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-12T12:00:00Z"));
 
         when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
-                any(CreateMembershipRoleBindingRequest.class))).thenReturn(view);
+                any(CreateMembershipRoleBindingRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -2060,7 +2114,7 @@ class TenantConfigControllerTest {
     @Test
     void assignRoleToMembershipTenantNotFoundReturns404() throws Exception {
         when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
-                any(CreateMembershipRoleBindingRequest.class)))
+                any(CreateMembershipRoleBindingRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
@@ -2076,7 +2130,7 @@ class TenantConfigControllerTest {
     @Test
     void assignRoleToMembershipMembershipNotFoundReturns404() throws Exception {
         when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
-                any(CreateMembershipRoleBindingRequest.class)))
+                any(CreateMembershipRoleBindingRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
@@ -2092,7 +2146,7 @@ class TenantConfigControllerTest {
     @Test
     void assignRoleToMembershipRoleNotFoundReturns404() throws Exception {
         when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
-                any(CreateMembershipRoleBindingRequest.class)))
+                any(CreateMembershipRoleBindingRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/roles", MEMBERSHIP_ID)
@@ -2108,7 +2162,7 @@ class TenantConfigControllerTest {
     @Test
     void assignRoleToMembershipDuplicateReturns422() throws Exception {
         when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
-                any(CreateMembershipRoleBindingRequest.class)))
+                any(CreateMembershipRoleBindingRequest.class), any()))
                 .thenThrow(new BusinessRuleException("DUPLICATE_MEMBERSHIP_ROLE",
                         "Membership uchun rol allaqachon tayinlangan"));
 
@@ -2125,7 +2179,7 @@ class TenantConfigControllerTest {
     @Test
     void assignRoleToMembershipRemovedReturns422() throws Exception {
         when(writeFacade.assignRoleToMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID),
-                any(CreateMembershipRoleBindingRequest.class)))
+                any(CreateMembershipRoleBindingRequest.class), any()))
                 .thenThrow(new BusinessRuleException("INVALID_MEMBERSHIP_STATUS",
                         "REMOVED holatdagi membershipga yangi rol tayinlab bo'lmaydi"));
 
@@ -2158,7 +2212,7 @@ class TenantConfigControllerTest {
     @Test
     void unassignRoleFromMembershipTenantNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("Tenant", TENANT_ID))
-                .when(writeFacade).unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+                .when(writeFacade).unassignRoleFromMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), eq(ROLE_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
                         MEMBERSHIP_ID, ROLE_ID)
@@ -2170,7 +2224,7 @@ class TenantConfigControllerTest {
     @Test
     void unassignRoleFromMembershipMembershipNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID))
-                .when(writeFacade).unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+                .when(writeFacade).unassignRoleFromMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), eq(ROLE_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
                         MEMBERSHIP_ID, ROLE_ID)
@@ -2182,7 +2236,7 @@ class TenantConfigControllerTest {
     @Test
     void unassignRoleFromMembershipBindingNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("MembershipRoleBinding", "x"))
-                .when(writeFacade).unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+                .when(writeFacade).unassignRoleFromMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), eq(ROLE_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
                         MEMBERSHIP_ID, ROLE_ID)
@@ -2207,10 +2261,11 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T12:00:00Z"));
 
         when(writeFacade.createRoutingRule(eq(TENANT_ID),
-                any(CreateRoutingRuleRequest.class))).thenReturn(view);
+                any(CreateRoutingRuleRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Route Bugs","workItemType":"BUG","priority":10,
@@ -2240,10 +2295,11 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T12:00:00Z"));
 
         when(writeFacade.createRoutingRule(eq(TENANT_ID),
-                any(CreateRoutingRuleRequest.class))).thenReturn(view);
+                any(CreateRoutingRuleRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Catch All","workItemType":"INCIDENT","priority":5}
@@ -2265,11 +2321,12 @@ class TenantConfigControllerTest {
     @Test
     void createRoutingRuleInvalidNameReturns400() throws Exception {
         when(writeFacade.createRoutingRule(eq(TENANT_ID),
-                any(CreateRoutingRuleRequest.class)))
+                any(CreateRoutingRuleRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"","workItemType":"BUG","priority":10}
@@ -2281,12 +2338,13 @@ class TenantConfigControllerTest {
     @Test
     void createRoutingRuleInvalidWorkItemTypeReturns400() throws Exception {
         when(writeFacade.createRoutingRule(eq(TENANT_ID),
-                any(CreateRoutingRuleRequest.class)))
+                any(CreateRoutingRuleRequest.class), any()))
                 .thenThrow(new IllegalArgumentException(
                         "workItemType faqat BUG, INCIDENT, TASK bo'lishi mumkin: FEATURE"));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Rule","workItemType":"FEATURE","priority":10}
@@ -2298,11 +2356,12 @@ class TenantConfigControllerTest {
     @Test
     void createRoutingRuleTenantNotFoundReturns404() throws Exception {
         when(writeFacade.createRoutingRule(eq(TENANT_ID),
-                any(CreateRoutingRuleRequest.class)))
+                any(CreateRoutingRuleRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Rule","workItemType":"BUG","priority":10}
@@ -2314,12 +2373,13 @@ class TenantConfigControllerTest {
     @Test
     void createRoutingRuleInvalidTopicBindingReturns422() throws Exception {
         when(writeFacade.createRoutingRule(eq(TENANT_ID),
-                any(CreateRoutingRuleRequest.class)))
+                any(CreateRoutingRuleRequest.class), any()))
                 .thenThrow(new BusinessRuleException("INVALID_TOPIC_BINDING",
                         "Topic binding topilmadi yoki shu tenantga tegishli emas"));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Rule","workItemType":"BUG","priority":10,
@@ -2347,7 +2407,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T12:00:00Z"));
 
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class))).thenReturn(view);
+                any(UpdateRoutingRuleRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -2375,7 +2435,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T12:00:00Z"));
 
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class))).thenReturn(view);
+                any(UpdateRoutingRuleRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -2397,7 +2457,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T12:00:00Z"));
 
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class))).thenReturn(view);
+                any(UpdateRoutingRuleRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -2416,7 +2476,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T12:00:00Z"));
 
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class))).thenReturn(view);
+                any(UpdateRoutingRuleRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -2435,7 +2495,7 @@ class TenantConfigControllerTest {
                 Instant.parse("2026-04-08T12:00:00Z"));
 
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class))).thenReturn(view);
+                any(UpdateRoutingRuleRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -2460,7 +2520,7 @@ class TenantConfigControllerTest {
     @Test
     void updateRoutingRuleInvalidNameReturns400() throws Exception {
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class)))
+                any(UpdateRoutingRuleRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
 
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
@@ -2476,7 +2536,7 @@ class TenantConfigControllerTest {
     @Test
     void updateRoutingRuleTenantNotFoundReturns404() throws Exception {
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class)))
+                any(UpdateRoutingRuleRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
@@ -2492,7 +2552,7 @@ class TenantConfigControllerTest {
     @Test
     void updateRoutingRuleNotFoundReturns404() throws Exception {
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class)))
+                any(UpdateRoutingRuleRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("RoutingRule", RULE_ID));
 
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
@@ -2508,7 +2568,7 @@ class TenantConfigControllerTest {
     @Test
     void updateRoutingRuleInvalidTopicBindingReturns422() throws Exception {
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class)))
+                any(UpdateRoutingRuleRequest.class), any()))
                 .thenThrow(new BusinessRuleException("INVALID_TOPIC_BINDING",
                         "Topic binding topilmadi yoki shu tenantga tegishli emas"));
 
@@ -2525,7 +2585,7 @@ class TenantConfigControllerTest {
     @Test
     void updateRoutingRuleNullPriorityReturns400() throws Exception {
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class)))
+                any(UpdateRoutingRuleRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("priority null bo'lishi mumkin emas"));
 
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
@@ -2541,7 +2601,7 @@ class TenantConfigControllerTest {
     @Test
     void updateRoutingRuleEmptyBodyReturns400() throws Exception {
         when(writeFacade.updateRoutingRule(eq(TENANT_ID), eq(RULE_ID),
-                any(UpdateRoutingRuleRequest.class)))
+                any(UpdateRoutingRuleRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak"));
 
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
@@ -2560,7 +2620,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, RULE_ID, "Rule", 10, null, null, true,
                 Instant.parse("2026-04-08T12:00:00Z"));
 
-        when(writeFacade.activateRoutingRule(TENANT_ID, RULE_ID)).thenReturn(view);
+        when(writeFacade.activateRoutingRule(eq(TENANT_ID), eq(RULE_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -2580,7 +2640,7 @@ class TenantConfigControllerTest {
 
     @Test
     void activateRoutingRuleTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.activateRoutingRule(TENANT_ID, RULE_ID))
+        when(writeFacade.activateRoutingRule(eq(TENANT_ID), eq(RULE_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID)
@@ -2591,7 +2651,7 @@ class TenantConfigControllerTest {
 
     @Test
     void activateRoutingRuleNotFoundReturns404() throws Exception {
-        when(writeFacade.activateRoutingRule(TENANT_ID, RULE_ID))
+        when(writeFacade.activateRoutingRule(eq(TENANT_ID), eq(RULE_ID), any()))
                 .thenThrow(new ResourceNotFoundException("RoutingRule", RULE_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID)
@@ -2608,7 +2668,7 @@ class TenantConfigControllerTest {
                 TENANT_ID, RULE_ID, "Rule", 10, null, null, false,
                 Instant.parse("2026-04-08T12:00:00Z"));
 
-        when(writeFacade.deactivateRoutingRule(TENANT_ID, RULE_ID)).thenReturn(view);
+        when(writeFacade.deactivateRoutingRule(eq(TENANT_ID), eq(RULE_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -2628,7 +2688,7 @@ class TenantConfigControllerTest {
 
     @Test
     void deactivateRoutingRuleTenantNotFoundReturns404() throws Exception {
-        when(writeFacade.deactivateRoutingRule(TENANT_ID, RULE_ID))
+        when(writeFacade.deactivateRoutingRule(eq(TENANT_ID), eq(RULE_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID)
@@ -2639,7 +2699,7 @@ class TenantConfigControllerTest {
 
     @Test
     void deactivateRoutingRuleNotFoundReturns404() throws Exception {
-        when(writeFacade.deactivateRoutingRule(TENANT_ID, RULE_ID))
+        when(writeFacade.deactivateRoutingRule(eq(TENANT_ID), eq(RULE_ID), any()))
                 .thenThrow(new ResourceNotFoundException("RoutingRule", RULE_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID)
@@ -2667,7 +2727,7 @@ class TenantConfigControllerTest {
     @Test
     void deleteRoutingRuleTenantNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("Tenant", TENANT_ID))
-                .when(writeFacade).deleteRoutingRule(TENANT_ID, RULE_ID);
+                .when(writeFacade).deleteRoutingRule(eq(TENANT_ID), eq(RULE_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -2678,7 +2738,7 @@ class TenantConfigControllerTest {
     @Test
     void deleteRoutingRuleNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("RoutingRule", RULE_ID))
-                .when(writeFacade).deleteRoutingRule(TENANT_ID, RULE_ID);
+                .when(writeFacade).deleteRoutingRule(eq(TENANT_ID), eq(RULE_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
                         .param("tenantId", TENANT_ID.toString()))
@@ -2694,9 +2754,10 @@ class TenantConfigControllerTest {
                 ROLE_ID, "BUG_REVIEWER", "Bug Reviewer", "Reviews bugs",
                 false, true, Instant.parse("2026-04-12T12:00:00Z"));
 
-        when(writeFacade.createRole(any(CreateRoleRequest.class))).thenReturn(view);
+        when(writeFacade.createRole(any(), any(CreateRoleRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/roles")
+                        .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"code":"BUG_REVIEWER","name":"Bug Reviewer","description":"Reviews bugs"}
@@ -2712,11 +2773,12 @@ class TenantConfigControllerTest {
 
     @Test
     void createRoleDuplicateReturns422() throws Exception {
-        when(writeFacade.createRole(any(CreateRoleRequest.class)))
+        when(writeFacade.createRole(any(), any(CreateRoleRequest.class), any()))
                 .thenThrow(new BusinessRuleException("DUPLICATE_ROLE_CODE",
                         "ADMIN kodli rol allaqachon mavjud"));
 
         mockMvc.perform(post("/api/admin/tenant-config/roles")
+                        .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"code":"ADMIN","name":"Admin"}
@@ -2727,10 +2789,11 @@ class TenantConfigControllerTest {
 
     @Test
     void createRoleEmptyBodyReturns400() throws Exception {
-        when(writeFacade.createRole(any(CreateRoleRequest.class)))
+        when(writeFacade.createRole(any(), any(CreateRoleRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("code null yoki bo'sh"));
 
         mockMvc.perform(post("/api/admin/tenant-config/roles")
+                        .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"code":null,"name":null}
@@ -2746,9 +2809,10 @@ class TenantConfigControllerTest {
                 ROLE_ID, "BUG_REVIEWER", "Updated Name", null,
                 false, true, Instant.parse("2026-04-12T12:00:00Z"));
 
-        when(writeFacade.updateRole(eq(ROLE_ID), any(UpdateRoleRequest.class))).thenReturn(view);
+        when(writeFacade.updateRole(any(), eq(ROLE_ID), any(UpdateRoleRequest.class), any())).thenReturn(view);
 
         mockMvc.perform(patch("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Updated Name"}
@@ -2760,10 +2824,11 @@ class TenantConfigControllerTest {
 
     @Test
     void updateRoleNotFoundReturns404() throws Exception {
-        when(writeFacade.updateRole(eq(ROLE_ID), any(UpdateRoleRequest.class)))
+        when(writeFacade.updateRole(any(), eq(ROLE_ID), any(UpdateRoleRequest.class), any()))
                 .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
 
         mockMvc.perform(patch("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Updated"}
@@ -2774,10 +2839,11 @@ class TenantConfigControllerTest {
 
     @Test
     void updateRoleEmptyPatchReturns400() throws Exception {
-        when(writeFacade.updateRole(eq(ROLE_ID), any(UpdateRoleRequest.class)))
+        when(writeFacade.updateRole(any(), eq(ROLE_ID), any(UpdateRoleRequest.class), any()))
                 .thenThrow(new IllegalArgumentException("Kamida bitta field berilishi kerak"));
 
         mockMvc.perform(patch("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
@@ -2785,11 +2851,12 @@ class TenantConfigControllerTest {
 
     @Test
     void updateRoleSystemRoleReturns422() throws Exception {
-        when(writeFacade.updateRole(eq(ROLE_ID), any(UpdateRoleRequest.class)))
+        when(writeFacade.updateRole(any(), eq(ROLE_ID), any(UpdateRoleRequest.class), any()))
                 .thenThrow(new BusinessRuleException("SYSTEM_ROLE_UPDATE_FORBIDDEN",
                         "Tizim roli metadata'si o'zgartirilmaydi"));
 
         mockMvc.perform(patch("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"New Name"}
@@ -2806,9 +2873,10 @@ class TenantConfigControllerTest {
                 ROLE_ID, "BUG_REVIEWER", "Bug Reviewer", null,
                 false, true, Instant.parse("2026-04-12T12:00:00Z"));
 
-        when(writeFacade.activateRole(ROLE_ID)).thenReturn(view);
+        when(writeFacade.activateRole(any(), eq(ROLE_ID), any())).thenReturn(view);
 
-        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/activate", ROLE_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/activate", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
                 .andExpect(jsonPath("$.active").value(true));
@@ -2816,10 +2884,11 @@ class TenantConfigControllerTest {
 
     @Test
     void activateRoleNotFoundReturns404() throws Exception {
-        when(writeFacade.activateRole(ROLE_ID))
+        when(writeFacade.activateRole(any(), eq(ROLE_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
 
-        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/activate", ROLE_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/activate", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2832,9 +2901,10 @@ class TenantConfigControllerTest {
                 ROLE_ID, "BUG_REVIEWER", "Bug Reviewer", null,
                 false, false, Instant.parse("2026-04-12T12:00:00Z"));
 
-        when(writeFacade.deactivateRole(ROLE_ID)).thenReturn(view);
+        when(writeFacade.deactivateRole(any(), eq(ROLE_ID), any())).thenReturn(view);
 
-        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
                 .andExpect(jsonPath("$.active").value(false));
@@ -2842,21 +2912,23 @@ class TenantConfigControllerTest {
 
     @Test
     void deactivateRoleNotFoundReturns404() throws Exception {
-        when(writeFacade.deactivateRole(ROLE_ID))
+        when(writeFacade.deactivateRole(any(), eq(ROLE_ID), any()))
                 .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
 
-        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void deactivateRoleSystemRoleReturns422() throws Exception {
-        when(writeFacade.deactivateRole(ROLE_ID))
+        when(writeFacade.deactivateRole(any(), eq(ROLE_ID), any()))
                 .thenThrow(new BusinessRuleException("SYSTEM_ROLE_DEACTIVATE_FORBIDDEN",
                         "Tizim roli deaktivlashtirilmaydi"));
 
-        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("SYSTEM_ROLE_DEACTIVATE_FORBIDDEN"));
     }
@@ -2865,7 +2937,8 @@ class TenantConfigControllerTest {
 
     @Test
     void deleteRoleReturns204() throws Exception {
-        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID))
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
     }
@@ -2873,9 +2946,10 @@ class TenantConfigControllerTest {
     @Test
     void deleteRoleNotFoundReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("Role", ROLE_ID))
-                .when(writeFacade).deleteRole(ROLE_ID);
+                .when(writeFacade).deleteRole(any(), eq(ROLE_ID), any());
 
-        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID))
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2884,9 +2958,10 @@ class TenantConfigControllerTest {
     void deleteRoleSystemRoleReturns422() throws Exception {
         doThrow(new BusinessRuleException("SYSTEM_ROLE_DELETE_FORBIDDEN",
                 "Tizim roli o'chirilmaydi"))
-                .when(writeFacade).deleteRole(ROLE_ID);
+                .when(writeFacade).deleteRole(any(), eq(ROLE_ID), any());
 
-        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID))
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("SYSTEM_ROLE_DELETE_FORBIDDEN"));
     }
@@ -2895,10 +2970,89 @@ class TenantConfigControllerTest {
     void deleteRoleInUseReturns422() throws Exception {
         doThrow(new BusinessRuleException("ROLE_IN_USE",
                 "Rol hozirda membership'larga tayinlangan"))
-                .when(writeFacade).deleteRole(ROLE_ID);
+                .when(writeFacade).deleteRole(any(), eq(ROLE_ID), any());
 
-        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID))
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("ROLE_IN_USE"));
+    }
+
+    // ========== Authorization 403 tests ==========
+
+    @Test
+    void readEndpointReturns403WhenAccessDenied() throws Exception {
+        when(detailsFacade.getDetails(eq(TENANT_ID), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/details")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void writeEndpointReturns403WhenAccessDenied() throws Exception {
+        when(writeFacade.createWorkflowDefinition(eq(TENANT_ID),
+                any(CreateWorkflowDefinitionRequest.class), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_WRITE ruxsati talab qilinadi"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Bug Flow","workItemType":"BUG"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void deleteEndpointReturns403WhenAccessDenied() throws Exception {
+        doThrow(new AccessDeniedException("TENANT_CONFIG_WRITE ruxsati talab qilinadi"))
+                .when(writeFacade).deleteWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any());
+
+        mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void missingActorHeaderStillReachesEndpoint() throws Exception {
+        when(detailsFacade.getDetails(eq(TENANT_ID), any()))
+                .thenThrow(new AccessDeniedException("Actor identifikatsiyasi talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/details")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void existingNotFoundSemanticPreservedWith403() throws Exception {
+        when(detailsFacade.getDetails(eq(TENANT_ID), any()))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/details")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void existingBadRequestSemanticPreservedWith403() throws Exception {
+        when(detailsFacade.getDetails(eq(TENANT_ID), any()))
+                .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/details")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
 }

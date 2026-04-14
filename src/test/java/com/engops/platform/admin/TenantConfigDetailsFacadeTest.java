@@ -38,13 +38,16 @@ import static org.mockito.Mockito.*;
 class TenantConfigDetailsFacadeTest {
 
     private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID ACTOR_USER_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
     private final TenantConfigQueryService tenantConfigQueryService =
             mock(TenantConfigQueryService.class);
     private final IdentityQueryService identityQueryService =
             mock(IdentityQueryService.class);
+    private final AdminAuthorizationService authorizationService =
+            mock(AdminAuthorizationService.class);
     private final TenantConfigDetailsFacade facade =
-            new TenantConfigDetailsFacade(tenantConfigQueryService, identityQueryService);
+            new TenantConfigDetailsFacade(tenantConfigQueryService, identityQueryService, authorizationService);
 
     @Test
     void returnsCompactDetailsWithAllSections() {
@@ -70,7 +73,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listActiveTopicBindings(chatBindingId)).thenReturn(List.of(
                 mock(TelegramTopicBinding.class), mock(TelegramTopicBinding.class)));
 
-        var result = facade.getDetails(TENANT_ID);
+        var result = facade.getDetails(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.name()).isEqualTo("Test Tenant");
@@ -111,7 +114,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listActiveTopicBindings(cb2Id)).thenReturn(List.of(
                 mock(TelegramTopicBinding.class)));
 
-        var result = facade.getDetails(TENANT_ID);
+        var result = facade.getDetails(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.activeChatBindingCount()).isEqualTo(2);
         assertThat(result.activeTopicBindingCount()).isEqualTo(4);
@@ -133,7 +136,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listActiveRoutingRules(TENANT_ID)).thenReturn(List.of());
         when(tenantConfigQueryService.listActiveChatBindings(TENANT_ID)).thenReturn(List.of());
 
-        var result = facade.getDetails(TENANT_ID);
+        var result = facade.getDetails(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.totalMembershipCount()).isZero();
         assertThat(result.activeMembershipCount()).isZero();
@@ -149,7 +152,7 @@ class TenantConfigDetailsFacadeTest {
     void throwsResourceNotFoundWhenTenantMissing() {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> facade.getDetails(TENANT_ID))
+        assertThatThrownBy(() -> facade.getDetails(TENANT_ID, ACTOR_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verifyNoInteractions(identityQueryService);
@@ -159,7 +162,7 @@ class TenantConfigDetailsFacadeTest {
 
     @Test
     void throwsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.getDetails(null))
+        assertThatThrownBy(() -> facade.getDetails(null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -179,7 +182,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listActiveRoutingRules(TENANT_ID)).thenReturn(List.of());
         when(tenantConfigQueryService.listActiveChatBindings(TENANT_ID)).thenReturn(List.of());
 
-        facade.getDetails(TENANT_ID);
+        facade.getDetails(TENANT_ID, ACTOR_USER_ID);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
         verify(tenantConfigQueryService).listAllWorkflowDefinitions(TENANT_ID);
@@ -222,7 +225,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listAllWorkflowDefinitions(TENANT_ID))
                 .thenReturn(List.of(wd1, wd2));
 
-        var result = facade.getWorkflowDefinitions(TENANT_ID);
+        var result = facade.getWorkflowDefinitions(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).hasSize(2);
@@ -252,7 +255,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listAllWorkflowDefinitions(TENANT_ID))
                 .thenReturn(List.of());
 
-        var result = facade.getWorkflowDefinitions(TENANT_ID);
+        var result = facade.getWorkflowDefinitions(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).isEmpty();
@@ -262,7 +265,7 @@ class TenantConfigDetailsFacadeTest {
     void workflowDefinitionsThrowsResourceNotFoundWhenTenantMissing() {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> facade.getWorkflowDefinitions(TENANT_ID))
+        assertThatThrownBy(() -> facade.getWorkflowDefinitions(TENANT_ID, ACTOR_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
@@ -271,7 +274,7 @@ class TenantConfigDetailsFacadeTest {
 
     @Test
     void workflowDefinitionsThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.getWorkflowDefinitions(null))
+        assertThatThrownBy(() -> facade.getWorkflowDefinitions(null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -286,7 +289,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listAllWorkflowDefinitions(TENANT_ID))
                 .thenReturn(List.of());
 
-        facade.getWorkflowDefinitions(TENANT_ID);
+        facade.getWorkflowDefinitions(TENANT_ID, ACTOR_USER_ID);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
         verify(tenantConfigQueryService).listAllWorkflowDefinitions(TENANT_ID);
@@ -325,7 +328,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listAllRoutingRules(TENANT_ID))
                 .thenReturn(List.of(rule1, rule2));
 
-        var result = facade.getRoutingRules(TENANT_ID);
+        var result = facade.getRoutingRules(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).hasSize(2);
@@ -358,7 +361,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listAllRoutingRules(TENANT_ID))
                 .thenReturn(List.of());
 
-        var result = facade.getRoutingRules(TENANT_ID);
+        var result = facade.getRoutingRules(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).isEmpty();
@@ -368,7 +371,7 @@ class TenantConfigDetailsFacadeTest {
     void routingRulesThrowsResourceNotFoundWhenTenantMissing() {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> facade.getRoutingRules(TENANT_ID))
+        assertThatThrownBy(() -> facade.getRoutingRules(TENANT_ID, ACTOR_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
@@ -377,7 +380,7 @@ class TenantConfigDetailsFacadeTest {
 
     @Test
     void routingRulesThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.getRoutingRules(null))
+        assertThatThrownBy(() -> facade.getRoutingRules(null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -392,7 +395,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listAllRoutingRules(TENANT_ID))
                 .thenReturn(List.of());
 
-        facade.getRoutingRules(TENANT_ID);
+        facade.getRoutingRules(TENANT_ID, ACTOR_USER_ID);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
         verify(tenantConfigQueryService).listAllRoutingRules(TENANT_ID);
@@ -435,7 +438,7 @@ class TenantConfigDetailsFacadeTest {
                         mock(TelegramTopicBinding.class),
                         mock(TelegramTopicBinding.class)));
 
-        var result = facade.getChatBindings(TENANT_ID);
+        var result = facade.getChatBindings(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).hasSize(2);
@@ -492,7 +495,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listActiveTopicBindings(cbId2))
                 .thenReturn(List.of());
 
-        var result = facade.getChatBindings(TENANT_ID);
+        var result = facade.getChatBindings(TENANT_ID, ACTOR_USER_ID);
 
         // id tie-breaker (same bindingType MAIN_GROUP): cbId1 < cbId2
         assertThat(result.items().get(0).activeTopicBindingCount()).isEqualTo(2);
@@ -510,7 +513,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listAllChatBindings(TENANT_ID))
                 .thenReturn(List.of());
 
-        var result = facade.getChatBindings(TENANT_ID);
+        var result = facade.getChatBindings(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).isEmpty();
@@ -520,7 +523,7 @@ class TenantConfigDetailsFacadeTest {
     void chatBindingsThrowsResourceNotFoundWhenTenantMissing() {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> facade.getChatBindings(TENANT_ID))
+        assertThatThrownBy(() -> facade.getChatBindings(TENANT_ID, ACTOR_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
@@ -529,7 +532,7 @@ class TenantConfigDetailsFacadeTest {
 
     @Test
     void chatBindingsThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.getChatBindings(null))
+        assertThatThrownBy(() -> facade.getChatBindings(null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -555,7 +558,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listActiveTopicBindings(cbId))
                 .thenReturn(List.of());
 
-        facade.getChatBindings(TENANT_ID);
+        facade.getChatBindings(TENANT_ID, ACTOR_USER_ID);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
         verify(tenantConfigQueryService).listAllChatBindings(TENANT_ID);
@@ -598,7 +601,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listAllChatBindings(TENANT_ID)).thenReturn(List.of(cb));
         when(tenantConfigQueryService.listAllTopicBindings(cbId)).thenReturn(List.of(tb1, tb2));
 
-        var result = facade.getTopicBindings(TENANT_ID);
+        var result = facade.getTopicBindings(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).hasSize(2);
@@ -666,7 +669,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listAllTopicBindings(cbId1)).thenReturn(List.of(tb1));
         when(tenantConfigQueryService.listAllTopicBindings(cbId2)).thenReturn(List.of(tb2));
 
-        var result = facade.getTopicBindings(TENANT_ID);
+        var result = facade.getTopicBindings(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.items()).hasSize(2);
 
@@ -687,7 +690,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
         when(tenantConfigQueryService.listAllChatBindings(TENANT_ID)).thenReturn(List.of());
 
-        var result = facade.getTopicBindings(TENANT_ID);
+        var result = facade.getTopicBindings(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).isEmpty();
@@ -697,7 +700,7 @@ class TenantConfigDetailsFacadeTest {
     void topicBindingsThrowsResourceNotFoundWhenTenantMissing() {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> facade.getTopicBindings(TENANT_ID))
+        assertThatThrownBy(() -> facade.getTopicBindings(TENANT_ID, ACTOR_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
@@ -706,7 +709,7 @@ class TenantConfigDetailsFacadeTest {
 
     @Test
     void topicBindingsThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.getTopicBindings(null))
+        assertThatThrownBy(() -> facade.getTopicBindings(null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -727,7 +730,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.listAllChatBindings(TENANT_ID)).thenReturn(List.of(cb));
         when(tenantConfigQueryService.listAllTopicBindings(cbId)).thenReturn(List.of());
 
-        facade.getTopicBindings(TENANT_ID);
+        facade.getTopicBindings(TENANT_ID, ACTOR_USER_ID);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
         verify(tenantConfigQueryService).listAllChatBindings(TENANT_ID);
@@ -780,7 +783,7 @@ class TenantConfigDetailsFacadeTest {
         when(identityQueryService.getMembershipRoles(mId1)).thenReturn(List.of());
         when(identityQueryService.getMembershipRoles(mId2)).thenReturn(List.of(roleBinding));
 
-        var result = facade.getMemberships(TENANT_ID);
+        var result = facade.getMemberships(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).hasSize(2);
@@ -814,7 +817,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
         when(identityQueryService.listAllMembers(TENANT_ID)).thenReturn(List.of());
 
-        var result = facade.getMemberships(TENANT_ID);
+        var result = facade.getMemberships(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).isEmpty();
@@ -824,7 +827,7 @@ class TenantConfigDetailsFacadeTest {
     void membershipsThrowsResourceNotFoundWhenTenantMissing() {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> facade.getMemberships(TENANT_ID))
+        assertThatThrownBy(() -> facade.getMemberships(TENANT_ID, ACTOR_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
@@ -833,7 +836,7 @@ class TenantConfigDetailsFacadeTest {
 
     @Test
     void membershipsThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.getMemberships(null))
+        assertThatThrownBy(() -> facade.getMemberships(null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -862,7 +865,7 @@ class TenantConfigDetailsFacadeTest {
         when(identityQueryService.findUserById(uId)).thenReturn(Optional.of(user));
         when(identityQueryService.getMembershipRoles(mId)).thenReturn(List.of());
 
-        facade.getMemberships(TENANT_ID);
+        facade.getMemberships(TENANT_ID, ACTOR_USER_ID);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
         verifyNoMoreInteractions(tenantConfigQueryService);
@@ -889,7 +892,7 @@ class TenantConfigDetailsFacadeTest {
         when(identityQueryService.findUserById(uId)).thenReturn(Optional.empty());
         when(identityQueryService.getMembershipRoles(mId)).thenReturn(List.of());
 
-        var result = facade.getMemberships(TENANT_ID);
+        var result = facade.getMemberships(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.items()).hasSize(1);
         var item = result.items().get(0);
@@ -927,7 +930,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
         when(identityQueryService.listAllRoles()).thenReturn(List.of(role1, role2));
 
-        var result = facade.getRoles(TENANT_ID);
+        var result = facade.getRoles(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).hasSize(2);
@@ -957,7 +960,7 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
         when(identityQueryService.listAllRoles()).thenReturn(List.of());
 
-        var result = facade.getRoles(TENANT_ID);
+        var result = facade.getRoles(TENANT_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.items()).isEmpty();
@@ -967,7 +970,7 @@ class TenantConfigDetailsFacadeTest {
     void rolesThrowsResourceNotFoundWhenTenantMissing() {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> facade.getRoles(TENANT_ID))
+        assertThatThrownBy(() -> facade.getRoles(TENANT_ID, ACTOR_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
@@ -976,7 +979,7 @@ class TenantConfigDetailsFacadeTest {
 
     @Test
     void rolesThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.getRoles(null))
+        assertThatThrownBy(() -> facade.getRoles(null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -990,12 +993,75 @@ class TenantConfigDetailsFacadeTest {
         when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
         when(identityQueryService.listAllRoles()).thenReturn(List.of());
 
-        facade.getRoles(TENANT_ID);
+        facade.getRoles(TENANT_ID, ACTOR_USER_ID);
 
         verify(tenantConfigQueryService).findTenantById(TENANT_ID);
         verifyNoMoreInteractions(tenantConfigQueryService);
         verify(identityQueryService).listAllRoles();
         verifyNoMoreInteractions(identityQueryService);
+    }
+
+    // ========== Authorization enforcement ==========
+
+    @Test
+    void getDetailsCallsAuthorizeRead() {
+        Tenant tenant = mockTenant();
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.listAllMembers(TENANT_ID)).thenReturn(List.of());
+        when(identityQueryService.listActiveMembers(TENANT_ID)).thenReturn(List.of());
+        when(tenantConfigQueryService.listAllWorkflowDefinitions(TENANT_ID)).thenReturn(List.of());
+        when(tenantConfigQueryService.listActiveWorkflowDefinitions(TENANT_ID)).thenReturn(List.of());
+        when(tenantConfigQueryService.listAllRoutingRules(TENANT_ID)).thenReturn(List.of());
+        when(tenantConfigQueryService.listActiveRoutingRules(TENANT_ID)).thenReturn(List.of());
+        when(tenantConfigQueryService.listActiveChatBindings(TENANT_ID)).thenReturn(List.of());
+
+        facade.getDetails(TENANT_ID, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void getDetailsDeniedWhenAuthorizationFails() {
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.getDetails(TENANT_ID, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(tenantConfigQueryService);
+    }
+
+    @Test
+    void getWorkflowDefinitionsCallsAuthorizeRead() {
+        Tenant tenant = mockTenant();
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllWorkflowDefinitions(TENANT_ID)).thenReturn(List.of());
+
+        facade.getWorkflowDefinitions(TENANT_ID, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void getChatBindingsCallsAuthorizeRead() {
+        Tenant tenant = mockTenant();
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.listAllChatBindings(TENANT_ID)).thenReturn(List.of());
+
+        facade.getChatBindings(TENANT_ID, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void getMembershipsCallsAuthorizeRead() {
+        Tenant tenant = mockTenant();
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.listAllMembers(TENANT_ID)).thenReturn(List.of());
+
+        facade.getMemberships(TENANT_ID, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
     }
 
     // ========== Helpers ==========

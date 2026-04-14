@@ -5,16 +5,21 @@ import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.MembershipStatus;
 import com.engops.platform.identity.model.Role;
+import com.engops.platform.identity.model.RolePermission;
 import com.engops.platform.identity.repository.AppUserRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
+import com.engops.platform.identity.repository.RolePermissionRepository;
 import com.engops.platform.identity.repository.RoleRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Identity moduli uchun so'rov (query) servisi.
@@ -30,15 +35,18 @@ public class IdentityQueryService {
     private final MembershipRepository membershipRepository;
     private final MembershipRoleBindingRepository membershipRoleBindingRepository;
     private final RoleRepository roleRepository;
+    private final RolePermissionRepository rolePermissionRepository;
 
     public IdentityQueryService(AppUserRepository appUserRepository,
                                  MembershipRepository membershipRepository,
                                  MembershipRoleBindingRepository membershipRoleBindingRepository,
-                                 RoleRepository roleRepository) {
+                                 RoleRepository roleRepository,
+                                 RolePermissionRepository rolePermissionRepository) {
         this.appUserRepository = appUserRepository;
         this.membershipRepository = membershipRepository;
         this.membershipRoleBindingRepository = membershipRoleBindingRepository;
         this.roleRepository = roleRepository;
+        this.rolePermissionRepository = rolePermissionRepository;
     }
 
     /**
@@ -104,5 +112,35 @@ public class IdentityQueryService {
      */
     public Optional<Role> findRoleByCode(String code) {
         return roleRepository.findByCode(code);
+    }
+
+    /**
+     * Foydalanuvchining berilgan tenantdagi barcha ruxsat (permission) kodlarini qaytaradi.
+     *
+     * Zanjir: Membership -> MembershipRoleBinding -> Role -> RolePermission -> Permission.code
+     *
+     * Agar foydalanuvchining aktiv a'zoligi bo'lmasa, bo'sh set qaytariladi.
+     * Faqat aktiv a'zolik uchun ruxsatlar hisoblanadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param userId foydalanuvchi identifikatori
+     * @return ruxsat kodlari seti (bo'sh bo'lishi mumkin)
+     */
+    public Set<String> resolvePermissionCodes(UUID tenantId, UUID userId) {
+        Optional<Membership> membershipOpt = membershipRepository.findByTenantIdAndUserId(tenantId, userId);
+        if (membershipOpt.isEmpty() || !membershipOpt.get().isActive()) {
+            return Collections.emptySet();
+        }
+
+        Membership membership = membershipOpt.get();
+        List<MembershipRoleBinding> roleBindings = membershipRoleBindingRepository.findByMembershipId(membership.getId());
+
+        return roleBindings.stream()
+                .map(MembershipRoleBinding::getRole)
+                .filter(Role::isActive)
+                .flatMap(role -> rolePermissionRepository.findByRoleId(role.getId()).stream())
+                .map(RolePermission::getPermission)
+                .map(permission -> permission.getCode())
+                .collect(Collectors.toSet());
     }
 }

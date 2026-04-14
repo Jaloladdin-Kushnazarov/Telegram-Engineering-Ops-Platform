@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -86,10 +87,11 @@ public class TenantConfigController {
      */
     @GetMapping("/details")
     public ResponseEntity<TenantConfigDetailsResponse> getDetails(
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigDetailsFacade.TenantConfigDetailsView view =
-                detailsFacade.getDetails(tenantId);
+                detailsFacade.getDetails(tenantId, actorUserId);
 
         return ResponseEntity.ok(toResponse(view));
     }
@@ -102,10 +104,11 @@ public class TenantConfigController {
      */
     @GetMapping("/workflow-definitions")
     public ResponseEntity<TenantConfigWorkflowListResponse> getWorkflowDefinitions(
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigDetailsFacade.WorkflowDefinitionListView view =
-                detailsFacade.getWorkflowDefinitions(tenantId);
+                detailsFacade.getWorkflowDefinitions(tenantId, actorUserId);
 
         return ResponseEntity.ok(toWorkflowListResponse(view));
     }
@@ -118,10 +121,11 @@ public class TenantConfigController {
      */
     @GetMapping("/routing-rules")
     public ResponseEntity<TenantConfigRoutingRuleListResponse> getRoutingRules(
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigDetailsFacade.RoutingRuleListView view =
-                detailsFacade.getRoutingRules(tenantId);
+                detailsFacade.getRoutingRules(tenantId, actorUserId);
 
         return ResponseEntity.ok(toRoutingRuleListResponse(view));
     }
@@ -134,10 +138,11 @@ public class TenantConfigController {
      */
     @GetMapping("/chat-bindings")
     public ResponseEntity<TenantConfigChatBindingListResponse> getChatBindings(
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigDetailsFacade.ChatBindingListView view =
-                detailsFacade.getChatBindings(tenantId);
+                detailsFacade.getChatBindings(tenantId, actorUserId);
 
         return ResponseEntity.ok(toChatBindingListResponse(view));
     }
@@ -150,10 +155,11 @@ public class TenantConfigController {
      */
     @GetMapping("/topic-bindings")
     public ResponseEntity<TenantConfigTopicBindingListResponse> getTopicBindings(
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigDetailsFacade.TopicBindingListView view =
-                detailsFacade.getTopicBindings(tenantId);
+                detailsFacade.getTopicBindings(tenantId, actorUserId);
 
         return ResponseEntity.ok(toTopicBindingListResponse(view));
     }
@@ -166,10 +172,11 @@ public class TenantConfigController {
      */
     @GetMapping("/memberships")
     public ResponseEntity<TenantConfigMembershipListResponse> getMemberships(
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigDetailsFacade.MembershipListView view =
-                detailsFacade.getMemberships(tenantId);
+                detailsFacade.getMemberships(tenantId, actorUserId);
 
         return ResponseEntity.ok(toMembershipListResponse(view));
     }
@@ -182,10 +189,11 @@ public class TenantConfigController {
      */
     @GetMapping("/roles")
     public ResponseEntity<TenantConfigRoleListResponse> getRoles(
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigDetailsFacade.RoleListView view =
-                detailsFacade.getRoles(tenantId);
+                detailsFacade.getRoles(tenantId, actorUserId);
 
         return ResponseEntity.ok(toRoleListResponse(view));
     }
@@ -202,10 +210,11 @@ public class TenantConfigController {
     @PostMapping("/workflow-definitions")
     public ResponseEntity<TenantConfigWorkflowDefinitionCreatedResponse> createWorkflowDefinition(
             @RequestParam UUID tenantId,
-            @RequestBody CreateWorkflowDefinitionRequest request) {
+            @RequestBody CreateWorkflowDefinitionRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.WorkflowDefinitionCreatedView view =
-                writeFacade.createWorkflowDefinition(tenantId, request);
+                writeFacade.createWorkflowDefinition(tenantId, request, actorUserId);
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toCreatedResponse(view));
@@ -223,10 +232,11 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigWorkflowDefinitionCreatedResponse> updateWorkflowDefinition(
             @PathVariable UUID definitionId,
             @RequestParam UUID tenantId,
-            @RequestBody UpdateWorkflowDefinitionRequest request) {
+            @RequestBody UpdateWorkflowDefinitionRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.WorkflowDefinitionUpdatedView view =
-                writeFacade.updateWorkflowDefinition(tenantId, definitionId, request);
+                writeFacade.updateWorkflowDefinition(tenantId, definitionId, request, actorUserId);
 
         return ResponseEntity.ok(toUpdatedResponse(view));
     }
@@ -241,10 +251,11 @@ public class TenantConfigController {
     @PostMapping("/workflow-definitions/{definitionId}/activate")
     public ResponseEntity<TenantConfigWorkflowDefinitionCreatedResponse> activateWorkflowDefinition(
             @PathVariable UUID definitionId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.WorkflowDefinitionUpdatedView view =
-                writeFacade.activateWorkflowDefinition(tenantId, definitionId);
+                writeFacade.activateWorkflowDefinition(tenantId, definitionId, actorUserId);
 
         return ResponseEntity.ok(toUpdatedResponse(view));
     }
@@ -259,10 +270,11 @@ public class TenantConfigController {
     @PostMapping("/workflow-definitions/{definitionId}/deactivate")
     public ResponseEntity<TenantConfigWorkflowDefinitionCreatedResponse> deactivateWorkflowDefinition(
             @PathVariable UUID definitionId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.WorkflowDefinitionUpdatedView view =
-                writeFacade.deactivateWorkflowDefinition(tenantId, definitionId);
+                writeFacade.deactivateWorkflowDefinition(tenantId, definitionId, actorUserId);
 
         return ResponseEntity.ok(toUpdatedResponse(view));
     }
@@ -277,9 +289,10 @@ public class TenantConfigController {
     @DeleteMapping("/workflow-definitions/{definitionId}")
     public ResponseEntity<Void> deleteWorkflowDefinition(
             @PathVariable UUID definitionId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        writeFacade.deleteWorkflowDefinition(tenantId, definitionId);
+        writeFacade.deleteWorkflowDefinition(tenantId, definitionId, actorUserId);
 
         return ResponseEntity.noContent().build();
     }
@@ -294,10 +307,11 @@ public class TenantConfigController {
     @PostMapping("/chat-bindings")
     public ResponseEntity<TenantConfigChatBindingCreatedResponse> createChatBinding(
             @RequestParam UUID tenantId,
-            @RequestBody CreateChatBindingRequest request) {
+            @RequestBody CreateChatBindingRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.ChatBindingCreatedView view =
-                writeFacade.createChatBinding(tenantId, request);
+                writeFacade.createChatBinding(tenantId, request, actorUserId);
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toChatBindingCreatedResponse(view));
@@ -315,10 +329,11 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigChatBindingCreatedResponse> updateChatBinding(
             @PathVariable UUID chatBindingId,
             @RequestParam UUID tenantId,
-            @RequestBody UpdateChatBindingRequest request) {
+            @RequestBody UpdateChatBindingRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.ChatBindingCreatedView view =
-                writeFacade.updateChatBinding(tenantId, chatBindingId, request);
+                writeFacade.updateChatBinding(tenantId, chatBindingId, request, actorUserId);
 
         return ResponseEntity.ok(toChatBindingCreatedResponse(view));
     }
@@ -333,10 +348,11 @@ public class TenantConfigController {
     @PostMapping("/chat-bindings/{chatBindingId}/activate")
     public ResponseEntity<TenantConfigChatBindingCreatedResponse> activateChatBinding(
             @PathVariable UUID chatBindingId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.ChatBindingCreatedView view =
-                writeFacade.activateChatBinding(tenantId, chatBindingId);
+                writeFacade.activateChatBinding(tenantId, chatBindingId, actorUserId);
 
         return ResponseEntity.ok(toChatBindingCreatedResponse(view));
     }
@@ -351,10 +367,11 @@ public class TenantConfigController {
     @PostMapping("/chat-bindings/{chatBindingId}/deactivate")
     public ResponseEntity<TenantConfigChatBindingCreatedResponse> deactivateChatBinding(
             @PathVariable UUID chatBindingId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.ChatBindingCreatedView view =
-                writeFacade.deactivateChatBinding(tenantId, chatBindingId);
+                writeFacade.deactivateChatBinding(tenantId, chatBindingId, actorUserId);
 
         return ResponseEntity.ok(toChatBindingCreatedResponse(view));
     }
@@ -369,9 +386,10 @@ public class TenantConfigController {
     @DeleteMapping("/chat-bindings/{chatBindingId}")
     public ResponseEntity<Void> deleteChatBinding(
             @PathVariable UUID chatBindingId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        writeFacade.deleteChatBinding(tenantId, chatBindingId);
+        writeFacade.deleteChatBinding(tenantId, chatBindingId, actorUserId);
 
         return ResponseEntity.noContent().build();
     }
@@ -400,10 +418,11 @@ public class TenantConfigController {
     @PostMapping("/topic-bindings")
     public ResponseEntity<TenantConfigTopicBindingCreatedResponse> createTopicBinding(
             @RequestParam UUID tenantId,
-            @RequestBody CreateTopicBindingRequest request) {
+            @RequestBody CreateTopicBindingRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.TopicBindingView view =
-                writeFacade.createTopicBinding(tenantId, request);
+                writeFacade.createTopicBinding(tenantId, request, actorUserId);
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toTopicBindingResponse(view));
@@ -421,10 +440,11 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigTopicBindingCreatedResponse> updateTopicBinding(
             @PathVariable UUID topicBindingId,
             @RequestParam UUID tenantId,
-            @RequestBody UpdateTopicBindingRequest request) {
+            @RequestBody UpdateTopicBindingRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.TopicBindingView view =
-                writeFacade.updateTopicBinding(tenantId, topicBindingId, request);
+                writeFacade.updateTopicBinding(tenantId, topicBindingId, request, actorUserId);
 
         return ResponseEntity.ok(toTopicBindingResponse(view));
     }
@@ -439,10 +459,11 @@ public class TenantConfigController {
     @PostMapping("/topic-bindings/{topicBindingId}/activate")
     public ResponseEntity<TenantConfigTopicBindingCreatedResponse> activateTopicBinding(
             @PathVariable UUID topicBindingId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.TopicBindingView view =
-                writeFacade.activateTopicBinding(tenantId, topicBindingId);
+                writeFacade.activateTopicBinding(tenantId, topicBindingId, actorUserId);
 
         return ResponseEntity.ok(toTopicBindingResponse(view));
     }
@@ -457,10 +478,11 @@ public class TenantConfigController {
     @PostMapping("/topic-bindings/{topicBindingId}/deactivate")
     public ResponseEntity<TenantConfigTopicBindingCreatedResponse> deactivateTopicBinding(
             @PathVariable UUID topicBindingId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.TopicBindingView view =
-                writeFacade.deactivateTopicBinding(tenantId, topicBindingId);
+                writeFacade.deactivateTopicBinding(tenantId, topicBindingId, actorUserId);
 
         return ResponseEntity.ok(toTopicBindingResponse(view));
     }
@@ -475,9 +497,10 @@ public class TenantConfigController {
     @DeleteMapping("/topic-bindings/{topicBindingId}")
     public ResponseEntity<Void> deleteTopicBinding(
             @PathVariable UUID topicBindingId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        writeFacade.deleteTopicBinding(tenantId, topicBindingId);
+        writeFacade.deleteTopicBinding(tenantId, topicBindingId, actorUserId);
 
         return ResponseEntity.noContent().build();
     }
@@ -507,10 +530,11 @@ public class TenantConfigController {
     @PostMapping("/memberships")
     public ResponseEntity<TenantConfigMembershipStatusResponse> createMembership(
             @RequestParam UUID tenantId,
-            @RequestBody CreateMembershipRequest request) {
+            @RequestBody CreateMembershipRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.MembershipStatusView view =
-                writeFacade.createMembership(tenantId, request);
+                writeFacade.createMembership(tenantId, request, actorUserId);
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toMembershipStatusResponse(view));
@@ -526,10 +550,11 @@ public class TenantConfigController {
     @PostMapping("/memberships/{membershipId}/activate")
     public ResponseEntity<TenantConfigMembershipStatusResponse> activateMembership(
             @PathVariable UUID membershipId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.MembershipStatusView view =
-                writeFacade.activateMembership(tenantId, membershipId);
+                writeFacade.activateMembership(tenantId, membershipId, actorUserId);
 
         return ResponseEntity.ok(toMembershipStatusResponse(view));
     }
@@ -544,10 +569,11 @@ public class TenantConfigController {
     @PostMapping("/memberships/{membershipId}/suspend")
     public ResponseEntity<TenantConfigMembershipStatusResponse> suspendMembership(
             @PathVariable UUID membershipId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.MembershipStatusView view =
-                writeFacade.suspendMembership(tenantId, membershipId);
+                writeFacade.suspendMembership(tenantId, membershipId, actorUserId);
 
         return ResponseEntity.ok(toMembershipStatusResponse(view));
     }
@@ -562,10 +588,11 @@ public class TenantConfigController {
     @PostMapping("/memberships/{membershipId}/remove")
     public ResponseEntity<TenantConfigMembershipStatusResponse> removeMembership(
             @PathVariable UUID membershipId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.MembershipStatusView view =
-                writeFacade.removeMembership(tenantId, membershipId);
+                writeFacade.removeMembership(tenantId, membershipId, actorUserId);
 
         return ResponseEntity.ok(toMembershipStatusResponse(view));
     }
@@ -582,10 +609,11 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigMembershipRoleBindingCreatedResponse> assignRoleToMembership(
             @PathVariable UUID membershipId,
             @RequestParam UUID tenantId,
-            @RequestBody CreateMembershipRoleBindingRequest request) {
+            @RequestBody CreateMembershipRoleBindingRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.MembershipRoleBindingView view =
-                writeFacade.assignRoleToMembership(tenantId, membershipId, request);
+                writeFacade.assignRoleToMembership(tenantId, membershipId, request, actorUserId);
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toMembershipRoleBindingResponse(view));
@@ -603,9 +631,10 @@ public class TenantConfigController {
     public ResponseEntity<Void> unassignRoleFromMembership(
             @PathVariable UUID membershipId,
             @PathVariable UUID roleId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        writeFacade.unassignRoleFromMembership(tenantId, membershipId, roleId);
+        writeFacade.unassignRoleFromMembership(tenantId, membershipId, roleId, actorUserId);
 
         return ResponseEntity.noContent().build();
     }
@@ -641,10 +670,11 @@ public class TenantConfigController {
     @PostMapping("/routing-rules")
     public ResponseEntity<TenantConfigRoutingRuleCreatedResponse> createRoutingRule(
             @RequestParam UUID tenantId,
-            @RequestBody CreateRoutingRuleRequest request) {
+            @RequestBody CreateRoutingRuleRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.RoutingRuleCreatedView view =
-                writeFacade.createRoutingRule(tenantId, request);
+                writeFacade.createRoutingRule(tenantId, request, actorUserId);
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toRoutingRuleCreatedResponse(view));
@@ -662,10 +692,11 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigRoutingRuleUpdatedResponse> updateRoutingRule(
             @PathVariable UUID ruleId,
             @RequestParam UUID tenantId,
-            @RequestBody UpdateRoutingRuleRequest request) {
+            @RequestBody UpdateRoutingRuleRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.RoutingRuleUpdatedView view =
-                writeFacade.updateRoutingRule(tenantId, ruleId, request);
+                writeFacade.updateRoutingRule(tenantId, ruleId, request, actorUserId);
 
         return ResponseEntity.ok(toRoutingRuleUpdatedResponse(view));
     }
@@ -680,10 +711,11 @@ public class TenantConfigController {
     @PostMapping("/routing-rules/{ruleId}/activate")
     public ResponseEntity<TenantConfigRoutingRuleUpdatedResponse> activateRoutingRule(
             @PathVariable UUID ruleId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.RoutingRuleUpdatedView view =
-                writeFacade.activateRoutingRule(tenantId, ruleId);
+                writeFacade.activateRoutingRule(tenantId, ruleId, actorUserId);
 
         return ResponseEntity.ok(toRoutingRuleUpdatedResponse(view));
     }
@@ -698,10 +730,11 @@ public class TenantConfigController {
     @PostMapping("/routing-rules/{ruleId}/deactivate")
     public ResponseEntity<TenantConfigRoutingRuleUpdatedResponse> deactivateRoutingRule(
             @PathVariable UUID ruleId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.RoutingRuleUpdatedView view =
-                writeFacade.deactivateRoutingRule(tenantId, ruleId);
+                writeFacade.deactivateRoutingRule(tenantId, ruleId, actorUserId);
 
         return ResponseEntity.ok(toRoutingRuleUpdatedResponse(view));
     }
@@ -716,9 +749,10 @@ public class TenantConfigController {
     @DeleteMapping("/routing-rules/{ruleId}")
     public ResponseEntity<Void> deleteRoutingRule(
             @PathVariable UUID ruleId,
-            @RequestParam UUID tenantId) {
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        writeFacade.deleteRoutingRule(tenantId, ruleId);
+        writeFacade.deleteRoutingRule(tenantId, ruleId, actorUserId);
 
         return ResponseEntity.noContent().build();
     }
@@ -900,9 +934,11 @@ public class TenantConfigController {
      */
     @PostMapping("/roles")
     public ResponseEntity<RoleCatalogResponse> createRole(
-            @RequestBody CreateRoleRequest request) {
+            @RequestParam UUID tenantId,
+            @RequestBody CreateRoleRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        TenantConfigWriteFacade.RoleCatalogView view = writeFacade.createRole(request);
+        TenantConfigWriteFacade.RoleCatalogView view = writeFacade.createRole(tenantId, request, actorUserId);
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(toRoleCatalogResponse(view));
@@ -918,10 +954,12 @@ public class TenantConfigController {
     @PatchMapping("/roles/{roleId}")
     public ResponseEntity<RoleCatalogResponse> updateRole(
             @PathVariable UUID roleId,
-            @RequestBody UpdateRoleRequest request) {
+            @RequestParam UUID tenantId,
+            @RequestBody UpdateRoleRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.RoleCatalogView view =
-                writeFacade.updateRole(roleId, request);
+                writeFacade.updateRole(tenantId, roleId, request, actorUserId);
 
         return ResponseEntity.ok(toRoleCatalogResponse(view));
     }
@@ -934,10 +972,12 @@ public class TenantConfigController {
      */
     @PostMapping("/roles/{roleId}/activate")
     public ResponseEntity<RoleCatalogResponse> activateRole(
-            @PathVariable UUID roleId) {
+            @PathVariable UUID roleId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.RoleCatalogView view =
-                writeFacade.activateRole(roleId);
+                writeFacade.activateRole(tenantId, roleId, actorUserId);
 
         return ResponseEntity.ok(toRoleCatalogResponse(view));
     }
@@ -950,10 +990,12 @@ public class TenantConfigController {
      */
     @PostMapping("/roles/{roleId}/deactivate")
     public ResponseEntity<RoleCatalogResponse> deactivateRole(
-            @PathVariable UUID roleId) {
+            @PathVariable UUID roleId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         TenantConfigWriteFacade.RoleCatalogView view =
-                writeFacade.deactivateRole(roleId);
+                writeFacade.deactivateRole(tenantId, roleId, actorUserId);
 
         return ResponseEntity.ok(toRoleCatalogResponse(view));
     }
@@ -965,9 +1007,12 @@ public class TenantConfigController {
      * @return 204 No Content
      */
     @DeleteMapping("/roles/{roleId}")
-    public ResponseEntity<Void> deleteRole(@PathVariable UUID roleId) {
+    public ResponseEntity<Void> deleteRole(
+            @PathVariable UUID roleId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        writeFacade.deleteRole(roleId);
+        writeFacade.deleteRole(tenantId, roleId, actorUserId);
 
         return ResponseEntity.noContent().build();
     }

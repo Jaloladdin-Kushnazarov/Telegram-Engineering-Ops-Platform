@@ -33,19 +33,22 @@ import static org.mockito.Mockito.*;
 class TenantConfigWriteFacadeTest {
 
     private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID ACTOR_USER_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
     private final TenantConfigCommandService commandService =
             mock(TenantConfigCommandService.class);
     private final IdentityCommandService identityCommandService =
             mock(IdentityCommandService.class);
+    private final AdminAuthorizationService authorizationService =
+            mock(AdminAuthorizationService.class);
     private final TenantConfigWriteFacade facade =
-            new TenantConfigWriteFacade(commandService, identityCommandService);
+            new TenantConfigWriteFacade(commandService, identityCommandService, authorizationService);
 
     @Test
     void throwsIllegalArgumentWhenTenantIdNull() {
         var request = new CreateWorkflowDefinitionRequest("Bug Flow", "BUG", null);
 
-        assertThatThrownBy(() -> facade.createWorkflowDefinition(null, request))
+        assertThatThrownBy(() -> facade.createWorkflowDefinition(null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -54,7 +57,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void throwsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -65,7 +68,7 @@ class TenantConfigWriteFacadeTest {
     void throwsIllegalArgumentWhenNameNull() {
         var request = new CreateWorkflowDefinitionRequest(null, "BUG", null);
 
-        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name");
 
@@ -76,7 +79,7 @@ class TenantConfigWriteFacadeTest {
     void throwsIllegalArgumentWhenNameBlank() {
         var request = new CreateWorkflowDefinitionRequest("   ", "BUG", null);
 
-        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name");
 
@@ -87,7 +90,7 @@ class TenantConfigWriteFacadeTest {
     void throwsIllegalArgumentWhenWorkItemTypeNull() {
         var request = new CreateWorkflowDefinitionRequest("Bug Flow", null, null);
 
-        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("workItemType");
 
@@ -98,7 +101,7 @@ class TenantConfigWriteFacadeTest {
     void throwsIllegalArgumentWhenWorkItemTypeBlank() {
         var request = new CreateWorkflowDefinitionRequest("Bug Flow", "  ", null);
 
-        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("workItemType");
 
@@ -109,7 +112,7 @@ class TenantConfigWriteFacadeTest {
     void throwsIllegalArgumentWhenWorkItemTypeInvalid() {
         var request = new CreateWorkflowDefinitionRequest("Bug Flow", "FEATURE", null);
 
-        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("workItemType")
                 .hasMessageContaining("FEATURE");
@@ -127,7 +130,7 @@ class TenantConfigWriteFacadeTest {
         when(commandService.createWorkflowDefinition(TENANT_ID, "Bug Flow", "BUG", "Bug workflow"))
                 .thenReturn(definition);
 
-        var result = facade.createWorkflowDefinition(TENANT_ID, request);
+        var result = facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.definitionId()).isEqualTo(definition.getId());
@@ -148,7 +151,7 @@ class TenantConfigWriteFacadeTest {
         when(commandService.createWorkflowDefinition(TENANT_ID, "Incident Flow", "INCIDENT", null))
                 .thenReturn(definition);
 
-        var result = facade.createWorkflowDefinition(TENANT_ID, request);
+        var result = facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID);
 
         assertThat(result.description()).isNull();
 
@@ -164,7 +167,7 @@ class TenantConfigWriteFacadeTest {
             when(commandService.createWorkflowDefinition(TENANT_ID, "Flow " + type, type, null))
                     .thenReturn(definition);
 
-            var result = facade.createWorkflowDefinition(TENANT_ID, request);
+            var result = facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID);
             assertThat(result.workItemType()).isEqualTo(type);
         }
     }
@@ -182,7 +185,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateRequest();
         request.setName("Name");
 
-        assertThatThrownBy(() -> facade.updateWorkflowDefinition(null, DEF_ID, request))
+        assertThatThrownBy(() -> facade.updateWorkflowDefinition(null, DEF_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -194,7 +197,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateRequest();
         request.setName("Name");
 
-        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, null, request))
+        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("definitionId");
 
@@ -203,7 +206,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void updateThrowsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, null))
+        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -214,7 +217,7 @@ class TenantConfigWriteFacadeTest {
     void updateThrowsIllegalArgumentWhenNoFieldProvided() {
         var request = updateRequest();
 
-        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request))
+        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Kamida bitta");
 
@@ -226,7 +229,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateRequest();
         request.setName("   ");
 
-        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request))
+        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name");
 
@@ -238,7 +241,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateRequest();
         request.setName(null);
 
-        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request))
+        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name");
 
@@ -259,7 +262,7 @@ class TenantConfigWriteFacadeTest {
                 eq("Updated Flow"), eq(true), eq("New desc"), eq(true)))
                 .thenReturn(definition);
 
-        var result = facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request);
+        var result = facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request, ACTOR_USER_ID);
 
         assertThat(result.name()).isEqualTo("Updated Flow");
         assertThat(result.description()).isEqualTo("New desc");
@@ -278,7 +281,7 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(false), eq("New desc"), eq(true)))
                 .thenReturn(definition);
 
-        var result = facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request);
+        var result = facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request, ACTOR_USER_ID);
 
         assertThat(result.name()).isEqualTo("Kept Name");
         assertThat(result.description()).isEqualTo("New desc");
@@ -296,7 +299,7 @@ class TenantConfigWriteFacadeTest {
                 eq("New Name"), eq(true), eq(null), eq(false)))
                 .thenReturn(definition);
 
-        var result = facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request);
+        var result = facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request, ACTOR_USER_ID);
 
         assertThat(result.name()).isEqualTo("New Name");
     }
@@ -313,7 +316,7 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(false), eq(null), eq(true)))
                 .thenReturn(definition);
 
-        facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request);
+        facade.updateWorkflowDefinition(TENANT_ID, DEF_ID, request, ACTOR_USER_ID);
 
         verify(commandService).updateWorkflowDefinition(
                 eq(TENANT_ID), eq(DEF_ID),
@@ -324,7 +327,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void activateThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.activateWorkflowDefinition(null, DEF_ID))
+        assertThatThrownBy(() -> facade.activateWorkflowDefinition(null, DEF_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -333,7 +336,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void activateThrowsIllegalArgumentWhenDefinitionIdNull() {
-        assertThatThrownBy(() -> facade.activateWorkflowDefinition(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.activateWorkflowDefinition(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("definitionId");
 
@@ -347,7 +350,7 @@ class TenantConfigWriteFacadeTest {
         when(commandService.activateWorkflowDefinition(TENANT_ID, DEF_ID))
                 .thenReturn(definition);
 
-        var result = facade.activateWorkflowDefinition(TENANT_ID, DEF_ID);
+        var result = facade.activateWorkflowDefinition(TENANT_ID, DEF_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.active()).isTrue();
@@ -358,7 +361,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deactivateThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.deactivateWorkflowDefinition(null, DEF_ID))
+        assertThatThrownBy(() -> facade.deactivateWorkflowDefinition(null, DEF_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -367,7 +370,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deactivateThrowsIllegalArgumentWhenDefinitionIdNull() {
-        assertThatThrownBy(() -> facade.deactivateWorkflowDefinition(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.deactivateWorkflowDefinition(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("definitionId");
 
@@ -382,7 +385,7 @@ class TenantConfigWriteFacadeTest {
         when(commandService.deactivateWorkflowDefinition(TENANT_ID, DEF_ID))
                 .thenReturn(definition);
 
-        var result = facade.deactivateWorkflowDefinition(TENANT_ID, DEF_ID);
+        var result = facade.deactivateWorkflowDefinition(TENANT_ID, DEF_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.active()).isFalse();
@@ -393,7 +396,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteWorkflowDefinitionThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.deleteWorkflowDefinition(null, DEF_ID))
+        assertThatThrownBy(() -> facade.deleteWorkflowDefinition(null, DEF_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -402,7 +405,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteWorkflowDefinitionThrowsIllegalArgumentWhenDefinitionIdNull() {
-        assertThatThrownBy(() -> facade.deleteWorkflowDefinition(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.deleteWorkflowDefinition(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("definitionId");
 
@@ -411,7 +414,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteWorkflowDefinitionDelegatesToCommandService() {
-        facade.deleteWorkflowDefinition(TENANT_ID, DEF_ID);
+        facade.deleteWorkflowDefinition(TENANT_ID, DEF_ID, ACTOR_USER_ID);
 
         verify(commandService).deleteWorkflowDefinition(TENANT_ID, DEF_ID);
     }
@@ -422,7 +425,7 @@ class TenantConfigWriteFacadeTest {
     void createChatBindingThrowsIllegalArgumentWhenTenantIdNull() {
         var request = new CreateChatBindingRequest(-1001234567890L, "Chat", "MAIN_GROUP");
 
-        assertThatThrownBy(() -> facade.createChatBinding(null, request))
+        assertThatThrownBy(() -> facade.createChatBinding(null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -431,7 +434,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void createChatBindingThrowsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, (CreateChatBindingRequest) null))
+        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, (CreateChatBindingRequest) null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -442,7 +445,7 @@ class TenantConfigWriteFacadeTest {
     void createChatBindingThrowsIllegalArgumentWhenChatIdNull() {
         var request = new CreateChatBindingRequest(null, "Chat", "MAIN_GROUP");
 
-        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("chatId");
 
@@ -453,7 +456,7 @@ class TenantConfigWriteFacadeTest {
     void createChatBindingThrowsIllegalArgumentWhenBindingTypeBlank() {
         var request = new CreateChatBindingRequest(-1001234567890L, "Chat", "  ");
 
-        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("bindingType");
 
@@ -464,7 +467,7 @@ class TenantConfigWriteFacadeTest {
     void createChatBindingThrowsIllegalArgumentWhenBindingTypeInvalid() {
         var request = new CreateChatBindingRequest(-1001234567890L, "Chat", "PRIVATE_CHAT");
 
-        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("bindingType");
 
@@ -482,7 +485,7 @@ class TenantConfigWriteFacadeTest {
                 TENANT_ID, -1001234567890L, "Dev Chat", ChatBindingType.MAIN_GROUP))
                 .thenReturn(binding);
 
-        var result = facade.createChatBinding(TENANT_ID, request);
+        var result = facade.createChatBinding(TENANT_ID, request, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.chatBindingId()).isEqualTo(binding.getId());
@@ -508,7 +511,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateChatBindingRequest();
         request.setChatTitle("Title");
 
-        assertThatThrownBy(() -> facade.updateChatBinding(null, CB_ID, request))
+        assertThatThrownBy(() -> facade.updateChatBinding(null, CB_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -520,7 +523,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateChatBindingRequest();
         request.setChatTitle("Title");
 
-        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, null, request))
+        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("chatBindingId");
 
@@ -529,7 +532,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void updateChatBindingThrowsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, CB_ID, (UpdateChatBindingRequest) null))
+        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, CB_ID, (UpdateChatBindingRequest) null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -540,7 +543,7 @@ class TenantConfigWriteFacadeTest {
     void updateChatBindingThrowsIllegalArgumentWhenNoFieldProvided() {
         var request = updateChatBindingRequest();
 
-        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, CB_ID, request))
+        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, CB_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Kamida bitta");
 
@@ -552,7 +555,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateChatBindingRequest();
         request.setBindingType("PRIVATE_CHAT");
 
-        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, CB_ID, request))
+        assertThatThrownBy(() -> facade.updateChatBinding(TENANT_ID, CB_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("bindingType");
 
@@ -573,7 +576,7 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(false)))
                 .thenReturn(binding);
 
-        var result = facade.updateChatBinding(TENANT_ID, CB_ID, request);
+        var result = facade.updateChatBinding(TENANT_ID, CB_ID, request, ACTOR_USER_ID);
 
         assertThat(result.chatTitle()).isEqualTo("New Title");
         assertThat(result.bindingType()).isEqualTo("MAIN_GROUP");
@@ -593,7 +596,7 @@ class TenantConfigWriteFacadeTest {
                 eq(ChatBindingType.NOTIFICATION_GROUP), eq(true)))
                 .thenReturn(binding);
 
-        var result = facade.updateChatBinding(TENANT_ID, CB_ID, request);
+        var result = facade.updateChatBinding(TENANT_ID, CB_ID, request, ACTOR_USER_ID);
 
         assertThat(result.bindingType()).isEqualTo("NOTIFICATION_GROUP");
     }
@@ -613,7 +616,7 @@ class TenantConfigWriteFacadeTest {
                 eq(ChatBindingType.MAIN_GROUP), eq(true)))
                 .thenReturn(binding);
 
-        var result = facade.updateChatBinding(TENANT_ID, CB_ID, request);
+        var result = facade.updateChatBinding(TENANT_ID, CB_ID, request, ACTOR_USER_ID);
 
         assertThat(result.chatTitle()).isEqualTo("Updated");
         assertThat(result.bindingType()).isEqualTo("MAIN_GROUP");
@@ -633,7 +636,7 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(false)))
                 .thenReturn(binding);
 
-        facade.updateChatBinding(TENANT_ID, CB_ID, request);
+        facade.updateChatBinding(TENANT_ID, CB_ID, request, ACTOR_USER_ID);
 
         verify(commandService).updateChatBinding(
                 eq(TENANT_ID), eq(CB_ID),
@@ -645,7 +648,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void activateChatBindingThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.activateChatBinding(null, CB_ID))
+        assertThatThrownBy(() -> facade.activateChatBinding(null, CB_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -654,7 +657,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void activateChatBindingThrowsIllegalArgumentWhenChatBindingIdNull() {
-        assertThatThrownBy(() -> facade.activateChatBinding(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.activateChatBinding(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("chatBindingId");
 
@@ -668,7 +671,7 @@ class TenantConfigWriteFacadeTest {
 
         when(commandService.activateChatBinding(TENANT_ID, CB_ID)).thenReturn(binding);
 
-        var result = facade.activateChatBinding(TENANT_ID, CB_ID);
+        var result = facade.activateChatBinding(TENANT_ID, CB_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.chatBindingId()).isEqualTo(binding.getId());
@@ -684,7 +687,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deactivateChatBindingThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.deactivateChatBinding(null, CB_ID))
+        assertThatThrownBy(() -> facade.deactivateChatBinding(null, CB_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -693,7 +696,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deactivateChatBindingThrowsIllegalArgumentWhenChatBindingIdNull() {
-        assertThatThrownBy(() -> facade.deactivateChatBinding(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.deactivateChatBinding(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("chatBindingId");
 
@@ -708,7 +711,7 @@ class TenantConfigWriteFacadeTest {
 
         when(commandService.deactivateChatBinding(TENANT_ID, CB_ID)).thenReturn(binding);
 
-        var result = facade.deactivateChatBinding(TENANT_ID, CB_ID);
+        var result = facade.deactivateChatBinding(TENANT_ID, CB_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.chatBindingId()).isEqualTo(binding.getId());
@@ -722,7 +725,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteChatBindingThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.deleteChatBinding(null, CB_ID))
+        assertThatThrownBy(() -> facade.deleteChatBinding(null, CB_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -731,7 +734,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteChatBindingThrowsIllegalArgumentWhenChatBindingIdNull() {
-        assertThatThrownBy(() -> facade.deleteChatBinding(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.deleteChatBinding(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("chatBindingId");
 
@@ -740,7 +743,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteChatBindingDelegatesToCommandService() {
-        facade.deleteChatBinding(TENANT_ID, CB_ID);
+        facade.deleteChatBinding(TENANT_ID, CB_ID, ACTOR_USER_ID);
 
         verify(commandService).deleteChatBinding(TENANT_ID, CB_ID);
     }
@@ -760,7 +763,7 @@ class TenantConfigWriteFacadeTest {
     void createTopicBindingThrowsIllegalArgumentWhenTenantIdNull() {
         var request = new CreateTopicBindingRequest(PARENT_CB_ID, 42L, "name", "BUG_TRIAGE");
 
-        assertThatThrownBy(() -> facade.createTopicBinding(null, request))
+        assertThatThrownBy(() -> facade.createTopicBinding(null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -769,7 +772,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void createTopicBindingThrowsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -780,7 +783,7 @@ class TenantConfigWriteFacadeTest {
     void createTopicBindingThrowsIllegalArgumentWhenChatBindingIdNull() {
         var request = new CreateTopicBindingRequest(null, 42L, "name", "BUG_TRIAGE");
 
-        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("chatBindingId");
 
@@ -791,7 +794,7 @@ class TenantConfigWriteFacadeTest {
     void createTopicBindingThrowsIllegalArgumentWhenTopicIdNull() {
         var request = new CreateTopicBindingRequest(PARENT_CB_ID, null, "name", "BUG_TRIAGE");
 
-        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("topicId");
 
@@ -802,7 +805,7 @@ class TenantConfigWriteFacadeTest {
     void createTopicBindingThrowsIllegalArgumentWhenPurposeBlank() {
         var request = new CreateTopicBindingRequest(PARENT_CB_ID, 42L, "name", "   ");
 
-        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createTopicBinding(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("purpose");
 
@@ -817,7 +820,7 @@ class TenantConfigWriteFacadeTest {
         when(commandService.createTopicBinding(TENANT_ID, PARENT_CB_ID, 42L, "bugs-topic", "BUG_TRIAGE"))
                 .thenReturn(binding);
 
-        var result = facade.createTopicBinding(TENANT_ID, request);
+        var result = facade.createTopicBinding(TENANT_ID, request, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.topicId()).isEqualTo(42L);
@@ -833,7 +836,7 @@ class TenantConfigWriteFacadeTest {
         var request = new UpdateTopicBindingRequest();
         request.setTopicName("x");
 
-        assertThatThrownBy(() -> facade.updateTopicBinding(null, TB_ID, request))
+        assertThatThrownBy(() -> facade.updateTopicBinding(null, TB_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -845,7 +848,7 @@ class TenantConfigWriteFacadeTest {
         var request = new UpdateTopicBindingRequest();
         request.setTopicName("x");
 
-        assertThatThrownBy(() -> facade.updateTopicBinding(TENANT_ID, null, request))
+        assertThatThrownBy(() -> facade.updateTopicBinding(TENANT_ID, null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("topicBindingId");
 
@@ -856,7 +859,7 @@ class TenantConfigWriteFacadeTest {
     void updateTopicBindingThrowsIllegalArgumentWhenNoFieldProvided() {
         var request = new UpdateTopicBindingRequest();
 
-        assertThatThrownBy(() -> facade.updateTopicBinding(TENANT_ID, TB_ID, request))
+        assertThatThrownBy(() -> facade.updateTopicBinding(TENANT_ID, TB_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Kamida bitta");
 
@@ -874,14 +877,14 @@ class TenantConfigWriteFacadeTest {
         when(commandService.updateTopicBinding(eq(TENANT_ID), eq(TB_ID), eq("new-name"), eq(true)))
                 .thenReturn(binding);
 
-        var result = facade.updateTopicBinding(TENANT_ID, TB_ID, request);
+        var result = facade.updateTopicBinding(TENANT_ID, TB_ID, request, ACTOR_USER_ID);
 
         assertThat(result.topicName()).isEqualTo("new-name");
     }
 
     @Test
     void activateTopicBindingThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.activateTopicBinding(null, TB_ID))
+        assertThatThrownBy(() -> facade.activateTopicBinding(null, TB_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -890,7 +893,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void activateTopicBindingThrowsIllegalArgumentWhenTopicBindingIdNull() {
-        assertThatThrownBy(() -> facade.activateTopicBinding(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.activateTopicBinding(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("topicBindingId");
 
@@ -902,7 +905,7 @@ class TenantConfigWriteFacadeTest {
         TelegramTopicBinding binding = sampleTopicBinding();
         when(commandService.activateTopicBinding(TENANT_ID, TB_ID)).thenReturn(binding);
 
-        var result = facade.activateTopicBinding(TENANT_ID, TB_ID);
+        var result = facade.activateTopicBinding(TENANT_ID, TB_ID, ACTOR_USER_ID);
 
         assertThat(result.active()).isTrue();
         verify(commandService).activateTopicBinding(TENANT_ID, TB_ID);
@@ -910,7 +913,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deactivateTopicBindingThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.deactivateTopicBinding(null, TB_ID))
+        assertThatThrownBy(() -> facade.deactivateTopicBinding(null, TB_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -919,7 +922,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deactivateTopicBindingThrowsIllegalArgumentWhenTopicBindingIdNull() {
-        assertThatThrownBy(() -> facade.deactivateTopicBinding(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.deactivateTopicBinding(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("topicBindingId");
 
@@ -932,7 +935,7 @@ class TenantConfigWriteFacadeTest {
         binding.setActive(false);
         when(commandService.deactivateTopicBinding(TENANT_ID, TB_ID)).thenReturn(binding);
 
-        var result = facade.deactivateTopicBinding(TENANT_ID, TB_ID);
+        var result = facade.deactivateTopicBinding(TENANT_ID, TB_ID, ACTOR_USER_ID);
 
         assertThat(result.active()).isFalse();
         verify(commandService).deactivateTopicBinding(TENANT_ID, TB_ID);
@@ -940,7 +943,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteTopicBindingThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.deleteTopicBinding(null, TB_ID))
+        assertThatThrownBy(() -> facade.deleteTopicBinding(null, TB_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -949,7 +952,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteTopicBindingThrowsIllegalArgumentWhenTopicBindingIdNull() {
-        assertThatThrownBy(() -> facade.deleteTopicBinding(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.deleteTopicBinding(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("topicBindingId");
 
@@ -958,7 +961,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteTopicBindingDelegatesToCommandService() {
-        facade.deleteTopicBinding(TENANT_ID, TB_ID);
+        facade.deleteTopicBinding(TENANT_ID, TB_ID, ACTOR_USER_ID);
 
         verify(commandService).deleteTopicBinding(TENANT_ID, TB_ID);
     }
@@ -969,7 +972,7 @@ class TenantConfigWriteFacadeTest {
     void createRoutingRuleThrowsIllegalArgumentWhenTenantIdNull() {
         var request = new CreateRoutingRuleRequest("Rule", "BUG", 10, null, null);
 
-        assertThatThrownBy(() -> facade.createRoutingRule(null, request))
+        assertThatThrownBy(() -> facade.createRoutingRule(null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -978,7 +981,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void createRoutingRuleThrowsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -989,7 +992,7 @@ class TenantConfigWriteFacadeTest {
     void createRoutingRuleThrowsIllegalArgumentWhenNameBlank() {
         var request = new CreateRoutingRuleRequest("  ", "BUG", 10, null, null);
 
-        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name");
 
@@ -1000,7 +1003,7 @@ class TenantConfigWriteFacadeTest {
     void createRoutingRuleThrowsIllegalArgumentWhenWorkItemTypeInvalid() {
         var request = new CreateRoutingRuleRequest("Rule", "FEATURE", 10, null, null);
 
-        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("workItemType");
 
@@ -1020,7 +1023,7 @@ class TenantConfigWriteFacadeTest {
                 TENANT_ID, "Route Bugs", "BUG", 10, topicBindingId, null))
                 .thenReturn(rule);
 
-        var result = facade.createRoutingRule(TENANT_ID, request);
+        var result = facade.createRoutingRule(TENANT_ID, request, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.ruleId()).isEqualTo(rule.getId());
@@ -1047,7 +1050,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateRuleRequest();
         request.setName("Name");
 
-        assertThatThrownBy(() -> facade.updateRoutingRule(null, RULE_ID, request))
+        assertThatThrownBy(() -> facade.updateRoutingRule(null, RULE_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -1059,7 +1062,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateRuleRequest();
         request.setName("Name");
 
-        assertThatThrownBy(() -> facade.updateRoutingRule(TENANT_ID, null, request))
+        assertThatThrownBy(() -> facade.updateRoutingRule(TENANT_ID, null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ruleId");
 
@@ -1068,7 +1071,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void updateRoutingRuleThrowsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.updateRoutingRule(TENANT_ID, RULE_ID, null))
+        assertThatThrownBy(() -> facade.updateRoutingRule(TENANT_ID, RULE_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -1079,7 +1082,7 @@ class TenantConfigWriteFacadeTest {
     void updateRoutingRuleThrowsIllegalArgumentWhenNoFieldProvided() {
         var request = updateRuleRequest();
 
-        assertThatThrownBy(() -> facade.updateRoutingRule(TENANT_ID, RULE_ID, request))
+        assertThatThrownBy(() -> facade.updateRoutingRule(TENANT_ID, RULE_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Kamida bitta");
 
@@ -1091,7 +1094,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateRuleRequest();
         request.setPriority(null);
 
-        assertThatThrownBy(() -> facade.updateRoutingRule(TENANT_ID, RULE_ID, request))
+        assertThatThrownBy(() -> facade.updateRoutingRule(TENANT_ID, RULE_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("priority");
 
@@ -1103,7 +1106,7 @@ class TenantConfigWriteFacadeTest {
         var request = updateRuleRequest();
         request.setName("   ");
 
-        assertThatThrownBy(() -> facade.updateRoutingRule(TENANT_ID, RULE_ID, request))
+        assertThatThrownBy(() -> facade.updateRoutingRule(TENANT_ID, RULE_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name");
 
@@ -1126,7 +1129,7 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(false)))
                 .thenReturn(rule);
 
-        var result = facade.updateRoutingRule(TENANT_ID, RULE_ID, request);
+        var result = facade.updateRoutingRule(TENANT_ID, RULE_ID, request, ACTOR_USER_ID);
 
         assertThat(result.name()).isEqualTo("New Name");
         assertThat(result.ruleId()).isEqualTo(rule.getId());
@@ -1148,7 +1151,7 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(false)))
                 .thenReturn(rule);
 
-        var result = facade.updateRoutingRule(TENANT_ID, RULE_ID, request);
+        var result = facade.updateRoutingRule(TENANT_ID, RULE_ID, request, ACTOR_USER_ID);
 
         assertThat(result.priority()).isEqualTo(50);
     }
@@ -1170,7 +1173,7 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(false)))
                 .thenReturn(rule);
 
-        var result = facade.updateRoutingRule(TENANT_ID, RULE_ID, request);
+        var result = facade.updateRoutingRule(TENANT_ID, RULE_ID, request, ACTOR_USER_ID);
 
         assertThat(result.targetTopicBindingId()).isEqualTo(topicId);
     }
@@ -1190,7 +1193,7 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(false)))
                 .thenReturn(rule);
 
-        facade.updateRoutingRule(TENANT_ID, RULE_ID, request);
+        facade.updateRoutingRule(TENANT_ID, RULE_ID, request, ACTOR_USER_ID);
 
         verify(commandService).updateRoutingRule(
                 eq(TENANT_ID), eq(RULE_ID),
@@ -1216,7 +1219,7 @@ class TenantConfigWriteFacadeTest {
                 eq("severity == LOW"), eq(true)))
                 .thenReturn(rule);
 
-        var result = facade.updateRoutingRule(TENANT_ID, RULE_ID, request);
+        var result = facade.updateRoutingRule(TENANT_ID, RULE_ID, request, ACTOR_USER_ID);
 
         assertThat(result.conditionExpression()).isEqualTo("severity == LOW");
     }
@@ -1236,7 +1239,7 @@ class TenantConfigWriteFacadeTest {
                 eq(null), eq(true)))
                 .thenReturn(rule);
 
-        facade.updateRoutingRule(TENANT_ID, RULE_ID, request);
+        facade.updateRoutingRule(TENANT_ID, RULE_ID, request, ACTOR_USER_ID);
 
         verify(commandService).updateRoutingRule(
                 eq(TENANT_ID), eq(RULE_ID),
@@ -1250,7 +1253,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void activateRoutingRuleThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.activateRoutingRule(null, RULE_ID))
+        assertThatThrownBy(() -> facade.activateRoutingRule(null, RULE_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -1259,7 +1262,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void activateRoutingRuleThrowsIllegalArgumentWhenRuleIdNull() {
-        assertThatThrownBy(() -> facade.activateRoutingRule(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.activateRoutingRule(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ruleId");
 
@@ -1273,7 +1276,7 @@ class TenantConfigWriteFacadeTest {
 
         when(commandService.activateRoutingRule(TENANT_ID, RULE_ID)).thenReturn(rule);
 
-        var result = facade.activateRoutingRule(TENANT_ID, RULE_ID);
+        var result = facade.activateRoutingRule(TENANT_ID, RULE_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.ruleId()).isEqualTo(rule.getId());
@@ -1287,7 +1290,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deactivateRoutingRuleThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.deactivateRoutingRule(null, RULE_ID))
+        assertThatThrownBy(() -> facade.deactivateRoutingRule(null, RULE_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -1296,7 +1299,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deactivateRoutingRuleThrowsIllegalArgumentWhenRuleIdNull() {
-        assertThatThrownBy(() -> facade.deactivateRoutingRule(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.deactivateRoutingRule(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ruleId");
 
@@ -1311,7 +1314,7 @@ class TenantConfigWriteFacadeTest {
 
         when(commandService.deactivateRoutingRule(TENANT_ID, RULE_ID)).thenReturn(rule);
 
-        var result = facade.deactivateRoutingRule(TENANT_ID, RULE_ID);
+        var result = facade.deactivateRoutingRule(TENANT_ID, RULE_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.ruleId()).isEqualTo(rule.getId());
@@ -1324,7 +1327,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteRoutingRuleThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.deleteRoutingRule(null, RULE_ID))
+        assertThatThrownBy(() -> facade.deleteRoutingRule(null, RULE_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -1333,7 +1336,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteRoutingRuleThrowsIllegalArgumentWhenRuleIdNull() {
-        assertThatThrownBy(() -> facade.deleteRoutingRule(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.deleteRoutingRule(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ruleId");
 
@@ -1342,7 +1345,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteRoutingRuleDelegatesToCommandService() {
-        facade.deleteRoutingRule(TENANT_ID, RULE_ID);
+        facade.deleteRoutingRule(TENANT_ID, RULE_ID, ACTOR_USER_ID);
 
         verify(commandService).deleteRoutingRule(TENANT_ID, RULE_ID);
     }
@@ -1356,7 +1359,7 @@ class TenantConfigWriteFacadeTest {
     void createMembershipThrowsIllegalArgumentWhenTenantIdNull() {
         var request = new CreateMembershipRequest(USER_ID);
 
-        assertThatThrownBy(() -> facade.createMembership(null, request))
+        assertThatThrownBy(() -> facade.createMembership(null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -1365,7 +1368,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void createMembershipThrowsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.createMembership(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.createMembership(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -1376,7 +1379,7 @@ class TenantConfigWriteFacadeTest {
     void createMembershipThrowsIllegalArgumentWhenUserIdNull() {
         var request = new CreateMembershipRequest(null);
 
-        assertThatThrownBy(() -> facade.createMembership(TENANT_ID, request))
+        assertThatThrownBy(() -> facade.createMembership(TENANT_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("userId");
 
@@ -1389,7 +1392,7 @@ class TenantConfigWriteFacadeTest {
 
         when(identityCommandService.createMembership(TENANT_ID, USER_ID)).thenReturn(membership);
 
-        var result = facade.createMembership(TENANT_ID, new CreateMembershipRequest(USER_ID));
+        var result = facade.createMembership(TENANT_ID, new CreateMembershipRequest(USER_ID), ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.userId()).isEqualTo(USER_ID);
@@ -1400,7 +1403,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void activateMembershipThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.activateMembership(null, MEMBERSHIP_ID))
+        assertThatThrownBy(() -> facade.activateMembership(null, MEMBERSHIP_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -1409,7 +1412,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void activateMembershipThrowsIllegalArgumentWhenMembershipIdNull() {
-        assertThatThrownBy(() -> facade.activateMembership(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.activateMembership(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("membershipId");
 
@@ -1423,7 +1426,7 @@ class TenantConfigWriteFacadeTest {
 
         when(identityCommandService.activateMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(membership);
 
-        var result = facade.activateMembership(TENANT_ID, MEMBERSHIP_ID);
+        var result = facade.activateMembership(TENANT_ID, MEMBERSHIP_ID, ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.userId()).isEqualTo(USER_ID);
@@ -1434,7 +1437,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void suspendMembershipThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.suspendMembership(null, MEMBERSHIP_ID))
+        assertThatThrownBy(() -> facade.suspendMembership(null, MEMBERSHIP_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -1443,7 +1446,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void suspendMembershipThrowsIllegalArgumentWhenMembershipIdNull() {
-        assertThatThrownBy(() -> facade.suspendMembership(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.suspendMembership(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("membershipId");
 
@@ -1457,7 +1460,7 @@ class TenantConfigWriteFacadeTest {
 
         when(identityCommandService.suspendMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(membership);
 
-        var result = facade.suspendMembership(TENANT_ID, MEMBERSHIP_ID);
+        var result = facade.suspendMembership(TENANT_ID, MEMBERSHIP_ID, ACTOR_USER_ID);
 
         assertThat(result.status()).isEqualTo("SUSPENDED");
         verify(identityCommandService).suspendMembership(TENANT_ID, MEMBERSHIP_ID);
@@ -1465,7 +1468,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void removeMembershipThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.removeMembership(null, MEMBERSHIP_ID))
+        assertThatThrownBy(() -> facade.removeMembership(null, MEMBERSHIP_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -1474,7 +1477,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void removeMembershipThrowsIllegalArgumentWhenMembershipIdNull() {
-        assertThatThrownBy(() -> facade.removeMembership(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.removeMembership(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("membershipId");
 
@@ -1488,7 +1491,7 @@ class TenantConfigWriteFacadeTest {
 
         when(identityCommandService.removeMembership(TENANT_ID, MEMBERSHIP_ID)).thenReturn(membership);
 
-        var result = facade.removeMembership(TENANT_ID, MEMBERSHIP_ID);
+        var result = facade.removeMembership(TENANT_ID, MEMBERSHIP_ID, ACTOR_USER_ID);
 
         assertThat(result.status()).isEqualTo("REMOVED");
         verify(identityCommandService).removeMembership(TENANT_ID, MEMBERSHIP_ID);
@@ -1502,7 +1505,7 @@ class TenantConfigWriteFacadeTest {
     void assignRoleToMembershipThrowsIllegalArgumentWhenTenantIdNull() {
         var request = new CreateMembershipRoleBindingRequest(ROLE_ID);
 
-        assertThatThrownBy(() -> facade.assignRoleToMembership(null, MEMBERSHIP_ID, request))
+        assertThatThrownBy(() -> facade.assignRoleToMembership(null, MEMBERSHIP_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -1513,7 +1516,7 @@ class TenantConfigWriteFacadeTest {
     void assignRoleToMembershipThrowsIllegalArgumentWhenMembershipIdNull() {
         var request = new CreateMembershipRoleBindingRequest(ROLE_ID);
 
-        assertThatThrownBy(() -> facade.assignRoleToMembership(TENANT_ID, null, request))
+        assertThatThrownBy(() -> facade.assignRoleToMembership(TENANT_ID, null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("membershipId");
 
@@ -1522,7 +1525,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void assignRoleToMembershipThrowsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, null))
+        assertThatThrownBy(() -> facade.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -1533,7 +1536,7 @@ class TenantConfigWriteFacadeTest {
     void assignRoleToMembershipThrowsIllegalArgumentWhenRoleIdNull() {
         var request = new CreateMembershipRoleBindingRequest(null);
 
-        assertThatThrownBy(() -> facade.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, request))
+        assertThatThrownBy(() -> facade.assignRoleToMembership(TENANT_ID, MEMBERSHIP_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("roleId");
 
@@ -1550,7 +1553,7 @@ class TenantConfigWriteFacadeTest {
                 .thenReturn(binding);
 
         var result = facade.assignRoleToMembership(
-                TENANT_ID, MEMBERSHIP_ID, new CreateMembershipRoleBindingRequest(ROLE_ID));
+                TENANT_ID, MEMBERSHIP_ID, new CreateMembershipRoleBindingRequest(ROLE_ID), ACTOR_USER_ID);
 
         assertThat(result.tenantId()).isEqualTo(TENANT_ID);
         assertThat(result.membershipId()).isEqualTo(MEMBERSHIP_ID);
@@ -1562,7 +1565,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void unassignRoleFromMembershipThrowsIllegalArgumentWhenTenantIdNull() {
-        assertThatThrownBy(() -> facade.unassignRoleFromMembership(null, MEMBERSHIP_ID, ROLE_ID))
+        assertThatThrownBy(() -> facade.unassignRoleFromMembership(null, MEMBERSHIP_ID, ROLE_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -1571,7 +1574,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void unassignRoleFromMembershipThrowsIllegalArgumentWhenMembershipIdNull() {
-        assertThatThrownBy(() -> facade.unassignRoleFromMembership(TENANT_ID, null, ROLE_ID))
+        assertThatThrownBy(() -> facade.unassignRoleFromMembership(TENANT_ID, null, ROLE_ID, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("membershipId");
 
@@ -1580,7 +1583,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void unassignRoleFromMembershipThrowsIllegalArgumentWhenRoleIdNull() {
-        assertThatThrownBy(() -> facade.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, null))
+        assertThatThrownBy(() -> facade.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("roleId");
 
@@ -1589,7 +1592,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void unassignRoleFromMembershipDelegatesToIdentityCommandService() {
-        facade.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
+        facade.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID, ACTOR_USER_ID);
 
         verify(identityCommandService).unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, ROLE_ID);
     }
@@ -1598,7 +1601,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void createRoleThrowsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.createRole(null))
+        assertThatThrownBy(() -> facade.createRole(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -1607,7 +1610,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void createRoleThrowsIllegalArgumentWhenCodeNull() {
-        assertThatThrownBy(() -> facade.createRole(new CreateRoleRequest(null, "Name", null)))
+        assertThatThrownBy(() -> facade.createRole(TENANT_ID, new CreateRoleRequest(null, "Name", null), ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("code");
 
@@ -1616,7 +1619,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void createRoleThrowsIllegalArgumentWhenCodeBlank() {
-        assertThatThrownBy(() -> facade.createRole(new CreateRoleRequest("  ", "Name", null)))
+        assertThatThrownBy(() -> facade.createRole(TENANT_ID, new CreateRoleRequest("  ", "Name", null), ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("code");
 
@@ -1625,7 +1628,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void createRoleThrowsIllegalArgumentWhenNameNull() {
-        assertThatThrownBy(() -> facade.createRole(new CreateRoleRequest("CODE", null, null)))
+        assertThatThrownBy(() -> facade.createRole(TENANT_ID, new CreateRoleRequest("CODE", null, null), ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name");
 
@@ -1634,7 +1637,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void createRoleThrowsIllegalArgumentWhenNameBlank() {
-        assertThatThrownBy(() -> facade.createRole(new CreateRoleRequest("CODE", "  ", null)))
+        assertThatThrownBy(() -> facade.createRole(TENANT_ID, new CreateRoleRequest("CODE", "  ", null), ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name");
 
@@ -1647,7 +1650,7 @@ class TenantConfigWriteFacadeTest {
         when(identityCommandService.createRole("BUG_REVIEWER", "Bug Reviewer", "desc"))
                 .thenReturn(role);
 
-        var result = facade.createRole(new CreateRoleRequest("BUG_REVIEWER", "Bug Reviewer", "desc"));
+        var result = facade.createRole(TENANT_ID, new CreateRoleRequest("BUG_REVIEWER", "Bug Reviewer", "desc"), ACTOR_USER_ID);
 
         assertThat(result.code()).isEqualTo("BUG_REVIEWER");
         assertThat(result.name()).isEqualTo("Bug Reviewer");
@@ -1662,7 +1665,7 @@ class TenantConfigWriteFacadeTest {
         var request = new UpdateRoleRequest();
         request.setName("Test");
 
-        assertThatThrownBy(() -> facade.updateRole(null, request))
+        assertThatThrownBy(() -> facade.updateRole(TENANT_ID, null, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("roleId");
 
@@ -1671,7 +1674,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void updateRoleThrowsIllegalArgumentWhenRequestNull() {
-        assertThatThrownBy(() -> facade.updateRole(ROLE_ID, null))
+        assertThatThrownBy(() -> facade.updateRole(TENANT_ID, ROLE_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Request");
 
@@ -1680,7 +1683,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void updateRoleThrowsIllegalArgumentWhenNoFieldProvided() {
-        assertThatThrownBy(() -> facade.updateRole(ROLE_ID, new UpdateRoleRequest()))
+        assertThatThrownBy(() -> facade.updateRole(TENANT_ID, ROLE_ID, new UpdateRoleRequest(), ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("field");
 
@@ -1692,7 +1695,7 @@ class TenantConfigWriteFacadeTest {
         var request = new UpdateRoleRequest();
         request.setName("  ");
 
-        assertThatThrownBy(() -> facade.updateRole(ROLE_ID, request))
+        assertThatThrownBy(() -> facade.updateRole(TENANT_ID, ROLE_ID, request, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name");
 
@@ -1708,7 +1711,7 @@ class TenantConfigWriteFacadeTest {
         var request = new UpdateRoleRequest();
         request.setName("Updated Name");
 
-        var result = facade.updateRole(ROLE_ID, request);
+        var result = facade.updateRole(TENANT_ID, ROLE_ID, request, ACTOR_USER_ID);
 
         assertThat(result.name()).isEqualTo("Updated Name");
         verify(identityCommandService).updateRole(ROLE_ID, "Updated Name", true, null, false);
@@ -1716,7 +1719,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void activateRoleThrowsIllegalArgumentWhenRoleIdNull() {
-        assertThatThrownBy(() -> facade.activateRole(null))
+        assertThatThrownBy(() -> facade.activateRole(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("roleId");
 
@@ -1728,7 +1731,7 @@ class TenantConfigWriteFacadeTest {
         Role role = new Role("BUG_TRIAGER", "Bug Triager", false);
         when(identityCommandService.activateRole(ROLE_ID)).thenReturn(role);
 
-        var result = facade.activateRole(ROLE_ID);
+        var result = facade.activateRole(TENANT_ID, ROLE_ID, ACTOR_USER_ID);
 
         assertThat(result.code()).isEqualTo("BUG_TRIAGER");
         verify(identityCommandService).activateRole(ROLE_ID);
@@ -1736,7 +1739,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deactivateRoleThrowsIllegalArgumentWhenRoleIdNull() {
-        assertThatThrownBy(() -> facade.deactivateRole(null))
+        assertThatThrownBy(() -> facade.deactivateRole(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("roleId");
 
@@ -1749,7 +1752,7 @@ class TenantConfigWriteFacadeTest {
         role.setActive(false);
         when(identityCommandService.deactivateRole(ROLE_ID)).thenReturn(role);
 
-        var result = facade.deactivateRole(ROLE_ID);
+        var result = facade.deactivateRole(TENANT_ID, ROLE_ID, ACTOR_USER_ID);
 
         assertThat(result.active()).isFalse();
         verify(identityCommandService).deactivateRole(ROLE_ID);
@@ -1759,7 +1762,7 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteRoleThrowsIllegalArgumentWhenRoleIdNull() {
-        assertThatThrownBy(() -> facade.deleteRole(null))
+        assertThatThrownBy(() -> facade.deleteRole(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("roleId");
 
@@ -1768,8 +1771,91 @@ class TenantConfigWriteFacadeTest {
 
     @Test
     void deleteRoleDelegatesToIdentityCommandService() {
-        facade.deleteRole(ROLE_ID);
+        facade.deleteRole(TENANT_ID, ROLE_ID, ACTOR_USER_ID);
 
         verify(identityCommandService).deleteRole(ROLE_ID);
+    }
+
+    // ========== Authorization enforcement ==========
+
+    @Test
+    void createWorkflowDefinitionCallsAuthorizeWrite() {
+        var request = new CreateWorkflowDefinitionRequest("Test", "BUG", null);
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getTenantId()).thenReturn(TENANT_ID);
+        when(def.getId()).thenReturn(DEF_ID);
+        when(def.getName()).thenReturn("Test");
+        when(def.getWorkItemType()).thenReturn("BUG");
+        when(def.isActive()).thenReturn(true);
+        when(def.getCreatedAt()).thenReturn(java.time.Instant.now());
+        when(commandService.createWorkflowDefinition(TENANT_ID, "Test", "BUG", null)).thenReturn(def);
+
+        facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void createWorkflowDefinitionDeniedWhenAuthorizationFails() {
+        var request = new CreateWorkflowDefinitionRequest("Test", "BUG", null);
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void deleteChatBindingCallsAuthorizeWrite() {
+        facade.deleteChatBinding(TENANT_ID, CB_ID, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void createRoutingRuleDeniedWhenAuthorizationFails() {
+        var request = new CreateRoutingRuleRequest("Rule", "BUG", 10, null, null);
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createMembershipCallsAuthorizeWrite() {
+        var request = new CreateMembershipRequest(USER_ID);
+        com.engops.platform.identity.model.Membership membership = mock(com.engops.platform.identity.model.Membership.class);
+        when(membership.getTenantId()).thenReturn(TENANT_ID);
+        when(membership.getId()).thenReturn(MEMBERSHIP_ID);
+        when(membership.getUserId()).thenReturn(USER_ID);
+        when(membership.getStatus()).thenReturn(com.engops.platform.identity.model.MembershipStatus.ACTIVE);
+        when(membership.getCreatedAt()).thenReturn(java.time.Instant.now());
+        when(identityCommandService.createMembership(TENANT_ID, USER_ID)).thenReturn(membership);
+
+        facade.createMembership(TENANT_ID, request, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void createRoleCallsAuthorizeWrite() {
+        var request = new CreateRoleRequest("CODE", "Name", null);
+        Role role = mock(Role.class);
+        when(role.getId()).thenReturn(ROLE_ID);
+        when(role.getCode()).thenReturn("CODE");
+        when(role.getName()).thenReturn("Name");
+        when(role.isSystemRole()).thenReturn(false);
+        when(role.isActive()).thenReturn(true);
+        when(role.getCreatedAt()).thenReturn(java.time.Instant.now());
+        when(identityCommandService.createRole("CODE", "Name", null)).thenReturn(role);
+
+        facade.createRole(TENANT_ID, request, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
     }
 }

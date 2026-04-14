@@ -52,11 +52,14 @@ public class TenantConfigDetailsFacade {
 
     private final TenantConfigQueryService tenantConfigQueryService;
     private final IdentityQueryService identityQueryService;
+    private final AdminAuthorizationService authorizationService;
 
     public TenantConfigDetailsFacade(TenantConfigQueryService tenantConfigQueryService,
-                                      IdentityQueryService identityQueryService) {
+                                      IdentityQueryService identityQueryService,
+                                      AdminAuthorizationService authorizationService) {
         this.tenantConfigQueryService = tenantConfigQueryService;
         this.identityQueryService = identityQueryService;
+        this.authorizationService = authorizationService;
     }
 
     /**
@@ -67,10 +70,11 @@ public class TenantConfigDetailsFacade {
      * @throws IllegalArgumentException agar tenantId null bo'lsa
      * @throws ResourceNotFoundException agar tenant topilmasa
      */
-    public TenantConfigDetailsView getDetails(UUID tenantId) {
+    public TenantConfigDetailsView getDetails(UUID tenantId, UUID actorUserId) {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         Tenant tenant = tenantConfigQueryService.findTenantById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
@@ -127,10 +131,11 @@ public class TenantConfigDetailsFacade {
      * @throws IllegalArgumentException agar tenantId null bo'lsa
      * @throws ResourceNotFoundException agar tenant topilmasa
      */
-    public RoleListView getRoles(UUID tenantId) {
+    public RoleListView getRoles(UUID tenantId, UUID actorUserId) {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         tenantConfigQueryService.findTenantById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
@@ -180,10 +185,11 @@ public class TenantConfigDetailsFacade {
      * @throws IllegalArgumentException agar tenantId null bo'lsa
      * @throws ResourceNotFoundException agar tenant topilmasa
      */
-    public MembershipListView getMemberships(UUID tenantId) {
+    public MembershipListView getMemberships(UUID tenantId, UUID actorUserId) {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         tenantConfigQueryService.findTenantById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
@@ -258,10 +264,11 @@ public class TenantConfigDetailsFacade {
      * @throws IllegalArgumentException agar tenantId null bo'lsa
      * @throws ResourceNotFoundException agar tenant topilmasa
      */
-    public WorkflowDefinitionListView getWorkflowDefinitions(UUID tenantId) {
+    public WorkflowDefinitionListView getWorkflowDefinitions(UUID tenantId, UUID actorUserId) {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         tenantConfigQueryService.findTenantById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
@@ -294,10 +301,11 @@ public class TenantConfigDetailsFacade {
      * @throws IllegalArgumentException agar tenantId null bo'lsa
      * @throws ResourceNotFoundException agar tenant topilmasa
      */
-    public RoutingRuleListView getRoutingRules(UUID tenantId) {
+    public RoutingRuleListView getRoutingRules(UUID tenantId, UUID actorUserId) {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         tenantConfigQueryService.findTenantById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
@@ -335,10 +343,11 @@ public class TenantConfigDetailsFacade {
      * @throws IllegalArgumentException agar tenantId null bo'lsa
      * @throws ResourceNotFoundException agar tenant topilmasa
      */
-    public ChatBindingListView getChatBindings(UUID tenantId) {
+    public ChatBindingListView getChatBindings(UUID tenantId, UUID actorUserId) {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         tenantConfigQueryService.findTenantById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
@@ -380,10 +389,11 @@ public class TenantConfigDetailsFacade {
      * @throws IllegalArgumentException agar tenantId null bo'lsa
      * @throws ResourceNotFoundException agar tenant topilmasa
      */
-    public TopicBindingListView getTopicBindings(UUID tenantId) {
+    public TopicBindingListView getTopicBindings(UUID tenantId, UUID actorUserId) {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         tenantConfigQueryService.findTenantById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
