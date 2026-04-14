@@ -1858,4 +1858,120 @@ class TenantConfigWriteFacadeTest {
 
         verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
     }
+
+    // ========== Validation-before-authorization ordering contract ==========
+
+    @Test
+    void createWorkflowDefinitionNullRequestSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowDefinitionBlankNameSkipsAuthorization() {
+        var request = new CreateWorkflowDefinitionRequest("  ", "BUG", null);
+
+        assertThatThrownBy(() -> facade.createWorkflowDefinition(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void updateWorkflowDefinitionNullDefinitionIdSkipsAuthorization() {
+        var request = mock(UpdateWorkflowDefinitionRequest.class);
+        when(request.isNameProvided()).thenReturn(true);
+        when(request.getName()).thenReturn("New Name");
+
+        assertThatThrownBy(() -> facade.updateWorkflowDefinition(TENANT_ID, null, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void activateWorkflowDefinitionNullDefinitionIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.activateWorkflowDefinition(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void deleteWorkflowDefinitionNullDefinitionIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.deleteWorkflowDefinition(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createChatBindingNullRequestSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.createChatBinding(TENANT_ID, (CreateChatBindingRequest) null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void activateChatBindingNullIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.activateChatBinding(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createMembershipNullRequestSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.createMembership(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void assignRoleNullMembershipIdSkipsAuthorization() {
+        var request = new CreateMembershipRoleBindingRequest(ROLE_ID);
+
+        assertThatThrownBy(() -> facade.assignRoleToMembership(TENANT_ID, null, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void unassignRoleNullRoleIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.unassignRoleFromMembership(TENANT_ID, MEMBERSHIP_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createRoutingRuleInvalidWorkItemTypeSkipsAuthorization() {
+        var request = new CreateRoutingRuleRequest("Rule", "INVALID", 10, null, null);
+
+        assertThatThrownBy(() -> facade.createRoutingRule(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createRoleNullRequestSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.createRole(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void deleteRoleNullRoleIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.deleteRole(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
 }

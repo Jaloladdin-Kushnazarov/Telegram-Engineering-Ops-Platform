@@ -1064,6 +1064,24 @@ class TenantConfigDetailsFacadeTest {
         verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
     }
 
+    // ========== Validation-before-authorization ordering contract ==========
+
+    @Test
+    void getDetailsNullTenantIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.getDetails(null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void getWorkflowDefinitionsNullTenantIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.getWorkflowDefinitions(null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
     // ========== Helpers ==========
 
     private Tenant mockTenant() {

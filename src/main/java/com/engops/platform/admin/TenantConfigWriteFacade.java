@@ -66,7 +66,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (request == null) {
             throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
         }
@@ -80,6 +79,7 @@ public class TenantConfigWriteFacade {
             throw new IllegalArgumentException(
                     "workItemType faqat BUG, INCIDENT, TASK bo'lishi mumkin: " + request.workItemType());
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         WorkflowDefinition definition = commandService.createWorkflowDefinition(
                 tenantId, request.name(), request.workItemType(), request.description());
@@ -115,7 +115,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (definitionId == null) {
             throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
         }
@@ -128,6 +127,7 @@ public class TenantConfigWriteFacade {
         if (request.isNameProvided() && (request.getName() == null || request.getName().isBlank())) {
             throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         WorkflowDefinition definition = commandService.updateWorkflowDefinition(
                 tenantId, definitionId,
@@ -157,10 +157,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (definitionId == null) {
             throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         WorkflowDefinition definition = commandService.activateWorkflowDefinition(tenantId, definitionId);
         return toUpdatedView(definition);
@@ -179,10 +179,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (definitionId == null) {
             throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         WorkflowDefinition definition = commandService.deactivateWorkflowDefinition(tenantId, definitionId);
         return toUpdatedView(definition);
@@ -210,10 +210,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (definitionId == null) {
             throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         commandService.deleteWorkflowDefinition(tenantId, definitionId);
     }
@@ -234,7 +234,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (request == null) {
             throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
         }
@@ -248,6 +247,7 @@ public class TenantConfigWriteFacade {
             throw new IllegalArgumentException(
                     "bindingType faqat MAIN_GROUP, NOTIFICATION_GROUP bo'lishi mumkin: " + request.bindingType());
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         TelegramChatBinding binding = commandService.createChatBinding(
                 tenantId, request.chatId(), request.chatTitle(),
@@ -278,7 +278,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (chatBindingId == null) {
             throw new IllegalArgumentException("chatBindingId null bo'lishi mumkin emas");
         }
@@ -298,6 +297,7 @@ public class TenantConfigWriteFacade {
                                 + request.getBindingType());
             }
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         ChatBindingType bindingType = request.isBindingTypeProvided()
                 ? ChatBindingType.valueOf(request.getBindingType()) : null;
@@ -330,10 +330,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (chatBindingId == null) {
             throw new IllegalArgumentException("chatBindingId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         TelegramChatBinding binding = commandService.activateChatBinding(tenantId, chatBindingId);
         return toChatBindingView(binding);
@@ -352,10 +352,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (chatBindingId == null) {
             throw new IllegalArgumentException("chatBindingId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         TelegramChatBinding binding = commandService.deactivateChatBinding(tenantId, chatBindingId);
         return toChatBindingView(binding);
@@ -372,10 +372,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (chatBindingId == null) {
             throw new IllegalArgumentException("chatBindingId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         commandService.deleteChatBinding(tenantId, chatBindingId);
     }
@@ -419,7 +419,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (request == null) {
             throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
         }
@@ -432,6 +431,7 @@ public class TenantConfigWriteFacade {
         if (request.purpose() == null || request.purpose().isBlank()) {
             throw new IllegalArgumentException("purpose null yoki bo'sh bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         TelegramTopicBinding binding = commandService.createTopicBinding(
                 tenantId, request.chatBindingId(), request.topicId(),
@@ -455,7 +455,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (topicBindingId == null) {
             throw new IllegalArgumentException("topicBindingId null bo'lishi mumkin emas");
         }
@@ -465,6 +464,7 @@ public class TenantConfigWriteFacade {
         if (!request.isTopicNameProvided()) {
             throw new IllegalArgumentException("Kamida bitta yangilanuvchi field berilishi kerak");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         TelegramTopicBinding binding = commandService.updateTopicBinding(
                 tenantId, topicBindingId,
@@ -486,10 +486,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (topicBindingId == null) {
             throw new IllegalArgumentException("topicBindingId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         TelegramTopicBinding binding = commandService.activateTopicBinding(tenantId, topicBindingId);
         return toTopicBindingView(tenantId, binding);
@@ -508,10 +508,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (topicBindingId == null) {
             throw new IllegalArgumentException("topicBindingId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         TelegramTopicBinding binding = commandService.deactivateTopicBinding(tenantId, topicBindingId);
         return toTopicBindingView(tenantId, binding);
@@ -528,10 +528,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (topicBindingId == null) {
             throw new IllegalArgumentException("topicBindingId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         commandService.deleteTopicBinding(tenantId, topicBindingId);
     }
@@ -578,7 +578,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (request == null) {
             throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
         }
@@ -592,6 +591,7 @@ public class TenantConfigWriteFacade {
             throw new IllegalArgumentException(
                     "workItemType faqat BUG, INCIDENT, TASK bo'lishi mumkin: " + request.workItemType());
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         RoutingRule rule = commandService.createRoutingRule(
                 tenantId, request.name(), request.workItemType(),
@@ -632,7 +632,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (ruleId == null) {
             throw new IllegalArgumentException("ruleId null bo'lishi mumkin emas");
         }
@@ -649,6 +648,7 @@ public class TenantConfigWriteFacade {
         if (request.isPriorityProvided() && request.getPriority() == null) {
             throw new IllegalArgumentException("priority null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         RoutingRule rule = commandService.updateRoutingRule(
                 tenantId, ruleId,
@@ -681,10 +681,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (ruleId == null) {
             throw new IllegalArgumentException("ruleId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         RoutingRule rule = commandService.activateRoutingRule(tenantId, ruleId);
         return toRoutingRuleUpdatedView(rule);
@@ -703,10 +703,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (ruleId == null) {
             throw new IllegalArgumentException("ruleId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         RoutingRule rule = commandService.deactivateRoutingRule(tenantId, ruleId);
         return toRoutingRuleUpdatedView(rule);
@@ -723,10 +723,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (ruleId == null) {
             throw new IllegalArgumentException("ruleId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         commandService.deleteRoutingRule(tenantId, ruleId);
     }
@@ -808,13 +808,13 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (request == null) {
             throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
         }
         if (request.userId() == null) {
             throw new IllegalArgumentException("userId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         Membership membership = identityCommandService.createMembership(tenantId, request.userId());
         return toMembershipStatusView(membership);
@@ -833,10 +833,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (membershipId == null) {
             throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         Membership membership = identityCommandService.activateMembership(tenantId, membershipId);
         return toMembershipStatusView(membership);
@@ -855,10 +855,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (membershipId == null) {
             throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         Membership membership = identityCommandService.suspendMembership(tenantId, membershipId);
         return toMembershipStatusView(membership);
@@ -877,10 +877,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (membershipId == null) {
             throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         Membership membership = identityCommandService.removeMembership(tenantId, membershipId);
         return toMembershipStatusView(membership);
@@ -922,7 +922,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (membershipId == null) {
             throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
         }
@@ -932,6 +931,7 @@ public class TenantConfigWriteFacade {
         if (request.roleId() == null) {
             throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         MembershipRoleBinding binding = identityCommandService.assignRoleToMembership(
                 tenantId, membershipId, request.roleId());
@@ -952,13 +952,13 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (membershipId == null) {
             throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
         }
         if (roleId == null) {
             throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         identityCommandService.unassignRoleFromMembership(tenantId, membershipId, roleId);
     }
@@ -1000,7 +1000,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (request == null) {
             throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
         }
@@ -1010,6 +1009,7 @@ public class TenantConfigWriteFacade {
         if (request.name() == null || request.name().isBlank()) {
             throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         Role role = identityCommandService.createRole(
                 request.code(), request.name(), request.description());
@@ -1030,7 +1030,6 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (roleId == null) {
             throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
         }
@@ -1043,6 +1042,7 @@ public class TenantConfigWriteFacade {
         if (request.isNameProvided() && (request.getName() == null || request.getName().isBlank())) {
             throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         Role role = identityCommandService.updateRole(
                 roleId,
@@ -1063,10 +1063,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (roleId == null) {
             throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         Role role = identityCommandService.activateRole(roleId);
         return toRoleCatalogView(role);
@@ -1083,10 +1083,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (roleId == null) {
             throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         Role role = identityCommandService.deactivateRole(roleId);
         return toRoleCatalogView(role);
@@ -1102,10 +1102,10 @@ public class TenantConfigWriteFacade {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
-        authorizationService.authorizeWrite(tenantId, actorUserId);
         if (roleId == null) {
             throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
 
         identityCommandService.deleteRole(roleId);
     }
