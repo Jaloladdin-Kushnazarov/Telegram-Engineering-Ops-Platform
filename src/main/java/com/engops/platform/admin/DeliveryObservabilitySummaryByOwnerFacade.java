@@ -16,7 +16,9 @@ import java.util.UUID;
  * - faqat shu owner'dagi aktiv work item'lar uchun delivery summary
  *
  * Delegation:
- * (tenantId, ownerUserId, limit)
+ * (tenantId, ownerUserId, limit, actorUserId)
+ *   -> boundary validation (tenantId null check)
+ *   -> AdminAuthorizationService.authorizeRead(tenantId, actorUserId)
  *   -> WorkItemSummaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit) [primary]
  *   -> har bir primary item uchun: TelegramDeliveryMetricsFacade.getDeliveryMetrics(tenantId, workItemId)
  *   -> List&lt;DeliveryObservabilitySummaryItem&gt;
@@ -28,9 +30,10 @@ import java.util.UUID;
  *
  * Muhim:
  * - Primary list authoritative — natija primary tartibni saqlaydi
- * - Validatsiya ichki facade'larga delegatsiya qilinadi
+ * - Validatsiya: tenantId null check bu facade'da, qolgan validatsiya ichki facade'larga delegatsiya
  * - Bo'sh ro'yxat valid natija
  * - Tenant-scoped
+ * - Authorization: TENANT_CONFIG_READ
  * - Read-only tranzaksiya
  * - Stateless
  */
@@ -40,12 +43,15 @@ public class DeliveryObservabilitySummaryByOwnerFacade {
 
     private final WorkItemSummaryByOwnerFacade workItemSummaryByOwnerFacade;
     private final TelegramDeliveryMetricsFacade deliveryMetricsFacade;
+    private final AdminAuthorizationService authorizationService;
 
     public DeliveryObservabilitySummaryByOwnerFacade(
             WorkItemSummaryByOwnerFacade workItemSummaryByOwnerFacade,
-            TelegramDeliveryMetricsFacade deliveryMetricsFacade) {
+            TelegramDeliveryMetricsFacade deliveryMetricsFacade,
+            AdminAuthorizationService authorizationService) {
         this.workItemSummaryByOwnerFacade = workItemSummaryByOwnerFacade;
         this.deliveryMetricsFacade = deliveryMetricsFacade;
+        this.authorizationService = authorizationService;
     }
 
     /**
@@ -54,11 +60,17 @@ public class DeliveryObservabilitySummaryByOwnerFacade {
      * @param tenantId tenant identifikatori
      * @param ownerUserId owner user identifikatori
      * @param limit maksimal natija soni (1..50)
+     * @param actorUserId joriy actor identifikatori
      * @return delivery summary item'lar ro'yxati; bo'sh ro'yxat agar work item yo'q
      * @throws IllegalArgumentException agar tenantId/ownerUserId/limit noto'g'ri bo'lsa
+     * @throws com.engops.platform.sharedkernel.exception.AccessDeniedException ruxsat bo'lmasa
      */
     public List<DeliveryObservabilitySummaryItem> getSummaryList(
-            UUID tenantId, UUID ownerUserId, int limit) {
+            UUID tenantId, UUID ownerUserId, int limit, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         List<WorkItemSummaryItem> workItemSummaries =
                 workItemSummaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit);

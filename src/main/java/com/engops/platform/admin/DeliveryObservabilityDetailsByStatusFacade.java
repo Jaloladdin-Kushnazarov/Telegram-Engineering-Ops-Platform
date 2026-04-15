@@ -17,7 +17,9 @@ import java.util.UUID;
  *   (work item metadata + delivery metrics + recent attempts)
  *
  * Delegation:
- * (tenantId, statusCode, limit)
+ * (tenantId, statusCode, limit, actorUserId)
+ *   -> boundary validation (tenantId null check)
+ *   -> AdminAuthorizationService.authorizeRead(tenantId, actorUserId)
  *   -> WorkItemSummaryByStatusFacade.getSummaryList(tenantId, statusCode, limit) [primary]
  *   -> har bir primary item uchun: TelegramDeliveryObservabilityDetailsFacade.getDetails(tenantId, workItemCode, DEFAULT_HISTORY_LIMIT)
  *   -> List&lt;TelegramDeliveryObservabilityDetailsView&gt;
@@ -30,9 +32,10 @@ import java.util.UUID;
  * Muhim:
  * - Primary list authoritative — natija primary tartibni saqlaydi
  * - historyLimit bu facade ichida DEFAULT_HISTORY_LIMIT (10) sifatida belgilangan
- * - Validatsiya ichki facade'larga delegatsiya qilinadi
+ * - Validatsiya: tenantId null check bu facade'da, qolgan validatsiya ichki facade'larga delegatsiya
  * - Bo'sh ro'yxat valid natija
  * - Tenant-scoped
+ * - Authorization: TENANT_CONFIG_READ
  * - Read-only tranzaksiya
  * - Stateless
  */
@@ -44,12 +47,15 @@ public class DeliveryObservabilityDetailsByStatusFacade {
 
     private final WorkItemSummaryByStatusFacade workItemSummaryByStatusFacade;
     private final TelegramDeliveryObservabilityDetailsFacade detailsFacade;
+    private final AdminAuthorizationService authorizationService;
 
     public DeliveryObservabilityDetailsByStatusFacade(
             WorkItemSummaryByStatusFacade workItemSummaryByStatusFacade,
-            TelegramDeliveryObservabilityDetailsFacade detailsFacade) {
+            TelegramDeliveryObservabilityDetailsFacade detailsFacade,
+            AdminAuthorizationService authorizationService) {
         this.workItemSummaryByStatusFacade = workItemSummaryByStatusFacade;
         this.detailsFacade = detailsFacade;
+        this.authorizationService = authorizationService;
     }
 
     /**
@@ -58,11 +64,17 @@ public class DeliveryObservabilityDetailsByStatusFacade {
      * @param tenantId tenant identifikatori
      * @param statusCode holat kodi (masalan "BUGS", "PROCESSING")
      * @param limit maksimal natija soni (1..50)
+     * @param actorUserId joriy actor identifikatori
      * @return delivery details ro'yxati; bo'sh ro'yxat agar work item yo'q
      * @throws IllegalArgumentException agar tenantId/statusCode/limit noto'g'ri bo'lsa
+     * @throws com.engops.platform.sharedkernel.exception.AccessDeniedException ruxsat bo'lmasa
      */
     public List<TelegramDeliveryObservabilityDetailsView> getDetailsList(
-            UUID tenantId, String statusCode, int limit) {
+            UUID tenantId, String statusCode, int limit, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         List<WorkItemSummaryItem> primaryList =
                 workItemSummaryByStatusFacade.getSummaryList(tenantId, statusCode, limit);

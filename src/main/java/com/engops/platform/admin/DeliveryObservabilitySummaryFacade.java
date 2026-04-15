@@ -21,7 +21,7 @@ import java.util.UUID;
  * (tenantId, limit)
  *   -> WorkItemQueryService.listActiveByTenant(tenantId, limit)
  *   -> har bir workItem uchun: TelegramDeliveryMetricsFacade.getDeliveryMetrics(tenantId, workItemId)
- *   -> List<DeliveryObservabilitySummaryItem>
+ *   -> List&lt;DeliveryObservabilitySummaryItem&gt;
  *
  * Limit siyosati:
  * - Default: 20 (operatsion overview uchun yetarli)
@@ -33,6 +33,9 @@ import java.util.UUID;
  * - recentAttempts yo'q — faqat latest snapshot
  * - Bo'sh ro'yxat valid natija (exception emas)
  * - Tenant-scoped
+ * - Authorization: bu facade authorization qo'llamaydi — ichki building block sifatida
+ *   WorkItemSupport facade'lar tomonidan ham chaqiriladi. Authorization tashqi boundary'da
+ *   (controller yoki wrapper facade) amalga oshiriladi.
  * - Read-only tranzaksiya
  * - Stateless
  */

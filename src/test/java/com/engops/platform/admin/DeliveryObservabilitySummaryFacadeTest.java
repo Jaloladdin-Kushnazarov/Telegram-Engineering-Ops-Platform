@@ -25,6 +25,10 @@ import static org.mockito.Mockito.*;
  * - bo'sh ro'yxat valid natija
  * - null tenantId rad etiladi
  * - invalid limit rad etiladi
+ *
+ * Bu facade authorization qo'llamaydi — ichki building block sifatida
+ * WorkItemSupport facade'lar tomonidan ham chaqiriladi.
+ * Authorization tashqi boundary'da (controller) amalga oshiriladi.
  */
 class DeliveryObservabilitySummaryFacadeTest {
 
@@ -76,7 +80,6 @@ class DeliveryObservabilitySummaryFacadeTest {
     @Test
     void respectsLimit() {
         WorkItem wi1 = buildWorkItem(WORK_ITEM_ID_1, "BUG-1", "First");
-        WorkItem wi2 = buildWorkItem(WORK_ITEM_ID_2, "BUG-2", "Second");
 
         TelegramDeliveryMetricsSnapshot snap1 = TelegramDeliveryMetricsSnapshot.empty(
                 TENANT_ID, WORK_ITEM_ID_1);

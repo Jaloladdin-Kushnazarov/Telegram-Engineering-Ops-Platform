@@ -1,5 +1,6 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.telegram.TelegramDeliveryMetricsFacade;
 import com.engops.platform.telegram.TelegramDeliveryMetricsSnapshot;
 import com.engops.platform.workitem.model.WorkItemType;
@@ -19,6 +20,7 @@ import static org.mockito.Mockito.*;
 class DeliveryObservabilitySummaryByOwnerFacadeTest {
 
     private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID ACTOR_USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999999");
     private static final UUID OWNER_USER_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
     private static final UUID WI_ID_1 = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final UUID WI_ID_2 = UUID.fromString("33333333-3333-3333-3333-333333333333");
@@ -28,8 +30,11 @@ class DeliveryObservabilitySummaryByOwnerFacadeTest {
             mock(WorkItemSummaryByOwnerFacade.class);
     private final TelegramDeliveryMetricsFacade metricsFacade =
             mock(TelegramDeliveryMetricsFacade.class);
+    private final AdminAuthorizationService authorizationService =
+            mock(AdminAuthorizationService.class);
     private final DeliveryObservabilitySummaryByOwnerFacade facade =
-            new DeliveryObservabilitySummaryByOwnerFacade(ownerFacade, metricsFacade);
+            new DeliveryObservabilitySummaryByOwnerFacade(
+                    ownerFacade, metricsFacade, authorizationService);
 
     @Test
     void returnsDeliverySummaryForEachPrimaryItem() {
@@ -39,13 +44,14 @@ class DeliveryObservabilitySummaryByOwnerFacadeTest {
         when(ownerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20)).thenReturn(List.of(wi));
         when(metricsFacade.getDeliveryMetrics(TENANT_ID, WI_ID_1)).thenReturn(snapshot);
 
-        var result = facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20);
+        var result = facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).workItemId()).isEqualTo(WI_ID_1);
         assertThat(result.get(0).workItemCode()).isEqualTo("BUG-1");
         assertThat(result.get(0).latestMetrics()).isSameAs(snapshot);
 
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
         verify(ownerFacade).getSummaryList(TENANT_ID, OWNER_USER_ID, 20);
         verify(metricsFacade).getDeliveryMetrics(TENANT_ID, WI_ID_1);
         verifyNoMoreInteractions(ownerFacade, metricsFacade);
@@ -63,7 +69,7 @@ class DeliveryObservabilitySummaryByOwnerFacadeTest {
         when(metricsFacade.getDeliveryMetrics(TENANT_ID, WI_ID_1)).thenReturn(snapshot1);
         when(metricsFacade.getDeliveryMetrics(TENANT_ID, WI_ID_2)).thenReturn(snapshot2);
 
-        var result = facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20);
+        var result = facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).workItemId()).isEqualTo(WI_ID_1);
@@ -86,7 +92,7 @@ class DeliveryObservabilitySummaryByOwnerFacadeTest {
         when(metricsFacade.getDeliveryMetrics(TENANT_ID, WI_ID_2)).thenReturn(snapshot2);
         when(metricsFacade.getDeliveryMetrics(TENANT_ID, WI_ID_3)).thenReturn(snapshot3);
 
-        var result = facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20);
+        var result = facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).hasSize(3);
         assertThat(result.get(0).workItemId()).isEqualTo(WI_ID_1);
@@ -98,7 +104,7 @@ class DeliveryObservabilitySummaryByOwnerFacadeTest {
     void emptyListWhenPrimaryWorkItemSummaryEmpty() {
         when(ownerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20)).thenReturn(List.of());
 
-        var result = facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20);
+        var result = facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).isEmpty();
         verifyNoInteractions(metricsFacade);
@@ -110,21 +116,9 @@ class DeliveryObservabilitySummaryByOwnerFacadeTest {
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
-        assertThatThrownBy(() -> facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 0))
+        assertThatThrownBy(() -> facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 0, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("limit");
-
-        verifyNoInteractions(metricsFacade);
-    }
-
-    @Test
-    void propagatesNullTenantId() {
-        when(ownerFacade.getSummaryList(null, OWNER_USER_ID, 20))
-                .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
-
-        assertThatThrownBy(() -> facade.getSummaryList(null, OWNER_USER_ID, 20))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("tenantId");
 
         verifyNoInteractions(metricsFacade);
     }
@@ -134,7 +128,7 @@ class DeliveryObservabilitySummaryByOwnerFacadeTest {
         when(ownerFacade.getSummaryList(TENANT_ID, null, 20))
                 .thenThrow(new IllegalArgumentException("ownerUserId null bo'lishi mumkin emas"));
 
-        assertThatThrownBy(() -> facade.getSummaryList(TENANT_ID, null, 20))
+        assertThatThrownBy(() -> facade.getSummaryList(TENANT_ID, null, 20, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ownerUserId");
 
@@ -149,11 +143,41 @@ class DeliveryObservabilitySummaryByOwnerFacadeTest {
         when(ownerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 10)).thenReturn(List.of(wi));
         when(metricsFacade.getDeliveryMetrics(TENANT_ID, WI_ID_1)).thenReturn(snapshot);
 
-        facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 10);
+        facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 10, ACTOR_USER_ID);
 
         verify(ownerFacade).getSummaryList(TENANT_ID, OWNER_USER_ID, 10);
         verify(metricsFacade).getDeliveryMetrics(TENANT_ID, WI_ID_1);
         verifyNoMoreInteractions(ownerFacade, metricsFacade);
+    }
+
+    // ========== Authorization tests ==========
+
+    @Test
+    void authorizationCalledWithCorrectArguments() {
+        when(ownerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20)).thenReturn(List.of());
+
+        facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void authorizationDenialShortCircuitsBusinessDelegation() {
+        doThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verifyNoInteractions(ownerFacade, metricsFacade);
+    }
+
+    @Test
+    void nullTenantIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.getSummaryList(null, OWNER_USER_ID, 20, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
     }
 
     // ========== Helpers ==========
