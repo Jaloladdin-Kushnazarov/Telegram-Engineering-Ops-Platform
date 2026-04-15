@@ -15,13 +15,14 @@ import java.util.UUID;
 /**
  * Delivery observability uchun read-only admin endpoint'lar.
  *
- * Olti endpoint:
+ * Yetti endpoint:
  * - GET /summary — tenant-scoped kompakt summary ro'yxat
  * - GET /summary/by-status — status bo'yicha filtrlangan delivery summary ro'yxat
  * - GET /summary/by-owner — owner bo'yicha filtrlangan delivery summary ro'yxat
  * - GET /details — bitta work item uchun to'liq details (workItemCode bo'yicha)
  * - GET /details/by-id — bitta work item uchun to'liq details (workItemId bo'yicha)
  * - GET /details/by-status — status bo'yicha filtrlangan delivery details ro'yxat
+ * - GET /details/by-owner — owner bo'yicha filtrlangan delivery details ro'yxat
  *
  * Faqat GET — write operatsiya yo'q.
  *
@@ -41,19 +42,22 @@ public class DeliveryObservabilityController {
     private final DeliveryObservabilitySummaryByStatusFacade summaryByStatusFacade;
     private final DeliveryObservabilitySummaryByOwnerFacade summaryByOwnerFacade;
     private final DeliveryObservabilityDetailsByStatusFacade detailsByStatusFacade;
+    private final DeliveryObservabilityDetailsByOwnerFacade detailsByOwnerFacade;
 
     public DeliveryObservabilityController(TelegramDeliveryObservabilityDetailsFacade detailsFacade,
                                            DeliveryObservabilitySummaryFacade summaryFacade,
                                            DeliveryObservabilityDetailsByIdFacade detailsByIdFacade,
                                            DeliveryObservabilitySummaryByStatusFacade summaryByStatusFacade,
                                            DeliveryObservabilitySummaryByOwnerFacade summaryByOwnerFacade,
-                                           DeliveryObservabilityDetailsByStatusFacade detailsByStatusFacade) {
+                                           DeliveryObservabilityDetailsByStatusFacade detailsByStatusFacade,
+                                           DeliveryObservabilityDetailsByOwnerFacade detailsByOwnerFacade) {
         this.detailsFacade = detailsFacade;
         this.summaryFacade = summaryFacade;
         this.detailsByIdFacade = detailsByIdFacade;
         this.summaryByStatusFacade = summaryByStatusFacade;
         this.summaryByOwnerFacade = summaryByOwnerFacade;
         this.detailsByStatusFacade = detailsByStatusFacade;
+        this.detailsByOwnerFacade = detailsByOwnerFacade;
     }
 
     /**
@@ -184,6 +188,29 @@ public class DeliveryObservabilityController {
                 .toList();
 
         return ResponseEntity.ok(new DeliveryObservabilityDetailsByStatusResponse(responseItems));
+    }
+
+    /**
+     * Tenant + ownerUserId bo'yicha aktiv work item'larning delivery observability details ro'yxatini qaytaradi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ownerUserId owner user identifikatori
+     * @param limit maksimal natija soni (1..50, default 20)
+     * @return owner-filtered delivery details ro'yxat
+     */
+    @GetMapping("/details/by-owner")
+    public ResponseEntity<DeliveryObservabilityDetailsByOwnerResponse> getDetailsByOwner(
+            @RequestParam UUID tenantId,
+            @RequestParam UUID ownerUserId,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        var items = detailsByOwnerFacade.getDetailsList(tenantId, ownerUserId, limit);
+
+        var responseItems = items.stream()
+                .map(this::toResponse)
+                .toList();
+
+        return ResponseEntity.ok(new DeliveryObservabilityDetailsByOwnerResponse(responseItems));
     }
 
     private DeliveryObservabilityDetailsResponse toResponse(
