@@ -7,6 +7,7 @@ import com.engops.platform.workitem.model.WorkItem;
 import com.engops.platform.workitem.model.WorkItemUpdate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,69 +32,65 @@ import java.util.UUID;
  * - GET /support-details/by-owner — owner bo'yicha combined support details ro'yxat
  *
  * Faqat GET — write operatsiya yo'q.
+ * Barcha endpoint'lar X-Actor-User-Id header orqali actor identifikatsiyasini oladi.
+ * Authorization facade boundary'da amalga oshiriladi — controller thin adapter bo'lib qoladi.
  *
  * Bu controller thin adapter:
  * - HTTP request parametrlarini facade'larga uzatadi
  * - Facade natijalarini response DTO'larga map qiladi
- * - ResourceNotFoundException (404) va IllegalArgumentException (400)
- *   GlobalExceptionHandler tomonidan qayta ishlanadi
+ * - ResourceNotFoundException (404), IllegalArgumentException (400),
+ *   AccessDeniedException (403) GlobalExceptionHandler tomonidan qayta ishlanadi
  */
 @RestController
 @RequestMapping("/api/admin/work-items")
 public class WorkItemDetailsController {
 
-    private final WorkItemDetailsFacade detailsFacade;
-    private final WorkItemSummaryFacade summaryFacade;
-    private final WorkItemSupportDetailsFacade supportDetailsFacade;
+    private final WorkItemDetailsReadFacade detailsReadFacade;
+    private final WorkItemSummaryReadFacade summaryReadFacade;
+    private final WorkItemSupportDetailsReadFacade supportDetailsReadFacade;
     private final WorkItemSupportSummaryFacade supportSummaryFacade;
     private final WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade;
     private final WorkItemDetailsByIdFacade detailsByIdFacade;
-    private final WorkItemSummaryByStatusFacade summaryByStatusFacade;
-    private final WorkItemSummaryByOwnerFacade summaryByOwnerFacade;
+    private final WorkItemSummaryByStatusReadFacade summaryByStatusReadFacade;
+    private final WorkItemSummaryByOwnerReadFacade summaryByOwnerReadFacade;
     private final WorkItemSupportSummaryByStatusFacade supportSummaryByStatusFacade;
     private final WorkItemSupportSummaryByOwnerFacade supportSummaryByOwnerFacade;
     private final WorkItemSupportDetailsByStatusFacade supportDetailsByStatusFacade;
     private final WorkItemSupportDetailsByOwnerFacade supportDetailsByOwnerFacade;
 
-    public WorkItemDetailsController(WorkItemDetailsFacade detailsFacade,
-                                     WorkItemSummaryFacade summaryFacade,
-                                     WorkItemSupportDetailsFacade supportDetailsFacade,
+    public WorkItemDetailsController(WorkItemDetailsReadFacade detailsReadFacade,
+                                     WorkItemSummaryReadFacade summaryReadFacade,
+                                     WorkItemSupportDetailsReadFacade supportDetailsReadFacade,
                                      WorkItemSupportSummaryFacade supportSummaryFacade,
                                      WorkItemSupportDetailsByIdFacade supportDetailsByIdFacade,
                                      WorkItemDetailsByIdFacade detailsByIdFacade,
-                                     WorkItemSummaryByStatusFacade summaryByStatusFacade,
-                                     WorkItemSummaryByOwnerFacade summaryByOwnerFacade,
+                                     WorkItemSummaryByStatusReadFacade summaryByStatusReadFacade,
+                                     WorkItemSummaryByOwnerReadFacade summaryByOwnerReadFacade,
                                      WorkItemSupportSummaryByStatusFacade supportSummaryByStatusFacade,
                                      WorkItemSupportSummaryByOwnerFacade supportSummaryByOwnerFacade,
                                      WorkItemSupportDetailsByStatusFacade supportDetailsByStatusFacade,
                                      WorkItemSupportDetailsByOwnerFacade supportDetailsByOwnerFacade) {
-        this.detailsFacade = detailsFacade;
-        this.summaryFacade = summaryFacade;
-        this.supportDetailsFacade = supportDetailsFacade;
+        this.detailsReadFacade = detailsReadFacade;
+        this.summaryReadFacade = summaryReadFacade;
+        this.supportDetailsReadFacade = supportDetailsReadFacade;
         this.supportSummaryFacade = supportSummaryFacade;
         this.supportDetailsByIdFacade = supportDetailsByIdFacade;
         this.detailsByIdFacade = detailsByIdFacade;
-        this.summaryByStatusFacade = summaryByStatusFacade;
-        this.summaryByOwnerFacade = summaryByOwnerFacade;
+        this.summaryByStatusReadFacade = summaryByStatusReadFacade;
+        this.summaryByOwnerReadFacade = summaryByOwnerReadFacade;
         this.supportSummaryByStatusFacade = supportSummaryByStatusFacade;
         this.supportSummaryByOwnerFacade = supportSummaryByOwnerFacade;
         this.supportDetailsByStatusFacade = supportDetailsByStatusFacade;
         this.supportDetailsByOwnerFacade = supportDetailsByOwnerFacade;
     }
 
-    /**
-     * Tenant uchun aktiv work item'larning kompakt summary ro'yxatini qaytaradi.
-     *
-     * @param tenantId tenant identifikatori
-     * @param limit maksimal natija soni (1..50, default 20)
-     * @return kompakt summary ro'yxat
-     */
     @GetMapping("/summary")
     public ResponseEntity<WorkItemSummaryResponse> getSummary(
             @RequestParam UUID tenantId,
-            @RequestParam(defaultValue = "20") int limit) {
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        var items = summaryFacade.getSummaryList(tenantId, limit);
+        var items = summaryReadFacade.getSummaryList(tenantId, limit, actorUserId);
 
         var responseItems = items.stream()
                 .map(this::toSummaryItemResponse)
@@ -102,21 +99,14 @@ public class WorkItemDetailsController {
         return ResponseEntity.ok(new WorkItemSummaryResponse(responseItems));
     }
 
-    /**
-     * Tenant + statusCode bo'yicha aktiv work item'larning kompakt summary ro'yxatini qaytaradi.
-     *
-     * @param tenantId tenant identifikatori
-     * @param statusCode holat kodi (masalan "BUGS", "PROCESSING")
-     * @param limit maksimal natija soni (1..50, default 20)
-     * @return kompakt summary ro'yxat
-     */
     @GetMapping("/by-status")
     public ResponseEntity<WorkItemSummaryResponse> getByStatus(
             @RequestParam UUID tenantId,
             @RequestParam String statusCode,
-            @RequestParam(defaultValue = "20") int limit) {
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        var items = summaryByStatusFacade.getSummaryList(tenantId, statusCode, limit);
+        var items = summaryByStatusReadFacade.getSummaryList(tenantId, statusCode, limit, actorUserId);
 
         var responseItems = items.stream()
                 .map(this::toSummaryItemResponse)
@@ -125,21 +115,14 @@ public class WorkItemDetailsController {
         return ResponseEntity.ok(new WorkItemSummaryResponse(responseItems));
     }
 
-    /**
-     * Tenant + ownerUserId bo'yicha aktiv work item'larning kompakt summary ro'yxatini qaytaradi.
-     *
-     * @param tenantId tenant identifikatori
-     * @param ownerUserId owner user identifikatori
-     * @param limit maksimal natija soni (1..50, default 20)
-     * @return kompakt summary ro'yxat
-     */
     @GetMapping("/by-owner")
     public ResponseEntity<WorkItemSummaryResponse> getByOwner(
             @RequestParam UUID tenantId,
             @RequestParam UUID ownerUserId,
-            @RequestParam(defaultValue = "20") int limit) {
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        var items = summaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit);
+        var items = summaryByOwnerReadFacade.getSummaryList(tenantId, ownerUserId, limit, actorUserId);
 
         var responseItems = items.stream()
                 .map(this::toSummaryItemResponse)
@@ -148,20 +131,13 @@ public class WorkItemDetailsController {
         return ResponseEntity.ok(new WorkItemSummaryResponse(responseItems));
     }
 
-    /**
-     * Tenant uchun combined support summary ro'yxatini qaytaradi:
-     * work item metadata + delivery observability summary.
-     *
-     * @param tenantId tenant identifikatori
-     * @param limit maksimal natija soni (1..50, default 20)
-     * @return combined support summary ro'yxat
-     */
     @GetMapping("/support-summary")
     public ResponseEntity<WorkItemSupportSummaryResponse> getSupportSummary(
             @RequestParam UUID tenantId,
-            @RequestParam(defaultValue = "20") int limit) {
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        var items = supportSummaryFacade.getSummaryList(tenantId, limit);
+        var items = supportSummaryFacade.getSummaryList(tenantId, limit, actorUserId);
 
         var responseItems = items.stream()
                 .map(this::toSupportSummaryItemResponse)
@@ -170,21 +146,14 @@ public class WorkItemDetailsController {
         return ResponseEntity.ok(new WorkItemSupportSummaryResponse(responseItems));
     }
 
-    /**
-     * Tenant + statusCode bo'yicha aktiv work item'larning combined support summary qaytaradi.
-     *
-     * @param tenantId tenant identifikatori
-     * @param statusCode holat kodi (masalan "BUGS", "PROCESSING")
-     * @param limit maksimal natija soni (1..50, default 20)
-     * @return combined support summary ro'yxat
-     */
     @GetMapping("/support-summary/by-status")
     public ResponseEntity<WorkItemSupportSummaryResponse> getSupportSummaryByStatus(
             @RequestParam UUID tenantId,
             @RequestParam String statusCode,
-            @RequestParam(defaultValue = "20") int limit) {
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        var items = supportSummaryByStatusFacade.getSummaryList(tenantId, statusCode, limit);
+        var items = supportSummaryByStatusFacade.getSummaryList(tenantId, statusCode, limit, actorUserId);
 
         var responseItems = items.stream()
                 .map(this::toSupportSummaryItemResponse)
@@ -193,21 +162,14 @@ public class WorkItemDetailsController {
         return ResponseEntity.ok(new WorkItemSupportSummaryResponse(responseItems));
     }
 
-    /**
-     * Tenant + ownerUserId bo'yicha aktiv work item'larning combined support summary qaytaradi.
-     *
-     * @param tenantId tenant identifikatori
-     * @param ownerUserId owner user identifikatori
-     * @param limit maksimal natija soni (1..50, default 20)
-     * @return combined support summary ro'yxat
-     */
     @GetMapping("/support-summary/by-owner")
     public ResponseEntity<WorkItemSupportSummaryResponse> getSupportSummaryByOwner(
             @RequestParam UUID tenantId,
             @RequestParam UUID ownerUserId,
-            @RequestParam(defaultValue = "20") int limit) {
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        var items = supportSummaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit);
+        var items = supportSummaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit, actorUserId);
 
         var responseItems = items.stream()
                 .map(this::toSupportSummaryItemResponse)
@@ -216,42 +178,27 @@ public class WorkItemDetailsController {
         return ResponseEntity.ok(new WorkItemSupportSummaryResponse(responseItems));
     }
 
-    /**
-     * Bitta work item uchun combined support details qaytaradi:
-     * work item metadata + update history + delivery observability.
-     *
-     * @param tenantId tenant identifikatori
-     * @param workItemCode work item kodi (masalan "BUG-1")
-     * @param historyLimit so'nggi delivery attempt'lar soni (1..50, default 10)
-     * @return combined support details
-     */
     @GetMapping("/support-details")
     public ResponseEntity<WorkItemSupportDetailsResponse> getSupportDetails(
             @RequestParam UUID tenantId,
             @RequestParam String workItemCode,
-            @RequestParam(defaultValue = "10") int historyLimit) {
+            @RequestParam(defaultValue = "10") int historyLimit,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         WorkItemSupportDetailsFacade.WorkItemSupportDetailsView view =
-                supportDetailsFacade.getDetails(tenantId, workItemCode, historyLimit);
+                supportDetailsReadFacade.getDetails(tenantId, workItemCode, historyLimit, actorUserId);
 
         return ResponseEntity.ok(toSupportDetailsResponse(view));
     }
 
-    /**
-     * Tenant + statusCode bo'yicha aktiv work item'larning combined support details ro'yxatini qaytaradi.
-     *
-     * @param tenantId tenant identifikatori
-     * @param statusCode holat kodi (masalan "BUGS", "PROCESSING")
-     * @param limit maksimal natija soni (1..50, default 20)
-     * @return combined support details ro'yxat
-     */
     @GetMapping("/support-details/by-status")
     public ResponseEntity<WorkItemSupportDetailsByStatusResponse> getSupportDetailsByStatus(
             @RequestParam UUID tenantId,
             @RequestParam String statusCode,
-            @RequestParam(defaultValue = "20") int limit) {
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        var views = supportDetailsByStatusFacade.getDetailsList(tenantId, statusCode, limit);
+        var views = supportDetailsByStatusFacade.getDetailsList(tenantId, statusCode, limit, actorUserId);
 
         var responseItems = views.stream()
                 .map(this::toSupportDetailsResponse)
@@ -260,21 +207,14 @@ public class WorkItemDetailsController {
         return ResponseEntity.ok(new WorkItemSupportDetailsByStatusResponse(responseItems));
     }
 
-    /**
-     * Tenant + ownerUserId bo'yicha aktiv work item'larning combined support details ro'yxatini qaytaradi.
-     *
-     * @param tenantId tenant identifikatori
-     * @param ownerUserId owner user identifikatori
-     * @param limit maksimal natija soni (1..50, default 20)
-     * @return combined support details ro'yxat
-     */
     @GetMapping("/support-details/by-owner")
     public ResponseEntity<WorkItemSupportDetailsByOwnerResponse> getSupportDetailsByOwner(
             @RequestParam UUID tenantId,
             @RequestParam UUID ownerUserId,
-            @RequestParam(defaultValue = "20") int limit) {
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
-        var views = supportDetailsByOwnerFacade.getDetailsList(tenantId, ownerUserId, limit);
+        var views = supportDetailsByOwnerFacade.getDetailsList(tenantId, ownerUserId, limit, actorUserId);
 
         var responseItems = views.stream()
                 .map(this::toSupportDetailsResponse)
@@ -283,58 +223,39 @@ public class WorkItemDetailsController {
         return ResponseEntity.ok(new WorkItemSupportDetailsByOwnerResponse(responseItems));
     }
 
-    /**
-     * Bitta work item uchun combined support details qaytaradi (UUID bo'yicha).
-     *
-     * @param tenantId tenant identifikatori
-     * @param workItemId work item UUID identifikatori
-     * @param historyLimit so'nggi delivery attempt'lar soni (1..50, default 10)
-     * @return combined support details
-     */
     @GetMapping("/support-details/by-id")
     public ResponseEntity<WorkItemSupportDetailsResponse> getSupportDetailsById(
             @RequestParam UUID tenantId,
             @RequestParam UUID workItemId,
-            @RequestParam(defaultValue = "10") int historyLimit) {
+            @RequestParam(defaultValue = "10") int historyLimit,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         WorkItemSupportDetailsFacade.WorkItemSupportDetailsView view =
-                supportDetailsByIdFacade.getDetails(tenantId, workItemId, historyLimit);
+                supportDetailsByIdFacade.getDetails(tenantId, workItemId, historyLimit, actorUserId);
 
         return ResponseEntity.ok(toSupportDetailsResponse(view));
     }
 
-    /**
-     * Bitta work item uchun details va update history qaytaradi.
-     *
-     * @param tenantId tenant identifikatori
-     * @param workItemCode work item kodi (masalan "BUG-1")
-     * @return work item details + ordered update history
-     */
     @GetMapping("/details")
     public ResponseEntity<WorkItemDetailsResponse> getDetails(
             @RequestParam UUID tenantId,
-            @RequestParam String workItemCode) {
+            @RequestParam String workItemCode,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         WorkItemDetailsFacade.WorkItemDetailsView view =
-                detailsFacade.getDetails(tenantId, workItemCode);
+                detailsReadFacade.getDetails(tenantId, workItemCode, actorUserId);
 
         return ResponseEntity.ok(toResponse(view));
     }
 
-    /**
-     * Bitta work item uchun details va update history qaytaradi (UUID bo'yicha).
-     *
-     * @param tenantId tenant identifikatori
-     * @param workItemId work item UUID identifikatori
-     * @return work item details + ordered update history
-     */
     @GetMapping("/details/by-id")
     public ResponseEntity<WorkItemDetailsResponse> getDetailsById(
             @RequestParam UUID tenantId,
-            @RequestParam UUID workItemId) {
+            @RequestParam UUID workItemId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
 
         WorkItemDetailsFacade.WorkItemDetailsView view =
-                detailsByIdFacade.getDetails(tenantId, workItemId);
+                detailsByIdFacade.getDetails(tenantId, workItemId, actorUserId);
 
         return ResponseEntity.ok(toResponse(view));
     }

@@ -1,5 +1,6 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.telegram.TelegramDeliveryAttempt;
 import com.engops.platform.telegram.TelegramDeliveryMetricsSnapshot;
@@ -22,6 +23,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -77,18 +80,20 @@ class WorkItemDetailsControllerTest {
     private static final UUID OWNER_USER_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
     private static final UUID AUTHOR_USER_ID = UUID.fromString("55555555-5555-5555-5555-555555555555");
     private static final String WORK_ITEM_CODE = "BUG-1";
+    private static final UUID ACTOR_USER_ID = UUID.fromString("77777777-7777-7777-7777-777777777777");
+    private static final String ACTOR_HEADER = "X-Actor-User-Id";
 
     @Autowired
     private MockMvc mockMvc;
 
     @MockBean
-    private WorkItemDetailsFacade detailsFacade;
+    private WorkItemDetailsReadFacade detailsReadFacade;
 
     @MockBean
-    private WorkItemSummaryFacade summaryFacade;
+    private WorkItemSummaryReadFacade summaryReadFacade;
 
     @MockBean
-    private WorkItemSupportDetailsFacade supportDetailsFacade;
+    private WorkItemSupportDetailsReadFacade supportDetailsReadFacade;
 
     @MockBean
     private WorkItemSupportSummaryFacade supportSummaryFacade;
@@ -100,10 +105,10 @@ class WorkItemDetailsControllerTest {
     private WorkItemDetailsByIdFacade detailsByIdFacade;
 
     @MockBean
-    private WorkItemSummaryByStatusFacade summaryByStatusFacade;
+    private WorkItemSummaryByStatusReadFacade summaryByStatusReadFacade;
 
     @MockBean
-    private WorkItemSummaryByOwnerFacade summaryByOwnerFacade;
+    private WorkItemSummaryByOwnerReadFacade summaryByOwnerReadFacade;
 
     @MockBean
     private WorkItemSupportSummaryByStatusFacade supportSummaryByStatusFacade;
@@ -134,11 +139,12 @@ class WorkItemDetailsControllerTest {
                 UpdateType.COMMENT, "Tekshirilmoqda");
 
         var view = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of(update));
-        when(detailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE)).thenReturn(view);
+        when(detailsReadFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, ACTOR_USER_ID)).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemCode", WORK_ITEM_CODE))
+                        .param("workItemCode", WORK_ITEM_CODE)
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItemId").value(workItem.getId().toString()))
                 .andExpect(jsonPath("$.workItemCode").value(WORK_ITEM_CODE))
@@ -170,11 +176,12 @@ class WorkItemDetailsControllerTest {
                 WORKFLOW_DEF_ID, "Login xato", "BUGS", OWNER_USER_ID);
 
         var view = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of());
-        when(detailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE)).thenReturn(view);
+        when(detailsReadFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, ACTOR_USER_ID)).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemCode", WORK_ITEM_CODE))
+                        .param("workItemCode", WORK_ITEM_CODE)
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItemId").value(workItem.getId().toString()))
                 .andExpect(jsonPath("$.updates", hasSize(0)));
@@ -195,11 +202,12 @@ class WorkItemDetailsControllerTest {
 
         var view = new WorkItemDetailsFacade.WorkItemDetailsView(
                 workItem, List.of(update1, update2));
-        when(detailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE)).thenReturn(view);
+        when(detailsReadFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, ACTOR_USER_ID)).thenReturn(view);
 
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemCode", WORK_ITEM_CODE))
+                        .param("workItemCode", WORK_ITEM_CODE)
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.updates", hasSize(2)))
                 .andExpect(jsonPath("$.updates[0].updateTypeCode").value("COMMENT"))
@@ -210,39 +218,43 @@ class WorkItemDetailsControllerTest {
 
     @Test
     void workItemNotFoundReturns404() throws Exception {
-        when(detailsFacade.getDetails(TENANT_ID, "NONEXISTENT-99"))
+        when(detailsReadFacade.getDetails(eq(TENANT_ID), eq("NONEXISTENT-99"), any()))
                 .thenThrow(new ResourceNotFoundException("WorkItem", "NONEXISTENT-99"));
 
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemCode", "NONEXISTENT-99"))
+                        .param("workItemCode", "NONEXISTENT-99")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void invalidWorkItemCodeReturns400() throws Exception {
-        when(detailsFacade.getDetails(TENANT_ID, ""))
+        when(detailsReadFacade.getDetails(eq(TENANT_ID), eq(""), any()))
                 .thenThrow(new IllegalArgumentException(
                         "workItemCode null yoki bo'sh bo'lishi mumkin emas"));
 
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemCode", ""))
+                        .param("workItemCode", "")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void missingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/details")
-                        .param("workItemCode", WORK_ITEM_CODE))
+                        .param("workItemCode", WORK_ITEM_CODE)
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void missingWorkItemCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/details")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -258,11 +270,12 @@ class WorkItemDetailsControllerTest {
                 java.time.Instant.parse("2026-03-18T11:00:00Z"),
                 null, 0, false);
 
-        when(summaryFacade.getSummaryList(TENANT_ID, 20)).thenReturn(List.of(item));
+        when(summaryReadFacade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID)).thenReturn(List.of(item));
 
         mockMvc.perform(get("/api/admin/work-items/summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("limit", "20"))
+                        .param("limit", "20")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -281,41 +294,45 @@ class WorkItemDetailsControllerTest {
 
     @Test
     void summaryDefaultLimitIsUsed() throws Exception {
-        when(summaryFacade.getSummaryList(TENANT_ID, 20)).thenReturn(List.of());
+        when(summaryReadFacade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID)).thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/summary")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void summaryEmptyListReturns200() throws Exception {
-        when(summaryFacade.getSummaryList(TENANT_ID, 10)).thenReturn(List.of());
+        when(summaryReadFacade.getSummaryList(TENANT_ID, 10, ACTOR_USER_ID)).thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("limit", "10"))
+                        .param("limit", "10")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void summaryInvalidLimitReturns400() throws Exception {
-        when(summaryFacade.getSummaryList(TENANT_ID, 0))
+        when(summaryReadFacade.getSummaryList(eq(TENANT_ID), eq(0), any()))
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
         mockMvc.perform(get("/api/admin/work-items/summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("limit", "0"))
+                        .param("limit", "0")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
 
     @Test
     void summaryMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(get("/api/admin/work-items/summary"))
+        mockMvc.perform(get("/api/admin/work-items/summary")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -361,12 +378,13 @@ class WorkItemDetailsControllerTest {
         var supportView = new WorkItemSupportDetailsFacade.WorkItemSupportDetailsView(
                 workItemView, observabilityView);
 
-        when(supportDetailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, 10))
+        when(supportDetailsReadFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, 10, ACTOR_USER_ID))
                 .thenReturn(supportView);
 
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemCode", WORK_ITEM_CODE))
+                        .param("workItemCode", WORK_ITEM_CODE)
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 // workItem section
                 .andExpect(jsonPath("$.workItem.workItemId").value(workItem.getId().toString()))
@@ -410,12 +428,13 @@ class WorkItemDetailsControllerTest {
                 workItemView, observabilityView);
 
         // default historyLimit=10 ishlatilishi kerak
-        when(supportDetailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, 10))
+        when(supportDetailsReadFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, 10, ACTOR_USER_ID))
                 .thenReturn(supportView);
 
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemCode", WORK_ITEM_CODE))
+                        .param("workItemCode", WORK_ITEM_CODE)
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItem.workItemId").value(workItem.getId().toString()))
                 .andExpect(jsonPath("$.deliveryObservability.latestMetrics.empty").value(true));
@@ -423,26 +442,28 @@ class WorkItemDetailsControllerTest {
 
     @Test
     void supportDetailsNotFoundReturns404() throws Exception {
-        when(supportDetailsFacade.getDetails(TENANT_ID, "NONEXISTENT-99", 10))
+        when(supportDetailsReadFacade.getDetails(eq(TENANT_ID), eq("NONEXISTENT-99"), eq(10), any()))
                 .thenThrow(new ResourceNotFoundException("WorkItem", "NONEXISTENT-99"));
 
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemCode", "NONEXISTENT-99"))
+                        .param("workItemCode", "NONEXISTENT-99")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void supportDetailsInvalidHistoryLimitReturns400() throws Exception {
-        when(supportDetailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE, 0))
+        when(supportDetailsReadFacade.getDetails(eq(TENANT_ID), eq(WORK_ITEM_CODE), eq(0), any()))
                 .thenThrow(new IllegalArgumentException(
                         "historyLimit 1..50 oralig'ida bo'lishi kerak"));
 
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .param("historyLimit", "0"))
+                        .param("historyLimit", "0")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -450,14 +471,16 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportDetailsMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details")
-                        .param("workItemCode", WORK_ITEM_CODE))
+                        .param("workItemCode", WORK_ITEM_CODE)
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void supportDetailsMissingWorkItemCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -486,12 +509,13 @@ class WorkItemDetailsControllerTest {
 
         var composedItem = new WorkItemSupportSummaryItem(wiSummary, delSummary);
 
-        when(supportSummaryFacade.getSummaryList(TENANT_ID, 20))
+        when(supportSummaryFacade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID))
                 .thenReturn(List.of(composedItem));
 
         mockMvc.perform(get("/api/admin/work-items/support-summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("limit", "20"))
+                        .param("limit", "20")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 // workItem section
@@ -515,43 +539,47 @@ class WorkItemDetailsControllerTest {
 
     @Test
     void supportSummaryDefaultLimitIsUsed() throws Exception {
-        when(supportSummaryFacade.getSummaryList(TENANT_ID, 20))
+        when(supportSummaryFacade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/support-summary")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void supportSummaryEmptyListReturns200() throws Exception {
-        when(supportSummaryFacade.getSummaryList(TENANT_ID, 10))
+        when(supportSummaryFacade.getSummaryList(TENANT_ID, 10, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/support-summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("limit", "10"))
+                        .param("limit", "10")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void supportSummaryInvalidLimitReturns400() throws Exception {
-        when(supportSummaryFacade.getSummaryList(TENANT_ID, 0))
+        when(supportSummaryFacade.getSummaryList(eq(TENANT_ID), eq(0), any()))
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
         mockMvc.perform(get("/api/admin/work-items/support-summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("limit", "0"))
+                        .param("limit", "0")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
 
     @Test
     void supportSummaryMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(get("/api/admin/work-items/support-summary"))
+        mockMvc.perform(get("/api/admin/work-items/support-summary")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -589,12 +617,13 @@ class WorkItemDetailsControllerTest {
         var supportView = new WorkItemSupportDetailsFacade.WorkItemSupportDetailsView(
                 workItemView, observabilityView);
 
-        when(supportDetailsByIdFacade.getDetails(TENANT_ID, consistentWorkItemId, 10))
+        when(supportDetailsByIdFacade.getDetails(TENANT_ID, consistentWorkItemId, 10, ACTOR_USER_ID))
                 .thenReturn(supportView);
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemId", consistentWorkItemId.toString()))
+                        .param("workItemId", consistentWorkItemId.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 // workItem section
                 .andExpect(jsonPath("$.workItem.workItemId").value(consistentWorkItemId.toString()))
@@ -632,12 +661,13 @@ class WorkItemDetailsControllerTest {
                 workItemView, observabilityView);
 
         // default historyLimit=10 ishlatilishi kerak
-        when(supportDetailsByIdFacade.getDetails(TENANT_ID, consistentWorkItemId, 10))
+        when(supportDetailsByIdFacade.getDetails(TENANT_ID, consistentWorkItemId, 10, ACTOR_USER_ID))
                 .thenReturn(supportView);
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemId", consistentWorkItemId.toString()))
+                        .param("workItemId", consistentWorkItemId.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 // Ikkala section bir xil workItemId ishlatishini isbotlash
                 .andExpect(jsonPath("$.workItem.workItemId").value(consistentWorkItemId.toString()))
@@ -648,26 +678,28 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportDetailsByIdNotFoundReturns404() throws Exception {
         UUID unknownId = UUID.fromString("99999999-9999-9999-9999-999999999999");
-        when(supportDetailsByIdFacade.getDetails(TENANT_ID, unknownId, 10))
+        when(supportDetailsByIdFacade.getDetails(eq(TENANT_ID), eq(unknownId), eq(10), any()))
                 .thenThrow(new ResourceNotFoundException("WorkItem", unknownId));
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemId", unknownId.toString()))
+                        .param("workItemId", unknownId.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
 
     @Test
     void supportDetailsByIdInvalidHistoryLimitReturns400() throws Exception {
-        when(supportDetailsByIdFacade.getDetails(TENANT_ID, WORK_ITEM_ID, 0))
+        when(supportDetailsByIdFacade.getDetails(eq(TENANT_ID), eq(WORK_ITEM_ID), eq(0), any()))
                 .thenThrow(new IllegalArgumentException(
                         "historyLimit 1..50 oralig'ida bo'lishi kerak"));
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", WORK_ITEM_ID.toString())
-                        .param("historyLimit", "0"))
+                        .param("historyLimit", "0")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -675,14 +707,16 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportDetailsByIdMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
-                        .param("workItemId", WORK_ITEM_ID.toString()))
+                        .param("workItemId", WORK_ITEM_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void supportDetailsByIdMissingWorkItemIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -705,12 +739,13 @@ class WorkItemDetailsControllerTest {
 
         var view = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of(update));
 
-        when(detailsByIdFacade.getDetails(TENANT_ID, consistentId))
+        when(detailsByIdFacade.getDetails(TENANT_ID, consistentId, ACTOR_USER_ID))
                 .thenReturn(view);
 
         mockMvc.perform(get("/api/admin/work-items/details/by-id")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemId", consistentId.toString()))
+                        .param("workItemId", consistentId.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItemId").value(consistentId.toString()))
                 .andExpect(jsonPath("$.workItemCode").value(WORK_ITEM_CODE))
@@ -730,12 +765,13 @@ class WorkItemDetailsControllerTest {
     @Test
     void detailsByIdNotFoundReturns404() throws Exception {
         UUID unknownId = UUID.fromString("99999999-9999-9999-9999-999999999999");
-        when(detailsByIdFacade.getDetails(TENANT_ID, unknownId))
+        when(detailsByIdFacade.getDetails(eq(TENANT_ID), eq(unknownId), any()))
                 .thenThrow(new ResourceNotFoundException("WorkItem", unknownId));
 
         mockMvc.perform(get("/api/admin/work-items/details/by-id")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("workItemId", unknownId.toString()))
+                        .param("workItemId", unknownId.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -743,14 +779,16 @@ class WorkItemDetailsControllerTest {
     @Test
     void detailsByIdMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/details/by-id")
-                        .param("workItemId", WORK_ITEM_ID.toString()))
+                        .param("workItemId", WORK_ITEM_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void detailsByIdMissingWorkItemIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/details/by-id")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -766,13 +804,14 @@ class WorkItemDetailsControllerTest {
                 Instant.parse("2026-03-18T11:00:00Z"),
                 null, 0, false);
 
-        when(summaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 20))
+        when(summaryByStatusReadFacade.getSummaryList(TENANT_ID, "BUGS", 20, ACTOR_USER_ID))
                 .thenReturn(List.of(item));
 
         mockMvc.perform(get("/api/admin/work-items/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .param("limit", "20"))
+                        .param("limit", "20")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -787,39 +826,42 @@ class WorkItemDetailsControllerTest {
 
     @Test
     void byStatusDefaultLimitIsUsed() throws Exception {
-        when(summaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 20))
+        when(summaryByStatusReadFacade.getSummaryList(TENANT_ID, "BUGS", 20, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/by-status")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("statusCode", "BUGS"))
+                        .param("statusCode", "BUGS")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void byStatusEmptyListReturns200() throws Exception {
-        when(summaryByStatusFacade.getSummaryList(TENANT_ID, "PROCESSING", 10))
+        when(summaryByStatusReadFacade.getSummaryList(TENANT_ID, "PROCESSING", 10, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "PROCESSING")
-                        .param("limit", "10"))
+                        .param("limit", "10")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void byStatusInvalidLimitReturns400() throws Exception {
-        when(summaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 0))
+        when(summaryByStatusReadFacade.getSummaryList(eq(TENANT_ID), eq("BUGS"), eq(0), any()))
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
         mockMvc.perform(get("/api/admin/work-items/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .param("limit", "0"))
+                        .param("limit", "0")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -827,14 +869,16 @@ class WorkItemDetailsControllerTest {
     @Test
     void byStatusMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/by-status")
-                        .param("statusCode", "BUGS"))
+                        .param("statusCode", "BUGS")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void byStatusMissingStatusCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/by-status")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -850,13 +894,14 @@ class WorkItemDetailsControllerTest {
                 Instant.parse("2026-03-18T11:00:00Z"),
                 null, 0, false);
 
-        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20))
+        when(summaryByOwnerReadFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID))
                 .thenReturn(List.of(item));
 
         mockMvc.perform(get("/api/admin/work-items/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .param("limit", "20"))
+                        .param("limit", "20")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -870,39 +915,42 @@ class WorkItemDetailsControllerTest {
 
     @Test
     void byOwnerDefaultLimitIsUsed() throws Exception {
-        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20))
+        when(summaryByOwnerReadFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/by-owner")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void byOwnerEmptyListReturns200() throws Exception {
-        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 10))
+        when(summaryByOwnerReadFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 10, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .param("limit", "10"))
+                        .param("limit", "10")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void byOwnerInvalidLimitReturns400() throws Exception {
-        when(summaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 0))
+        when(summaryByOwnerReadFacade.getSummaryList(eq(TENANT_ID), eq(OWNER_USER_ID), eq(0), any()))
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
         mockMvc.perform(get("/api/admin/work-items/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .param("limit", "0"))
+                        .param("limit", "0")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -910,14 +958,16 @@ class WorkItemDetailsControllerTest {
     @Test
     void byOwnerMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/by-owner")
-                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void byOwnerMissingOwnerUserIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/by-owner")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -946,13 +996,14 @@ class WorkItemDetailsControllerTest {
 
         var composedItem = new WorkItemSupportSummaryItem(wiSummary, delSummary);
 
-        when(supportSummaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 20))
+        when(supportSummaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 20, ACTOR_USER_ID))
                 .thenReturn(List.of(composedItem));
 
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .param("limit", "20"))
+                        .param("limit", "20")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItem.workItemId").value(WORK_ITEM_ID.toString()))
@@ -968,39 +1019,42 @@ class WorkItemDetailsControllerTest {
 
     @Test
     void supportSummaryByStatusDefaultLimitIsUsed() throws Exception {
-        when(supportSummaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 20))
+        when(supportSummaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 20, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-status")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("statusCode", "BUGS"))
+                        .param("statusCode", "BUGS")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void supportSummaryByStatusEmptyListReturns200() throws Exception {
-        when(supportSummaryByStatusFacade.getSummaryList(TENANT_ID, "PROCESSING", 10))
+        when(supportSummaryByStatusFacade.getSummaryList(TENANT_ID, "PROCESSING", 10, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "PROCESSING")
-                        .param("limit", "10"))
+                        .param("limit", "10")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void supportSummaryByStatusInvalidLimitReturns400() throws Exception {
-        when(supportSummaryByStatusFacade.getSummaryList(TENANT_ID, "BUGS", 0))
+        when(supportSummaryByStatusFacade.getSummaryList(eq(TENANT_ID), eq("BUGS"), eq(0), any()))
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .param("limit", "0"))
+                        .param("limit", "0")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -1008,14 +1062,16 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportSummaryByStatusMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-status")
-                        .param("statusCode", "BUGS"))
+                        .param("statusCode", "BUGS")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void supportSummaryByStatusMissingStatusCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-status")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1044,13 +1100,14 @@ class WorkItemDetailsControllerTest {
 
         var composedItem = new WorkItemSupportSummaryItem(wiSummary, delSummary);
 
-        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20))
+        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID))
                 .thenReturn(List.of(composedItem));
 
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .param("limit", "20"))
+                        .param("limit", "20")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItem.workItemId").value(WORK_ITEM_ID.toString()))
@@ -1066,39 +1123,42 @@ class WorkItemDetailsControllerTest {
 
     @Test
     void supportSummaryByOwnerDefaultLimitIsUsed() throws Exception {
-        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20))
+        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void supportSummaryByOwnerEmptyListReturns200() throws Exception {
-        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 10))
+        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 10, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .param("limit", "10"))
+                        .param("limit", "10")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void supportSummaryByOwnerInvalidLimitReturns400() throws Exception {
-        when(supportSummaryByOwnerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 0))
+        when(supportSummaryByOwnerFacade.getSummaryList(eq(TENANT_ID), eq(OWNER_USER_ID), eq(0), any()))
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .param("limit", "0"))
+                        .param("limit", "0")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -1106,14 +1166,16 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportSummaryByOwnerMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
-                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void supportSummaryByOwnerMissingOwnerUserIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1163,13 +1225,14 @@ class WorkItemDetailsControllerTest {
         var supportView = new WorkItemSupportDetailsFacade.WorkItemSupportDetailsView(
                 workItemView, observabilityView);
 
-        when(supportDetailsByStatusFacade.getDetailsList(TENANT_ID, "BUGS", 20))
+        when(supportDetailsByStatusFacade.getDetailsList(TENANT_ID, "BUGS", 20, ACTOR_USER_ID))
                 .thenReturn(List.of(supportView));
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .param("limit", "20"))
+                        .param("limit", "20")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 // workItem section — full details level
@@ -1203,39 +1266,42 @@ class WorkItemDetailsControllerTest {
 
     @Test
     void supportDetailsByStatusDefaultLimitIsUsed() throws Exception {
-        when(supportDetailsByStatusFacade.getDetailsList(TENANT_ID, "BUGS", 20))
+        when(supportDetailsByStatusFacade.getDetailsList(TENANT_ID, "BUGS", 20, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-status")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("statusCode", "BUGS"))
+                        .param("statusCode", "BUGS")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void supportDetailsByStatusEmptyListReturns200() throws Exception {
-        when(supportDetailsByStatusFacade.getDetailsList(TENANT_ID, "PROCESSING", 10))
+        when(supportDetailsByStatusFacade.getDetailsList(TENANT_ID, "PROCESSING", 10, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "PROCESSING")
-                        .param("limit", "10"))
+                        .param("limit", "10")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void supportDetailsByStatusInvalidLimitReturns400() throws Exception {
-        when(supportDetailsByStatusFacade.getDetailsList(TENANT_ID, "BUGS", 0))
+        when(supportDetailsByStatusFacade.getDetailsList(eq(TENANT_ID), eq("BUGS"), eq(0), any()))
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .param("limit", "0"))
+                        .param("limit", "0")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -1243,14 +1309,16 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportDetailsByStatusMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-status")
-                        .param("statusCode", "BUGS"))
+                        .param("statusCode", "BUGS")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void supportDetailsByStatusMissingStatusCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-status")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1299,13 +1367,14 @@ class WorkItemDetailsControllerTest {
         var supportView = new WorkItemSupportDetailsFacade.WorkItemSupportDetailsView(
                 workItemView, observabilityView);
 
-        when(supportDetailsByOwnerFacade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20))
+        when(supportDetailsByOwnerFacade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID))
                 .thenReturn(List.of(supportView));
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .param("limit", "20"))
+                        .param("limit", "20")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 // workItem section — full details level
@@ -1339,39 +1408,42 @@ class WorkItemDetailsControllerTest {
 
     @Test
     void supportDetailsByOwnerDefaultLimitIsUsed() throws Exception {
-        when(supportDetailsByOwnerFacade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20))
+        when(supportDetailsByOwnerFacade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-owner")
                         .param("tenantId", TENANT_ID.toString())
-                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void supportDetailsByOwnerEmptyListReturns200() throws Exception {
-        when(supportDetailsByOwnerFacade.getDetailsList(TENANT_ID, OWNER_USER_ID, 10))
+        when(supportDetailsByOwnerFacade.getDetailsList(TENANT_ID, OWNER_USER_ID, 10, ACTOR_USER_ID))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .param("limit", "10"))
+                        .param("limit", "10")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void supportDetailsByOwnerInvalidLimitReturns400() throws Exception {
-        when(supportDetailsByOwnerFacade.getDetailsList(TENANT_ID, OWNER_USER_ID, 0))
+        when(supportDetailsByOwnerFacade.getDetailsList(eq(TENANT_ID), eq(OWNER_USER_ID), eq(0), any()))
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
         mockMvc.perform(get("/api/admin/work-items/support-details/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .param("limit", "0"))
+                        .param("limit", "0")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -1379,14 +1451,67 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportDetailsByOwnerMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-owner")
-                        .param("ownerUserId", OWNER_USER_ID.toString()))
+                        .param("ownerUserId", OWNER_USER_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void supportDetailsByOwnerMissingOwnerUserIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-owner")
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ========== Authorization tests ==========
+
+    @Test
+    void summaryEndpointReturns403WhenAccessDenied() throws Exception {
+        when(summaryReadFacade.getSummaryList(eq(TENANT_ID), eq(20), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/work-items/summary")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void detailsEndpointReturns403WhenAccessDenied() throws Exception {
+        when(detailsReadFacade.getDetails(eq(TENANT_ID), eq(WORK_ITEM_CODE), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/work-items/details")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemCode", WORK_ITEM_CODE)
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void supportDetailsEndpointReturns403WhenAccessDenied() throws Exception {
+        when(supportDetailsReadFacade.getDetails(eq(TENANT_ID), eq(WORK_ITEM_CODE), eq(10), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/work-items/support-details")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("workItemCode", WORK_ITEM_CODE)
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void missingActorHeaderStillReachesEndpointAndReturns403() throws Exception {
+        when(summaryReadFacade.getSummaryList(eq(TENANT_ID), eq(20), any()))
+                .thenThrow(new AccessDeniedException("Actor identifikatsiyasi talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/work-items/summary")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 }

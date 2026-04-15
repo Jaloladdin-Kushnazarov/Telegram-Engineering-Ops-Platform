@@ -35,11 +35,14 @@ public class WorkItemDetailsByIdFacade {
 
     private final WorkItemQueryService workItemQueryService;
     private final WorkItemDetailsFacade workItemDetailsFacade;
+    private final AdminAuthorizationService authorizationService;
 
     public WorkItemDetailsByIdFacade(WorkItemQueryService workItemQueryService,
-                                      WorkItemDetailsFacade workItemDetailsFacade) {
+                                      WorkItemDetailsFacade workItemDetailsFacade,
+                                      AdminAuthorizationService authorizationService) {
         this.workItemQueryService = workItemQueryService;
         this.workItemDetailsFacade = workItemDetailsFacade;
+        this.authorizationService = authorizationService;
     }
 
     /**
@@ -51,13 +54,15 @@ public class WorkItemDetailsByIdFacade {
      * @throws IllegalArgumentException agar tenantId yoki workItemId null bo'lsa
      * @throws ResourceNotFoundException agar workItemId berilgan tenant uchun topilmasa
      */
-    public WorkItemDetailsFacade.WorkItemDetailsView getDetails(UUID tenantId, UUID workItemId) {
+    public WorkItemDetailsFacade.WorkItemDetailsView getDetails(
+            UUID tenantId, UUID workItemId, UUID actorUserId) {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
         if (workItemId == null) {
             throw new IllegalArgumentException("workItemId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         WorkItem workItem = workItemQueryService.findByTenantAndId(tenantId, workItemId)
                 .orElseThrow(() -> new ResourceNotFoundException("WorkItem", workItemId));

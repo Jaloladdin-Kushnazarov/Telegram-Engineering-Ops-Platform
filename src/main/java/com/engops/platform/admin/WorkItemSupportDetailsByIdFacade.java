@@ -39,13 +39,16 @@ public class WorkItemSupportDetailsByIdFacade {
     private final WorkItemQueryService workItemQueryService;
     private final WorkItemDetailsFacade workItemDetailsFacade;
     private final TelegramDeliveryObservabilityDetailsFacade observabilityDetailsFacade;
+    private final AdminAuthorizationService authorizationService;
 
     public WorkItemSupportDetailsByIdFacade(WorkItemQueryService workItemQueryService,
                                              WorkItemDetailsFacade workItemDetailsFacade,
-                                             TelegramDeliveryObservabilityDetailsFacade observabilityDetailsFacade) {
+                                             TelegramDeliveryObservabilityDetailsFacade observabilityDetailsFacade,
+                                             AdminAuthorizationService authorizationService) {
         this.workItemQueryService = workItemQueryService;
         this.workItemDetailsFacade = workItemDetailsFacade;
         this.observabilityDetailsFacade = observabilityDetailsFacade;
+        this.authorizationService = authorizationService;
     }
 
     /**
@@ -60,13 +63,14 @@ public class WorkItemSupportDetailsByIdFacade {
      * @throws ResourceNotFoundException agar workItemId berilgan tenant uchun topilmasa
      */
     public WorkItemSupportDetailsFacade.WorkItemSupportDetailsView getDetails(
-            UUID tenantId, UUID workItemId, int historyLimit) {
+            UUID tenantId, UUID workItemId, int historyLimit, UUID actorUserId) {
         if (tenantId == null) {
             throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
         }
         if (workItemId == null) {
             throw new IllegalArgumentException("workItemId null bo'lishi mumkin emas");
         }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         WorkItem workItem = workItemQueryService.findByTenantAndId(tenantId, workItemId)
                 .orElseThrow(() -> new ResourceNotFoundException("WorkItem", workItemId));

@@ -1,5 +1,6 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.workitem.WorkItemQueryService;
 import com.engops.platform.workitem.model.WorkItem;
@@ -28,11 +29,14 @@ class WorkItemDetailsByIdFacadeTest {
     private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID WORKFLOW_DEF_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
     private static final String WORK_ITEM_CODE = "BUG-1";
+    private static final UUID ACTOR_USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999999");
 
     private final WorkItemQueryService queryService = mock(WorkItemQueryService.class);
     private final WorkItemDetailsFacade detailsFacade = mock(WorkItemDetailsFacade.class);
+    private final AdminAuthorizationService authorizationService =
+            mock(AdminAuthorizationService.class);
     private final WorkItemDetailsByIdFacade facade =
-            new WorkItemDetailsByIdFacade(queryService, detailsFacade);
+            new WorkItemDetailsByIdFacade(queryService, detailsFacade, authorizationService);
 
     @Test
     void resolvesWorkItemIdAndDelegatesWithExactResolvedCode() {
@@ -48,7 +52,7 @@ class WorkItemDetailsByIdFacadeTest {
         when(detailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE))
                 .thenReturn(expectedView);
 
-        var result = facade.getDetails(TENANT_ID, actualId);
+        var result = facade.getDetails(TENANT_ID, actualId, ACTOR_USER_ID);
 
         assertThat(result).isSameAs(expectedView);
 
@@ -63,7 +67,7 @@ class WorkItemDetailsByIdFacadeTest {
         when(queryService.findByTenantAndId(TENANT_ID, unknownId))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> facade.getDetails(TENANT_ID, unknownId))
+        assertThatThrownBy(() -> facade.getDetails(TENANT_ID, unknownId, ACTOR_USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         // queryService chaqirilganini, lekin detailsFacade chaqirilMAGANini isbotlash
@@ -74,7 +78,7 @@ class WorkItemDetailsByIdFacadeTest {
 
     @Test
     void throwsIllegalArgumentWhenTenantIdNullAndSkipsAll() {
-        assertThatThrownBy(() -> facade.getDetails(null, UUID.randomUUID()))
+        assertThatThrownBy(() -> facade.getDetails(null, UUID.randomUUID(), ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -83,10 +87,52 @@ class WorkItemDetailsByIdFacadeTest {
 
     @Test
     void throwsIllegalArgumentWhenWorkItemIdNullAndSkipsAll() {
-        assertThatThrownBy(() -> facade.getDetails(TENANT_ID, null))
+        assertThatThrownBy(() -> facade.getDetails(TENANT_ID, null, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("workItemId");
 
         verifyNoInteractions(queryService, detailsFacade);
+    }
+
+    // ========== Authorization testlari ==========
+
+    @Test
+    void authorizationCalledWithCorrectArguments() {
+        WorkItem workItem = new WorkItem(
+                TENANT_ID, WORK_ITEM_CODE, WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Login xato", "BUGS", null);
+        UUID actualId = workItem.getId();
+
+        var expectedView = new WorkItemDetailsFacade.WorkItemDetailsView(workItem, List.of());
+
+        when(queryService.findByTenantAndId(TENANT_ID, actualId))
+                .thenReturn(Optional.of(workItem));
+        when(detailsFacade.getDetails(TENANT_ID, WORK_ITEM_CODE))
+                .thenReturn(expectedView);
+
+        facade.getDetails(TENANT_ID, actualId, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void authorizationDenialShortCircuitsBusinessDelegation() {
+        UUID workItemId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        doThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.getDetails(TENANT_ID, workItemId, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verifyNoInteractions(queryService, detailsFacade);
+    }
+
+    @Test
+    void nullTenantIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.getDetails(null, UUID.randomUUID(), ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(authorizationService);
     }
 }

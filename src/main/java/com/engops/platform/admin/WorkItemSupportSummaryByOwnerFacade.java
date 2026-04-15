@@ -42,12 +42,15 @@ public class WorkItemSupportSummaryByOwnerFacade {
 
     private final WorkItemSummaryByOwnerFacade workItemSummaryByOwnerFacade;
     private final DeliveryObservabilitySummaryFacade deliveryObservabilitySummaryFacade;
+    private final AdminAuthorizationService authorizationService;
 
     public WorkItemSupportSummaryByOwnerFacade(
             WorkItemSummaryByOwnerFacade workItemSummaryByOwnerFacade,
-            DeliveryObservabilitySummaryFacade deliveryObservabilitySummaryFacade) {
+            DeliveryObservabilitySummaryFacade deliveryObservabilitySummaryFacade,
+            AdminAuthorizationService authorizationService) {
         this.workItemSummaryByOwnerFacade = workItemSummaryByOwnerFacade;
         this.deliveryObservabilitySummaryFacade = deliveryObservabilitySummaryFacade;
+        this.authorizationService = authorizationService;
     }
 
     /**
@@ -60,7 +63,13 @@ public class WorkItemSupportSummaryByOwnerFacade {
      * @throws IllegalArgumentException agar tenantId/ownerUserId/limit noto'g'ri bo'lsa
      * @throws IllegalStateException agar composition inconsistency aniqlansa
      */
-    public List<WorkItemSupportSummaryItem> getSummaryList(UUID tenantId, UUID ownerUserId, int limit) {
+    public List<WorkItemSupportSummaryItem> getSummaryList(
+            UUID tenantId, UUID ownerUserId, int limit, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
         List<WorkItemSummaryItem> workItemSummaries =
                 workItemSummaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit);
 

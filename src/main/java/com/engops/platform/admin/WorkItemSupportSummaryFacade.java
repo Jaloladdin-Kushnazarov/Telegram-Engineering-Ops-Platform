@@ -47,11 +47,14 @@ public class WorkItemSupportSummaryFacade {
 
     private final WorkItemSummaryFacade workItemSummaryFacade;
     private final DeliveryObservabilitySummaryFacade deliveryObservabilitySummaryFacade;
+    private final AdminAuthorizationService authorizationService;
 
     public WorkItemSupportSummaryFacade(WorkItemSummaryFacade workItemSummaryFacade,
-                                         DeliveryObservabilitySummaryFacade deliveryObservabilitySummaryFacade) {
+                                         DeliveryObservabilitySummaryFacade deliveryObservabilitySummaryFacade,
+                                         AdminAuthorizationService authorizationService) {
         this.workItemSummaryFacade = workItemSummaryFacade;
         this.deliveryObservabilitySummaryFacade = deliveryObservabilitySummaryFacade;
+        this.authorizationService = authorizationService;
     }
 
     /**
@@ -65,7 +68,12 @@ public class WorkItemSupportSummaryFacade {
      * @throws IllegalStateException agar composition inconsistency aniqlansa
      *         (delivery summary work item uchun topilmasa)
      */
-    public List<WorkItemSupportSummaryItem> getSummaryList(UUID tenantId, int limit) {
+    public List<WorkItemSupportSummaryItem> getSummaryList(UUID tenantId, int limit, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
         List<WorkItemSummaryItem> workItemSummaries =
                 workItemSummaryFacade.getSummaryList(tenantId, limit);
 

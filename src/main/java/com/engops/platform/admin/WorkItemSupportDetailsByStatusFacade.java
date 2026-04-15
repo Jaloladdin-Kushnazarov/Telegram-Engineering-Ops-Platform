@@ -42,12 +42,15 @@ public class WorkItemSupportDetailsByStatusFacade {
 
     private final WorkItemSummaryByStatusFacade workItemSummaryByStatusFacade;
     private final WorkItemSupportDetailsFacade workItemSupportDetailsFacade;
+    private final AdminAuthorizationService authorizationService;
 
     public WorkItemSupportDetailsByStatusFacade(
             WorkItemSummaryByStatusFacade workItemSummaryByStatusFacade,
-            WorkItemSupportDetailsFacade workItemSupportDetailsFacade) {
+            WorkItemSupportDetailsFacade workItemSupportDetailsFacade,
+            AdminAuthorizationService authorizationService) {
         this.workItemSummaryByStatusFacade = workItemSummaryByStatusFacade;
         this.workItemSupportDetailsFacade = workItemSupportDetailsFacade;
+        this.authorizationService = authorizationService;
     }
 
     /**
@@ -60,7 +63,11 @@ public class WorkItemSupportDetailsByStatusFacade {
      * @throws IllegalArgumentException agar tenantId/statusCode/limit noto'g'ri bo'lsa
      */
     public List<WorkItemSupportDetailsFacade.WorkItemSupportDetailsView> getDetailsList(
-            UUID tenantId, String statusCode, int limit) {
+            UUID tenantId, String statusCode, int limit, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
 
         List<WorkItemSummaryItem> primaryList =
                 workItemSummaryByStatusFacade.getSummaryList(tenantId, statusCode, limit);

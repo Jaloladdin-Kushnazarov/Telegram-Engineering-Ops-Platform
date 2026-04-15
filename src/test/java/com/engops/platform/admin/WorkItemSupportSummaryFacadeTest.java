@@ -1,5 +1,6 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.telegram.TelegramDeliveryMetricsSnapshot;
 import com.engops.platform.workitem.model.WorkItemType;
 import org.junit.jupiter.api.Test;
@@ -30,13 +31,16 @@ class WorkItemSupportSummaryFacadeTest {
     private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID WI_ID_1 = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final UUID WI_ID_2 = UUID.fromString("33333333-3333-3333-3333-333333333333");
+    private static final UUID ACTOR_USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999999");
 
     private final WorkItemSummaryFacade workItemSummaryFacade =
             mock(WorkItemSummaryFacade.class);
     private final DeliveryObservabilitySummaryFacade deliverySummaryFacade =
             mock(DeliveryObservabilitySummaryFacade.class);
+    private final AdminAuthorizationService authorizationService =
+            mock(AdminAuthorizationService.class);
     private final WorkItemSupportSummaryFacade facade =
-            new WorkItemSupportSummaryFacade(workItemSummaryFacade, deliverySummaryFacade);
+            new WorkItemSupportSummaryFacade(workItemSummaryFacade, deliverySummaryFacade, authorizationService);
 
     @Test
     void returnsComposedListFromBothFacades() {
@@ -48,7 +52,7 @@ class WorkItemSupportSummaryFacadeTest {
         when(deliverySummaryFacade.getSummaryList(TENANT_ID, 20))
                 .thenReturn(List.of(del1));
 
-        List<WorkItemSupportSummaryItem> result = facade.getSummaryList(TENANT_ID, 20);
+        List<WorkItemSupportSummaryItem> result = facade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).workItem()).isSameAs(wi1);
@@ -70,7 +74,7 @@ class WorkItemSupportSummaryFacadeTest {
         when(deliverySummaryFacade.getSummaryList(TENANT_ID, 20))
                 .thenReturn(List.of(del2, del1)); // teskari tartib
 
-        List<WorkItemSupportSummaryItem> result = facade.getSummaryList(TENANT_ID, 20);
+        List<WorkItemSupportSummaryItem> result = facade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).hasSize(2);
         // Birinchi item: WI_ID_1 work item + WI_ID_1 delivery (pozitsiya emas, workItemId bo'yicha)
@@ -86,7 +90,7 @@ class WorkItemSupportSummaryFacadeTest {
         when(workItemSummaryFacade.getSummaryList(TENANT_ID, 20))
                 .thenReturn(List.of());
 
-        List<WorkItemSupportSummaryItem> result = facade.getSummaryList(TENANT_ID, 20);
+        List<WorkItemSupportSummaryItem> result = facade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).isEmpty();
         verifyNoInteractions(deliverySummaryFacade);
@@ -98,7 +102,7 @@ class WorkItemSupportSummaryFacadeTest {
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
-        assertThatThrownBy(() -> facade.getSummaryList(TENANT_ID, 0))
+        assertThatThrownBy(() -> facade.getSummaryList(TENANT_ID, 0, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("limit");
     }
@@ -108,7 +112,7 @@ class WorkItemSupportSummaryFacadeTest {
         when(workItemSummaryFacade.getSummaryList(null, 20))
                 .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
 
-        assertThatThrownBy(() -> facade.getSummaryList(null, 20))
+        assertThatThrownBy(() -> facade.getSummaryList(null, 20, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
     }
@@ -122,7 +126,7 @@ class WorkItemSupportSummaryFacadeTest {
         when(deliverySummaryFacade.getSummaryList(TENANT_ID, 20))
                 .thenReturn(List.of()); // delivery summary yo'q — inconsistency
 
-        assertThatThrownBy(() -> facade.getSummaryList(TENANT_ID, 20))
+        assertThatThrownBy(() -> facade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("workItemId=" + WI_ID_1);
     }
@@ -137,7 +141,7 @@ class WorkItemSupportSummaryFacadeTest {
         when(deliverySummaryFacade.getSummaryList(TENANT_ID, 10))
                 .thenReturn(List.of(del1));
 
-        List<WorkItemSupportSummaryItem> result = facade.getSummaryList(TENANT_ID, 10);
+        List<WorkItemSupportSummaryItem> result = facade.getSummaryList(TENANT_ID, 10, ACTOR_USER_ID);
 
         assertThat(result).hasSize(1);
         // Work item section kompakt — description, updates yo'q
@@ -148,6 +152,38 @@ class WorkItemSupportSummaryFacadeTest {
         DeliveryObservabilitySummaryItem delivery = result.get(0).deliveryObservability();
         assertThat(delivery.latestMetrics()).isNotNull();
         assertThat(delivery.latestMetrics().isEmpty()).isTrue(); // empty snapshot
+    }
+
+    // ========== Authorization testlari ==========
+
+    @Test
+    void authorizationCalledWithCorrectArguments() {
+        when(workItemSummaryFacade.getSummaryList(TENANT_ID, 20))
+                .thenReturn(List.of());
+
+        facade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void authorizationDenialShortCircuitsBusinessDelegation() {
+        doThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verifyNoInteractions(workItemSummaryFacade, deliverySummaryFacade);
+    }
+
+    @Test
+    void nullTenantIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.getSummaryList(null, 20, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(authorizationService);
     }
 
     // ========== Yordamchi metodlar ==========

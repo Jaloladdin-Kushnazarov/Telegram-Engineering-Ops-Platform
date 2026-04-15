@@ -1,5 +1,6 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.telegram.TelegramDeliveryMetricsSnapshot;
 import com.engops.platform.telegram.TelegramDeliveryObservabilityDetailsView;
 import com.engops.platform.workitem.model.WorkItem;
@@ -37,13 +38,16 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
     private static final UUID WI_ID_1 = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final UUID WI_ID_2 = UUID.fromString("33333333-3333-3333-3333-333333333333");
     private static final UUID WORKFLOW_DEF_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
+    private static final UUID ACTOR_USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999999");
 
     private final WorkItemSummaryByOwnerFacade ownerFacade =
             mock(WorkItemSummaryByOwnerFacade.class);
     private final WorkItemSupportDetailsFacade supportDetailsFacade =
             mock(WorkItemSupportDetailsFacade.class);
+    private final AdminAuthorizationService authorizationService =
+            mock(AdminAuthorizationService.class);
     private final WorkItemSupportDetailsByOwnerFacade facade =
-            new WorkItemSupportDetailsByOwnerFacade(ownerFacade, supportDetailsFacade);
+            new WorkItemSupportDetailsByOwnerFacade(ownerFacade, supportDetailsFacade, authorizationService);
 
     @Test
     void returnsCombinedDetailedListFromPrimaryFilteredList() {
@@ -53,7 +57,7 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
         when(ownerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20)).thenReturn(List.of(wi));
         when(supportDetailsFacade.getDetails(TENANT_ID, "BUG-1", 10)).thenReturn(detailsView);
 
-        var result = facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20);
+        var result = facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0)).isSameAs(detailsView);
@@ -74,7 +78,7 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
         when(supportDetailsFacade.getDetails(TENANT_ID, "BUG-1", 10)).thenReturn(details1);
         when(supportDetailsFacade.getDetails(TENANT_ID, "BUG-2", 10)).thenReturn(details2);
 
-        var result = facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20);
+        var result = facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).workItemDetails().workItem().getWorkItemCode()).isEqualTo("BUG-1");
@@ -92,7 +96,7 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
         when(supportDetailsFacade.getDetails(TENANT_ID, "BUG-1", 10)).thenReturn(details1);
         when(supportDetailsFacade.getDetails(TENANT_ID, "INCIDENT-5", 10)).thenReturn(details2);
 
-        facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20);
+        facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
 
         verify(supportDetailsFacade).getDetails(TENANT_ID, "BUG-1", 10);
         verify(supportDetailsFacade).getDetails(TENANT_ID, "INCIDENT-5", 10);
@@ -103,7 +107,7 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
     void emptyPrimaryListShortCircuitsAndSkipsDownstreamCalls() {
         when(ownerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20)).thenReturn(List.of());
 
-        var result = facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20);
+        var result = facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).isEmpty();
         verify(ownerFacade).getSummaryList(TENANT_ID, OWNER_USER_ID, 20);
@@ -116,7 +120,7 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
                 .thenThrow(new IllegalArgumentException(
                         "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
 
-        assertThatThrownBy(() -> facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 0))
+        assertThatThrownBy(() -> facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 0, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("limit");
 
@@ -128,7 +132,7 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
         when(ownerFacade.getSummaryList(null, OWNER_USER_ID, 20))
                 .thenThrow(new IllegalArgumentException("tenantId null bo'lishi mumkin emas"));
 
-        assertThatThrownBy(() -> facade.getDetailsList(null, OWNER_USER_ID, 20))
+        assertThatThrownBy(() -> facade.getDetailsList(null, OWNER_USER_ID, 20, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tenantId");
 
@@ -140,7 +144,7 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
         when(ownerFacade.getSummaryList(TENANT_ID, null, 20))
                 .thenThrow(new IllegalArgumentException("ownerUserId null bo'lishi mumkin emas"));
 
-        assertThatThrownBy(() -> facade.getDetailsList(TENANT_ID, null, 20))
+        assertThatThrownBy(() -> facade.getDetailsList(TENANT_ID, null, 20, ACTOR_USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ownerUserId");
 
@@ -158,7 +162,7 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
         when(supportDetailsFacade.getDetails(TENANT_ID, "BUG-1", 10)).thenReturn(details1);
         when(supportDetailsFacade.getDetails(TENANT_ID, "BUG-2", 10)).thenReturn(details2);
 
-        facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 5);
+        facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 5, ACTOR_USER_ID);
 
         verify(supportDetailsFacade).getDetails(TENANT_ID, "BUG-1", 10);
         verify(supportDetailsFacade).getDetails(TENANT_ID, "BUG-2", 10);
@@ -169,7 +173,7 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
     void verifyDelegationArguments() {
         when(ownerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 5)).thenReturn(List.of());
 
-        facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 5);
+        facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 5, ACTOR_USER_ID);
 
         verify(ownerFacade).getSummaryList(TENANT_ID, OWNER_USER_ID, 5);
         verifyNoMoreInteractions(ownerFacade);
@@ -187,7 +191,7 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
         when(supportDetailsFacade.getDetails(TENANT_ID, "BUG-1", 10)).thenReturn(details1);
         when(supportDetailsFacade.getDetails(TENANT_ID, "BUG-2", 10)).thenReturn(details2);
 
-        var result = facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20);
+        var result = facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
 
         assertThat(result).hasSize(2);
 
@@ -214,6 +218,37 @@ class WorkItemSupportDetailsByOwnerFacadeTest {
         verify(supportDetailsFacade).getDetails(TENANT_ID, "BUG-1", 10);
         verify(supportDetailsFacade).getDetails(TENANT_ID, "BUG-2", 10);
         verifyNoMoreInteractions(ownerFacade, supportDetailsFacade);
+    }
+
+    // ========== Authorization testlari ==========
+
+    @Test
+    void authorizationCalledWithCorrectArguments() {
+        when(ownerFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20)).thenReturn(List.of());
+
+        facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void authorizationDenialShortCircuitsBusinessDelegation() {
+        doThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.getDetailsList(TENANT_ID, OWNER_USER_ID, 20, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verifyNoInteractions(ownerFacade, supportDetailsFacade);
+    }
+
+    @Test
+    void nullTenantIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.getDetailsList(null, OWNER_USER_ID, 20, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(authorizationService);
     }
 
     // ========== Helpers ==========
