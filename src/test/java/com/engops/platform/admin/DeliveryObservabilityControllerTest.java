@@ -60,6 +60,9 @@ class DeliveryObservabilityControllerTest {
     @MockBean
     private DeliveryObservabilitySummaryByOwnerFacade summaryByOwnerFacade;
 
+    @MockBean
+    private DeliveryObservabilityDetailsByStatusFacade detailsByStatusFacade;
+
     @Test
     void successPathReturnsCorrectResponse() throws Exception {
         UUID attemptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
@@ -553,6 +556,107 @@ class DeliveryObservabilityControllerTest {
     @Test
     void summaryByOwnerMissingOwnerUserIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/summary/by-owner")
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ========== Details by-status endpoint tests ==========
+
+    @Test
+    void detailsByStatusReturnsCorrectResponse() throws Exception {
+        UUID attemptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        UUID chatBindingId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+
+        TelegramDeliveryAttempt attempt = TelegramDeliveryAttempt.reconstruct(
+                attemptId, FIXED_TIME, TENANT_ID, WORK_ITEM_ID,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                chatBindingId, 42L,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                99001L, null, null);
+
+        TelegramDeliveryMetricsSnapshot snapshot = TelegramDeliveryMetricsSnapshot.of(
+                TENANT_ID, WORK_ITEM_ID,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED,
+                null, true);
+
+        var details = new TelegramDeliveryObservabilityDetailsView(
+                WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
+                WorkItemType.BUG, "BUGS",
+                snapshot, List.of(attempt));
+
+        when(detailsByStatusFacade.getDetailsList(TENANT_ID, "BUGS", 20))
+                .thenReturn(List.of(details));
+
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-status")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("statusCode", "BUGS")
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
+                .andExpect(jsonPath("$.items[0].workItemCode").value(WORK_ITEM_CODE))
+                .andExpect(jsonPath("$.items[0].title").value("Login xato"))
+                .andExpect(jsonPath("$.items[0].typeCode").value("BUG"))
+                .andExpect(jsonPath("$.items[0].currentStatusCode").value("BUGS"))
+                .andExpect(jsonPath("$.items[0].latestMetrics.deliveryOutcome").value("DELIVERED"))
+                .andExpect(jsonPath("$.items[0].latestMetrics.success").value(true))
+                .andExpect(jsonPath("$.items[0].latestMetrics.empty").value(false))
+                .andExpect(jsonPath("$.items[0].recentAttempts", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].recentAttempts[0].attemptId").value(attemptId.toString()))
+                .andExpect(jsonPath("$.items[0].recentAttempts[0].operation").value("SEND_NEW_MESSAGE"))
+                .andExpect(jsonPath("$.items[0].recentAttempts[0].success").value(true));
+    }
+
+    @Test
+    void detailsByStatusDefaultLimitIsUsed() throws Exception {
+        when(detailsByStatusFacade.getDetailsList(TENANT_ID, "BUGS", 20))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-status")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("statusCode", "BUGS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void detailsByStatusEmptyListReturns200() throws Exception {
+        when(detailsByStatusFacade.getDetailsList(TENANT_ID, "PROCESSING", 10))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-status")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("statusCode", "PROCESSING")
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void detailsByStatusInvalidLimitReturns400() throws Exception {
+        when(detailsByStatusFacade.getDetailsList(TENANT_ID, "BUGS", 0))
+                .thenThrow(new IllegalArgumentException(
+                        "limit 1..50 oralig'ida bo'lishi kerak, berilgan: 0"));
+
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-status")
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("statusCode", "BUGS")
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void detailsByStatusMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-status")
+                        .param("statusCode", "BUGS"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void detailsByStatusMissingStatusCodeReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/delivery-observability/details/by-status")
                         .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isBadRequest());
     }
