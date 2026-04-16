@@ -1171,6 +1171,31 @@ public class TenantConfigWriteFacade {
             String permissionCode,
             java.time.Instant createdAt) {}
 
+    /**
+     * Global roldan ruxsatni olib tashlaydi.
+     *
+     * @param tenantId tenant identifikatori (authorization uchun)
+     * @param roleId rol identifikatori
+     * @param permissionId ruxsat identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @throws IllegalArgumentException tenantId, roleId yoki permissionId null bo'lsa
+     */
+    public void unassignPermissionFromRole(UUID tenantId, UUID roleId, UUID permissionId,
+                                             UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (roleId == null) {
+            throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
+        }
+        if (permissionId == null) {
+            throw new IllegalArgumentException("permissionId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
+
+        identityCommandService.unassignPermissionFromRole(roleId, permissionId);
+    }
+
     private RoleCatalogView toRoleCatalogView(Role role) {
         return new RoleCatalogView(
                 role.getId(),

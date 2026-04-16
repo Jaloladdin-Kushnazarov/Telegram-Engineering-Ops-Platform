@@ -586,6 +586,39 @@ public class IdentityCommandService {
     }
 
     /**
+     * Global roldan ruxsatni olib tashlaydi (role-permission binding o'chiradi).
+     *
+     * Validatsiyalar:
+     * 1. Rol global katalogda mavjud bo'lishi kerak
+     * 2. Ruxsat global katalogda mavjud bo'lishi kerak
+     * 3. Binding shu (role, permission) juftligi uchun mavjud bo'lishi kerak
+     *
+     * @param roleId rol identifikatori
+     * @param permissionId ruxsat identifikatori
+     * @throws ResourceNotFoundException rol, ruxsat yoki binding topilmasa
+     */
+    public void unassignPermissionFromRole(UUID roleId, UUID permissionId) {
+        roleRepository.findById(roleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+
+        permissionRepository.findById(permissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Permission", permissionId));
+
+        RolePermission binding = rolePermissionRepository
+                .findByRoleIdAndPermissionId(roleId, permissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("RolePermission",
+                        "roleId=" + roleId + ",permissionId=" + permissionId));
+
+        UUID bindingId = binding.getId();
+        String permissionCode = binding.getPermission() != null ? binding.getPermission().getCode() : null;
+
+        rolePermissionRepository.delete(binding);
+
+        auditService.recordEvent(null, "ROLE_PERMISSION", bindingId,
+                "DELETED", null, "ADMIN_API", permissionCode, null);
+    }
+
+    /**
      * DataIntegrityViolationException membership (tenant_id, user_id) unique
      * constraint violation ekanligini tekshiradi.
      */

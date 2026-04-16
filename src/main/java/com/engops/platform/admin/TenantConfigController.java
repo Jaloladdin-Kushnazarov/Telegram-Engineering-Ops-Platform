@@ -1050,6 +1050,26 @@ public class TenantConfigController {
                 view.createdAt());
     }
 
+    /**
+     * Global roldan ruxsatni olib tashlaydi (role-permission binding o'chiradi).
+     *
+     * @param roleId rol identifikatori
+     * @param permissionId ruxsat identifikatori
+     * @param tenantId tenant identifikatori (authorization uchun)
+     * @return 204 No Content
+     */
+    @DeleteMapping("/roles/{roleId}/permissions/{permissionId}")
+    public ResponseEntity<Void> unassignPermissionFromRole(
+            @PathVariable UUID roleId,
+            @PathVariable UUID permissionId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        writeFacade.unassignPermissionFromRole(tenantId, roleId, permissionId, actorUserId);
+
+        return ResponseEntity.noContent().build();
+    }
+
     private RoleCatalogResponse toRoleCatalogResponse(TenantConfigWriteFacade.RoleCatalogView view) {
         return new RoleCatalogResponse(
                 view.roleId(),

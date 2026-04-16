@@ -2077,4 +2077,66 @@ class TenantConfigWriteFacadeTest {
 
         verifyNoInteractions(identityCommandService);
     }
+
+    // ========== unassignPermissionFromRole tests ==========
+
+    @Test
+    void unassignPermissionFromRoleThrowsIllegalArgumentWhenTenantIdNull() {
+        assertThatThrownBy(() -> facade.unassignPermissionFromRole(null, ROLE_ID, PERMISSION_ID, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void unassignPermissionFromRoleThrowsIllegalArgumentWhenRoleIdNull() {
+        assertThatThrownBy(() -> facade.unassignPermissionFromRole(TENANT_ID, null, PERMISSION_ID, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("roleId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void unassignPermissionFromRoleThrowsIllegalArgumentWhenPermissionIdNull() {
+        assertThatThrownBy(() -> facade.unassignPermissionFromRole(TENANT_ID, ROLE_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("permissionId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void unassignPermissionFromRoleDelegatesToIdentityCommandService() {
+        facade.unassignPermissionFromRole(TENANT_ID, ROLE_ID, PERMISSION_ID, ACTOR_USER_ID);
+
+        verify(identityCommandService).unassignPermissionFromRole(ROLE_ID, PERMISSION_ID);
+    }
+
+    @Test
+    void unassignPermissionFromRoleNullRoleIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.unassignPermissionFromRole(TENANT_ID, null, PERMISSION_ID, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void unassignPermissionFromRoleCallsAuthorizeWrite() {
+        facade.unassignPermissionFromRole(TENANT_ID, ROLE_ID, PERMISSION_ID, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void unassignPermissionFromRoleDeniedWhenAuthorizationFails() {
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.unassignPermissionFromRole(TENANT_ID, ROLE_ID, PERMISSION_ID, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(identityCommandService);
+    }
 }

@@ -1227,4 +1227,69 @@ class IdentityCommandServiceTest {
 
         verifyNoInteractions(auditService);
     }
+
+    // ========== unassignPermissionFromRole tests ==========
+
+    @Test
+    void unassignPermissionFromRoleSuccess() {
+        Role role = existingRole();
+        Permission permission = existingPermission();
+        RolePermission binding = new RolePermission(role, permission);
+
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(role));
+        when(permissionRepository.findById(PERMISSION_ID)).thenReturn(Optional.of(permission));
+        when(rolePermissionRepository.findByRoleIdAndPermissionId(ROLE_ID, PERMISSION_ID))
+                .thenReturn(Optional.of(binding));
+
+        service.unassignPermissionFromRole(ROLE_ID, PERMISSION_ID);
+
+        verify(rolePermissionRepository).delete(binding);
+        verify(auditService).recordEvent(
+                eq(null), eq("ROLE_PERMISSION"), eq(binding.getId()),
+                eq("DELETED"), eq(null), eq("ADMIN_API"),
+                eq("TENANT_CONFIG_WRITE"), eq(null));
+    }
+
+    @Test
+    void unassignPermissionFromRoleThrowsRoleNotFoundWhenRoleMissing() {
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.unassignPermissionFromRole(ROLE_ID, PERMISSION_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Role");
+
+        verify(permissionRepository, never()).findById(any());
+        verify(rolePermissionRepository, never()).findByRoleIdAndPermissionId(any(), any());
+        verify(rolePermissionRepository, never()).delete(any(RolePermission.class));
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void unassignPermissionFromRoleThrowsPermissionNotFoundWhenPermissionMissing() {
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(existingRole()));
+        when(permissionRepository.findById(PERMISSION_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.unassignPermissionFromRole(ROLE_ID, PERMISSION_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Permission");
+
+        verify(rolePermissionRepository, never()).findByRoleIdAndPermissionId(any(), any());
+        verify(rolePermissionRepository, never()).delete(any(RolePermission.class));
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void unassignPermissionFromRoleThrowsNotFoundWhenBindingMissing() {
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(existingRole()));
+        when(permissionRepository.findById(PERMISSION_ID)).thenReturn(Optional.of(existingPermission()));
+        when(rolePermissionRepository.findByRoleIdAndPermissionId(ROLE_ID, PERMISSION_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.unassignPermissionFromRole(ROLE_ID, PERMISSION_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("RolePermission");
+
+        verify(rolePermissionRepository, never()).delete(any(RolePermission.class));
+        verifyNoInteractions(auditService);
+    }
 }

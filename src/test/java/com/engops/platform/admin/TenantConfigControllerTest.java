@@ -3161,4 +3161,71 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
+
+    // ========== DELETE /roles/{roleId}/permissions/{permissionId} — role-permission unassignment endpoint ==========
+
+    @Test
+    void unassignPermissionFromRoleReturns204() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
+                        ROLE_ID, PERMISSION_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+    }
+
+    @Test
+    void unassignPermissionFromRoleMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
+                        ROLE_ID, PERMISSION_ID))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void unassignPermissionFromRoleRoleNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("Role", ROLE_ID))
+                .when(writeFacade).unassignPermissionFromRole(eq(TENANT_ID), eq(ROLE_ID), eq(PERMISSION_ID), any());
+
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
+                        ROLE_ID, PERMISSION_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void unassignPermissionFromRolePermissionNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("Permission", PERMISSION_ID))
+                .when(writeFacade).unassignPermissionFromRole(eq(TENANT_ID), eq(ROLE_ID), eq(PERMISSION_ID), any());
+
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
+                        ROLE_ID, PERMISSION_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void unassignPermissionFromRoleBindingNotFoundReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("RolePermission", "x"))
+                .when(writeFacade).unassignPermissionFromRole(eq(TENANT_ID), eq(ROLE_ID), eq(PERMISSION_ID), any());
+
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
+                        ROLE_ID, PERMISSION_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void unassignPermissionFromRoleAccessDeniedReturns403() throws Exception {
+        doThrow(new AccessDeniedException("TENANT_CONFIG_WRITE ruxsati talab qilinadi"))
+                .when(writeFacade).unassignPermissionFromRole(eq(TENANT_ID), eq(ROLE_ID), eq(PERMISSION_ID), any());
+
+        mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
+                        ROLE_ID, PERMISSION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
 }
