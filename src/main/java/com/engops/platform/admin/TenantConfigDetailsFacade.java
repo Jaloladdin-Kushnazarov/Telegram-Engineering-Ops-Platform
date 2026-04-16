@@ -6,6 +6,7 @@ import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
+import com.engops.platform.identity.model.Permission;
 import com.engops.platform.identity.model.Role;
 import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.RoutingRule;
@@ -170,6 +171,57 @@ public class TenantConfigDetailsFacade {
             String name,
             String description,
             boolean systemRole,
+            Instant createdAt) {}
+
+    /**
+     * Global ruxsat (permission) katalogi ro'yxatini qaytaradi.
+     *
+     * Rollar kabi ruxsatlar ham GLOBAL — tenantga tegishli emas. tenantId endpoint-family
+     * izchilligi va admin kontekst validatsiyasi uchun tekshiriladi.
+     *
+     * Ordering: code ASC -> id ASC
+     *
+     * @param tenantId admin kontekst tenant identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return global ruxsat katalogi ro'yxati
+     * @throws IllegalArgumentException agar tenantId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant topilmasa
+     */
+    public PermissionListView getPermissions(UUID tenantId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        List<Permission> permissions = identityQueryService.listAllPermissions();
+
+        List<PermissionItemView> items = permissions.stream()
+                .sorted(Comparator.comparing(Permission::getCode)
+                        .thenComparing(Permission::getId))
+                .map(p -> new PermissionItemView(
+                        p.getId(),
+                        p.getCode(),
+                        p.getDescription(),
+                        p.getCreatedAt()))
+                .toList();
+
+        return new PermissionListView(tenantId, items);
+    }
+
+    /**
+     * Facade natija modeli — global ruxsat katalogi ro'yxati.
+     */
+    public record PermissionListView(
+            UUID tenantId,
+            List<PermissionItemView> items) {}
+
+    public record PermissionItemView(
+            UUID permissionId,
+            String code,
+            String description,
             Instant createdAt) {}
 
     /**

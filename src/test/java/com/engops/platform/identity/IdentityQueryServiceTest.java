@@ -3,10 +3,12 @@ package com.engops.platform.identity;
 import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipStatus;
+import com.engops.platform.identity.model.Permission;
 import com.engops.platform.identity.model.Role;
 import com.engops.platform.identity.repository.AppUserRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
+import com.engops.platform.identity.repository.PermissionRepository;
 import com.engops.platform.identity.repository.RoleRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +33,7 @@ class IdentityQueryServiceTest {
     @Mock private MembershipRepository membershipRepository;
     @Mock private MembershipRoleBindingRepository membershipRoleBindingRepository;
     @Mock private RoleRepository roleRepository;
+    @Mock private PermissionRepository permissionRepository;
 
     @InjectMocks
     private IdentityQueryService identityQueryService;
@@ -105,5 +108,19 @@ class IdentityQueryServiceTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().getCode()).isEqualTo("TESTER");
+    }
+
+    @Test
+    void globalRuxsatlarniRoyxatlash() {
+        Permission p1 = new Permission("TENANT_CONFIG_READ", "Tenant config o'qish");
+        Permission p2 = new Permission("TENANT_CONFIG_WRITE", "Tenant config yozish");
+
+        when(permissionRepository.findAll()).thenReturn(List.of(p1, p2));
+
+        List<Permission> result = identityQueryService.listAllPermissions();
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getCode()).isEqualTo("TENANT_CONFIG_READ");
+        assertThat(result.get(1).getCode()).isEqualTo("TENANT_CONFIG_WRITE");
     }
 }

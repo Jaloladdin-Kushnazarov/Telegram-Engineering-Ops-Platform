@@ -27,6 +27,7 @@ import java.util.UUID;
  * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
  * - GET /memberships — tenant a'zolik ro'yxati
  * - GET /roles — global rol katalogi ro'yxati
+ * - GET /permissions — global ruxsat katalogi ro'yxati
  *
  * Write endpoint'lar:
  * - POST /workflow-definitions — yangi workflow definition yaratish
@@ -196,6 +197,23 @@ public class TenantConfigController {
                 detailsFacade.getRoles(tenantId, actorUserId);
 
         return ResponseEntity.ok(toRoleListResponse(view));
+    }
+
+    /**
+     * Global ruxsat katalogi ro'yxatini qaytaradi.
+     *
+     * @param tenantId admin kontekst tenant identifikatori
+     * @return global ruxsat katalogi ro'yxati
+     */
+    @GetMapping("/permissions")
+    public ResponseEntity<TenantConfigPermissionListResponse> getPermissions(
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.PermissionListView view =
+                detailsFacade.getPermissions(tenantId, actorUserId);
+
+        return ResponseEntity.ok(toPermissionListResponse(view));
     }
 
     // ========== Write endpoint'lar ==========
@@ -821,6 +839,18 @@ public class TenantConfigController {
                         i.createdAt()))
                 .toList();
         return new TenantConfigRoleListResponse(view.tenantId(), items);
+    }
+
+    private TenantConfigPermissionListResponse toPermissionListResponse(
+            TenantConfigDetailsFacade.PermissionListView view) {
+        List<TenantConfigPermissionListResponse.PermissionItem> items = view.items().stream()
+                .map(i -> new TenantConfigPermissionListResponse.PermissionItem(
+                        i.permissionId(),
+                        i.code(),
+                        i.description(),
+                        i.createdAt()))
+                .toList();
+        return new TenantConfigPermissionListResponse(view.tenantId(), items);
     }
 
     private TenantConfigMembershipListResponse toMembershipListResponse(

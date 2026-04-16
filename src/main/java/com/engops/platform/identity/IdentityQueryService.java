@@ -4,11 +4,13 @@ import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.MembershipStatus;
+import com.engops.platform.identity.model.Permission;
 import com.engops.platform.identity.model.Role;
 import com.engops.platform.identity.model.RolePermission;
 import com.engops.platform.identity.repository.AppUserRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
+import com.engops.platform.identity.repository.PermissionRepository;
 import com.engops.platform.identity.repository.RolePermissionRepository;
 import com.engops.platform.identity.repository.RoleRepository;
 import org.springframework.stereotype.Service;
@@ -35,17 +37,20 @@ public class IdentityQueryService {
     private final MembershipRepository membershipRepository;
     private final MembershipRoleBindingRepository membershipRoleBindingRepository;
     private final RoleRepository roleRepository;
+    private final PermissionRepository permissionRepository;
     private final RolePermissionRepository rolePermissionRepository;
 
     public IdentityQueryService(AppUserRepository appUserRepository,
                                  MembershipRepository membershipRepository,
                                  MembershipRoleBindingRepository membershipRoleBindingRepository,
                                  RoleRepository roleRepository,
+                                 PermissionRepository permissionRepository,
                                  RolePermissionRepository rolePermissionRepository) {
         this.appUserRepository = appUserRepository;
         this.membershipRepository = membershipRepository;
         this.membershipRoleBindingRepository = membershipRoleBindingRepository;
         this.roleRepository = roleRepository;
+        this.permissionRepository = permissionRepository;
         this.rolePermissionRepository = rolePermissionRepository;
     }
 
@@ -105,6 +110,13 @@ public class IdentityQueryService {
      */
     public List<Role> listAllRoles() {
         return roleRepository.findAll();
+    }
+
+    /**
+     * Barcha global ruxsatlarni qaytaradi.
+     */
+    public List<Permission> listAllPermissions() {
+        return permissionRepository.findAll();
     }
 
     /**
