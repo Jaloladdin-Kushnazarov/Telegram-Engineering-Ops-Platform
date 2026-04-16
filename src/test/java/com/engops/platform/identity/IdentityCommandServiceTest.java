@@ -5,10 +5,14 @@ import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.MembershipStatus;
+import com.engops.platform.identity.model.Permission;
 import com.engops.platform.identity.model.Role;
+import com.engops.platform.identity.model.RolePermission;
 import com.engops.platform.identity.repository.AppUserRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
+import com.engops.platform.identity.repository.PermissionRepository;
+import com.engops.platform.identity.repository.RolePermissionRepository;
 import com.engops.platform.identity.repository.RoleRepository;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
@@ -45,18 +49,23 @@ class IdentityCommandServiceTest {
     private static final UUID USER_ID = UUID.fromString("99999999-9999-9999-9999-999999999991");
 
     private static final UUID ROLE_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
+    private static final UUID PERMISSION_ID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1");
 
     private final MembershipRepository membershipRepository = mock(MembershipRepository.class);
     private final MembershipRoleBindingRepository membershipRoleBindingRepository =
             mock(MembershipRoleBindingRepository.class);
     private final RoleRepository roleRepository = mock(RoleRepository.class);
+    private final RolePermissionRepository rolePermissionRepository =
+            mock(RolePermissionRepository.class);
+    private final PermissionRepository permissionRepository = mock(PermissionRepository.class);
     private final AppUserRepository appUserRepository = mock(AppUserRepository.class);
     private final AuditService auditService = mock(AuditService.class);
     private final TenantConfigQueryService tenantConfigQueryService =
             mock(TenantConfigQueryService.class);
     private final IdentityCommandService service =
             new IdentityCommandService(membershipRepository, membershipRoleBindingRepository,
-                    roleRepository, appUserRepository, auditService, tenantConfigQueryService);
+                    roleRepository, rolePermissionRepository, permissionRepository,
+                    appUserRepository, auditService, tenantConfigQueryService);
 
     @BeforeEach
     void stubTenantExists() {
@@ -1104,6 +1113,116 @@ class IdentityCommandServiceTest {
                 .when(roleRepository).flush();
 
         assertThatThrownBy(() -> service.deleteRole(existing.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
+    // ========== assignPermissionToRole tests ==========
+
+    private Permission existingPermission() {
+        return new Permission("TENANT_CONFIG_WRITE", "Tenant konfiguratsiyasini yozish");
+    }
+
+    @Test
+    void assignPermissionToRoleSuccess() {
+        Role role = existingRole();
+        Permission permission = existingPermission();
+
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(role));
+        when(permissionRepository.findById(PERMISSION_ID)).thenReturn(Optional.of(permission));
+        when(rolePermissionRepository.existsByRoleIdAndPermissionId(ROLE_ID, PERMISSION_ID))
+                .thenReturn(false);
+        when(rolePermissionRepository.save(any(RolePermission.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RolePermission result = service.assignPermissionToRole(ROLE_ID, PERMISSION_ID);
+
+        assertThat(result.getRole()).isSameAs(role);
+        assertThat(result.getPermission()).isSameAs(permission);
+
+        verify(rolePermissionRepository).save(any(RolePermission.class));
+        verify(auditService).recordEvent(
+                eq(null), eq("ROLE_PERMISSION"), eq(result.getId()),
+                eq("CREATED"), eq(null), eq("ADMIN_API"),
+                eq(null), eq("TENANT_CONFIG_WRITE"));
+    }
+
+    @Test
+    void assignPermissionToRoleThrowsRoleNotFoundWhenRoleMissing() {
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.assignPermissionToRole(ROLE_ID, PERMISSION_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Role");
+
+        verify(permissionRepository, never()).findById(any());
+        verify(rolePermissionRepository, never()).existsByRoleIdAndPermissionId(any(), any());
+        verify(rolePermissionRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void assignPermissionToRoleThrowsPermissionNotFoundWhenPermissionMissing() {
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(existingRole()));
+        when(permissionRepository.findById(PERMISSION_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.assignPermissionToRole(ROLE_ID, PERMISSION_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Permission");
+
+        verify(rolePermissionRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void assignPermissionToRoleThrowsBusinessRuleWhenDuplicatePreCheck() {
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(existingRole()));
+        when(permissionRepository.findById(PERMISSION_ID)).thenReturn(Optional.of(existingPermission()));
+        when(rolePermissionRepository.existsByRoleIdAndPermissionId(ROLE_ID, PERMISSION_ID))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> service.assignPermissionToRole(ROLE_ID, PERMISSION_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("allaqachon");
+
+        verify(rolePermissionRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void assignPermissionToRoleTranslatesDbDuplicateConstraint() {
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(existingRole()));
+        when(permissionRepository.findById(PERMISSION_ID)).thenReturn(Optional.of(existingPermission()));
+        when(rolePermissionRepository.existsByRoleIdAndPermissionId(ROLE_ID, PERMISSION_ID))
+                .thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "duplicate key", new SQLException(),
+                "role_permission_role_id_permission_id_key");
+        when(rolePermissionRepository.save(any(RolePermission.class)))
+                .thenThrow(new DataIntegrityViolationException("unique", cause));
+
+        assertThatThrownBy(() -> service.assignPermissionToRole(ROLE_ID, PERMISSION_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("allaqachon");
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void assignPermissionToRoleRethrowsUnrelatedIntegrityViolation() {
+        when(roleRepository.findById(ROLE_ID)).thenReturn(Optional.of(existingRole()));
+        when(permissionRepository.findById(PERMISSION_ID)).thenReturn(Optional.of(existingPermission()));
+        when(rolePermissionRepository.existsByRoleIdAndPermissionId(ROLE_ID, PERMISSION_ID))
+                .thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "other", new SQLException(), "some_other_constraint");
+        when(rolePermissionRepository.save(any(RolePermission.class)))
+                .thenThrow(new DataIntegrityViolationException("other", cause));
+
+        assertThatThrownBy(() -> service.assignPermissionToRole(ROLE_ID, PERMISSION_ID))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         verifyNoInteractions(auditService);

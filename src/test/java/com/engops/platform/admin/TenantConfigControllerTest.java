@@ -2077,6 +2077,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     private static final UUID ROLE_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
     private static final UUID BINDING_ID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1");
+    private static final UUID PERMISSION_ID = UUID.fromString("cccccccc-cccc-cccc-cccc-ccccccccccc1");
 
     @Test
     void assignRoleToMembershipReturns201() throws Exception {
@@ -3054,5 +3055,110 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    // ========== POST /roles/{roleId}/permissions — role-permission assignment endpoint ==========
+
+    @Test
+    void assignPermissionToRoleReturns201() throws Exception {
+        var view = new TenantConfigWriteFacade.RolePermissionView(
+                BINDING_ID, ROLE_ID, "BUG_TRIAGER", PERMISSION_ID, "TENANT_CONFIG_WRITE",
+                Instant.parse("2026-04-17T12:00:00Z"));
+
+        when(writeFacade.assignPermissionToRole(eq(TENANT_ID), eq(ROLE_ID),
+                any(CreateRolePermissionRequest.class), any())).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"permissionId":"%s"}
+                                """.formatted(PERMISSION_ID)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.bindingId").value(BINDING_ID.toString()))
+                .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
+                .andExpect(jsonPath("$.roleCode").value("BUG_TRIAGER"))
+                .andExpect(jsonPath("$.permissionId").value(PERMISSION_ID.toString()))
+                .andExpect(jsonPath("$.permissionCode").value("TENANT_CONFIG_WRITE"));
+    }
+
+    @Test
+    void assignPermissionToRoleMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"permissionId":"%s"}
+                                """.formatted(PERMISSION_ID)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void assignPermissionToRoleRoleNotFoundReturns404() throws Exception {
+        when(writeFacade.assignPermissionToRole(eq(TENANT_ID), eq(ROLE_ID),
+                any(CreateRolePermissionRequest.class), any()))
+                .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"permissionId":"%s"}
+                                """.formatted(PERMISSION_ID)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void assignPermissionToRolePermissionNotFoundReturns404() throws Exception {
+        when(writeFacade.assignPermissionToRole(eq(TENANT_ID), eq(ROLE_ID),
+                any(CreateRolePermissionRequest.class), any()))
+                .thenThrow(new ResourceNotFoundException("Permission", PERMISSION_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"permissionId":"%s"}
+                                """.formatted(PERMISSION_ID)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void assignPermissionToRoleDuplicateReturns422() throws Exception {
+        when(writeFacade.assignPermissionToRole(eq(TENANT_ID), eq(ROLE_ID),
+                any(CreateRolePermissionRequest.class), any()))
+                .thenThrow(new BusinessRuleException("DUPLICATE_ROLE_PERMISSION",
+                        "Rol uchun ruxsat allaqachon tayinlangan"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"permissionId":"%s"}
+                                """.formatted(PERMISSION_ID)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_ROLE_PERMISSION"));
+    }
+
+    @Test
+    void assignPermissionToRoleAccessDeniedReturns403() throws Exception {
+        when(writeFacade.assignPermissionToRole(eq(TENANT_ID), eq(ROLE_ID),
+                any(CreateRolePermissionRequest.class), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_WRITE ruxsati talab qilinadi"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"permissionId":"%s"}
+                                """.formatted(PERMISSION_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 }

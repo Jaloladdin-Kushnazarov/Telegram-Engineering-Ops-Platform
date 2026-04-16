@@ -1017,6 +1017,39 @@ public class TenantConfigController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Global rolga ruxsat tayinlaydi (role-permission binding yaratadi).
+     *
+     * @param roleId rol identifikatori
+     * @param tenantId tenant identifikatori (authorization uchun)
+     * @param request yaratish so'rovi
+     * @return yaratilgan binding (201 Created)
+     */
+    @PostMapping("/roles/{roleId}/permissions")
+    public ResponseEntity<TenantConfigRolePermissionCreatedResponse> assignPermissionToRole(
+            @PathVariable UUID roleId,
+            @RequestParam UUID tenantId,
+            @RequestBody CreateRolePermissionRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigWriteFacade.RolePermissionView view =
+                writeFacade.assignPermissionToRole(tenantId, roleId, request, actorUserId);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(toRolePermissionResponse(view));
+    }
+
+    private TenantConfigRolePermissionCreatedResponse toRolePermissionResponse(
+            TenantConfigWriteFacade.RolePermissionView view) {
+        return new TenantConfigRolePermissionCreatedResponse(
+                view.bindingId(),
+                view.roleId(),
+                view.roleCode(),
+                view.permissionId(),
+                view.permissionCode(),
+                view.createdAt());
+    }
+
     private RoleCatalogResponse toRoleCatalogResponse(TenantConfigWriteFacade.RoleCatalogView view) {
         return new RoleCatalogResponse(
                 view.roleId(),

@@ -4,7 +4,9 @@ import com.engops.platform.identity.IdentityCommandService;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.MembershipStatus;
+import com.engops.platform.identity.model.Permission;
 import com.engops.platform.identity.model.Role;
+import com.engops.platform.identity.model.RolePermission;
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
@@ -1500,6 +1502,7 @@ class TenantConfigWriteFacadeTest {
     // ========== MembershipRoleBinding lifecycle tests ==========
 
     private static final UUID ROLE_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
+    private static final UUID PERMISSION_ID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1");
 
     @Test
     void assignRoleToMembershipThrowsIllegalArgumentWhenTenantIdNull() {
@@ -1973,5 +1976,105 @@ class TenantConfigWriteFacadeTest {
                 .isInstanceOf(IllegalArgumentException.class);
 
         verifyNoInteractions(authorizationService);
+    }
+
+    // ========== assignPermissionToRole tests ==========
+
+    @Test
+    void assignPermissionToRoleThrowsIllegalArgumentWhenTenantIdNull() {
+        var request = new CreateRolePermissionRequest(PERMISSION_ID);
+
+        assertThatThrownBy(() -> facade.assignPermissionToRole(null, ROLE_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void assignPermissionToRoleThrowsIllegalArgumentWhenRoleIdNull() {
+        var request = new CreateRolePermissionRequest(PERMISSION_ID);
+
+        assertThatThrownBy(() -> facade.assignPermissionToRole(TENANT_ID, null, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("roleId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void assignPermissionToRoleThrowsIllegalArgumentWhenRequestNull() {
+        assertThatThrownBy(() -> facade.assignPermissionToRole(TENANT_ID, ROLE_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void assignPermissionToRoleThrowsIllegalArgumentWhenPermissionIdNull() {
+        var request = new CreateRolePermissionRequest(null);
+
+        assertThatThrownBy(() -> facade.assignPermissionToRole(TENANT_ID, ROLE_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("permissionId");
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void assignPermissionToRoleDelegatesToIdentityCommandService() {
+        Role role = new Role("BUG_TRIAGER", "Bug Triager", false);
+        Permission permission = new Permission("TENANT_CONFIG_WRITE", "Tenant config yozish");
+        RolePermission binding = new RolePermission(role, permission);
+
+        when(identityCommandService.assignPermissionToRole(ROLE_ID, PERMISSION_ID))
+                .thenReturn(binding);
+
+        var result = facade.assignPermissionToRole(
+                TENANT_ID, ROLE_ID, new CreateRolePermissionRequest(PERMISSION_ID), ACTOR_USER_ID);
+
+        assertThat(result.bindingId()).isEqualTo(binding.getId());
+        assertThat(result.roleCode()).isEqualTo("BUG_TRIAGER");
+        assertThat(result.permissionCode()).isEqualTo("TENANT_CONFIG_WRITE");
+
+        verify(identityCommandService).assignPermissionToRole(ROLE_ID, PERMISSION_ID);
+    }
+
+    @Test
+    void assignPermissionToRoleNullRoleIdSkipsAuthorization() {
+        var request = new CreateRolePermissionRequest(PERMISSION_ID);
+
+        assertThatThrownBy(() -> facade.assignPermissionToRole(TENANT_ID, null, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void assignPermissionToRoleCallsAuthorizeWrite() {
+        Role role = new Role("BUG_TRIAGER", "Bug Triager", false);
+        Permission permission = new Permission("TENANT_CONFIG_WRITE", "Tenant config yozish");
+        RolePermission binding = new RolePermission(role, permission);
+
+        when(identityCommandService.assignPermissionToRole(ROLE_ID, PERMISSION_ID))
+                .thenReturn(binding);
+
+        facade.assignPermissionToRole(
+                TENANT_ID, ROLE_ID, new CreateRolePermissionRequest(PERMISSION_ID), ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void assignPermissionToRoleDeniedWhenAuthorizationFails() {
+        var request = new CreateRolePermissionRequest(PERMISSION_ID);
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.assignPermissionToRole(TENANT_ID, ROLE_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(identityCommandService);
     }
 }

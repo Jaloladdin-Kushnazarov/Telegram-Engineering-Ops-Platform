@@ -4,6 +4,7 @@ import com.engops.platform.identity.IdentityCommandService;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.Role;
+import com.engops.platform.identity.model.RolePermission;
 import com.engops.platform.tenantconfig.TenantConfigCommandService;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
@@ -1109,6 +1110,66 @@ public class TenantConfigWriteFacade {
 
         identityCommandService.deleteRole(roleId);
     }
+
+    // ========== RolePermission operations ==========
+
+    /**
+     * Global rolga ruxsat tayinlaydi (role-permission binding yaratadi).
+     *
+     * @param tenantId tenant identifikatori (authorization uchun)
+     * @param roleId rol identifikatori
+     * @param request yaratish so'rovi (permissionId)
+     * @param actorUserId joriy actor identifikatori
+     * @return yaratilgan role-permission binding view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public RolePermissionView assignPermissionToRole(UUID tenantId, UUID roleId,
+                                                       CreateRolePermissionRequest request,
+                                                       UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (roleId == null) {
+            throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.permissionId() == null) {
+            throw new IllegalArgumentException("permissionId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
+
+        RolePermission binding = identityCommandService.assignPermissionToRole(
+                roleId, request.permissionId());
+
+        return toRolePermissionView(binding);
+    }
+
+    private RolePermissionView toRolePermissionView(RolePermission binding) {
+        UUID roleId = binding.getRole() != null ? binding.getRole().getId() : null;
+        String roleCode = binding.getRole() != null ? binding.getRole().getCode() : null;
+        UUID permissionId = binding.getPermission() != null ? binding.getPermission().getId() : null;
+        String permissionCode = binding.getPermission() != null ? binding.getPermission().getCode() : null;
+        return new RolePermissionView(
+                binding.getId(),
+                roleId,
+                roleCode,
+                permissionId,
+                permissionCode,
+                binding.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — role-permission binding.
+     */
+    public record RolePermissionView(
+            UUID bindingId,
+            UUID roleId,
+            String roleCode,
+            UUID permissionId,
+            String permissionCode,
+            java.time.Instant createdAt) {}
 
     private RoleCatalogView toRoleCatalogView(Role role) {
         return new RoleCatalogView(

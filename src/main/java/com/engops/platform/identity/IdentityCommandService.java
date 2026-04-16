@@ -5,10 +5,14 @@ import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.MembershipStatus;
+import com.engops.platform.identity.model.Permission;
 import com.engops.platform.identity.model.Role;
+import com.engops.platform.identity.model.RolePermission;
 import com.engops.platform.identity.repository.AppUserRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
+import com.engops.platform.identity.repository.PermissionRepository;
+import com.engops.platform.identity.repository.RolePermissionRepository;
 import com.engops.platform.identity.repository.RoleRepository;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
@@ -42,6 +46,8 @@ public class IdentityCommandService {
     private final MembershipRepository membershipRepository;
     private final MembershipRoleBindingRepository membershipRoleBindingRepository;
     private final RoleRepository roleRepository;
+    private final RolePermissionRepository rolePermissionRepository;
+    private final PermissionRepository permissionRepository;
     private final AppUserRepository appUserRepository;
     private final AuditService auditService;
     private final TenantConfigQueryService tenantConfigQueryService;
@@ -49,12 +55,16 @@ public class IdentityCommandService {
     public IdentityCommandService(MembershipRepository membershipRepository,
                                    MembershipRoleBindingRepository membershipRoleBindingRepository,
                                    RoleRepository roleRepository,
+                                   RolePermissionRepository rolePermissionRepository,
+                                   PermissionRepository permissionRepository,
                                    AppUserRepository appUserRepository,
                                    AuditService auditService,
                                    TenantConfigQueryService tenantConfigQueryService) {
         this.membershipRepository = membershipRepository;
         this.membershipRoleBindingRepository = membershipRoleBindingRepository;
         this.roleRepository = roleRepository;
+        this.rolePermissionRepository = rolePermissionRepository;
+        this.permissionRepository = permissionRepository;
         this.appUserRepository = appUserRepository;
         this.auditService = auditService;
         this.tenantConfigQueryService = tenantConfigQueryService;
@@ -525,6 +535,56 @@ public class IdentityCommandService {
                 "DELETED", null, "ADMIN_API", roleCode, null);
     }
 
+    // ========== RolePermission operations ==========
+
+    /**
+     * Global rolga ruxsat (permission) tayinlaydi (role-permission binding yaratadi).
+     *
+     * Validatsiyalar:
+     * 1. Rol global katalogda mavjud bo'lishi kerak
+     * 2. Ruxsat global katalogda mavjud bo'lishi kerak
+     * 3. Shu (role, permission) juftligi uchun binding allaqachon mavjud bo'lmasligi kerak
+     *
+     * Concurrency: application-level pre-check + DB unique constraint fallback tarjimasi.
+     *
+     * @param roleId rol identifikatori
+     * @param permissionId ruxsat identifikatori
+     * @return yaratilgan RolePermission
+     * @throws ResourceNotFoundException rol yoki ruxsat topilmasa
+     * @throws BusinessRuleException duplicate binding bo'lsa
+     */
+    public RolePermission assignPermissionToRole(UUID roleId, UUID permissionId) {
+        Role role = roleRepository.findById(roleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+
+        Permission permission = permissionRepository.findById(permissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Permission", permissionId));
+
+        if (rolePermissionRepository.existsByRoleIdAndPermissionId(roleId, permissionId)) {
+            throw new BusinessRuleException("DUPLICATE_ROLE_PERMISSION",
+                    "Rol (id=" + roleId + ") uchun ruxsat (id=" + permissionId
+                            + ") allaqachon tayinlangan");
+        }
+
+        RolePermission binding = new RolePermission(role, permission);
+
+        try {
+            binding = rolePermissionRepository.save(binding);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateRolePermissionConstraint(ex)) {
+                throw new BusinessRuleException("DUPLICATE_ROLE_PERMISSION",
+                        "Rol (id=" + roleId + ") uchun ruxsat (id=" + permissionId
+                                + ") allaqachon tayinlangan");
+            }
+            throw ex;
+        }
+
+        auditService.recordEvent(null, "ROLE_PERMISSION", binding.getId(),
+                "CREATED", null, "ADMIN_API", null, permission.getCode());
+
+        return binding;
+    }
+
     /**
      * DataIntegrityViolationException membership (tenant_id, user_id) unique
      * constraint violation ekanligini tekshiradi.
@@ -582,6 +642,22 @@ public class IdentityCommandService {
             return constraintName != null
                     && constraintName.contains("role")
                     && constraintName.contains("code");
+        }
+        return false;
+    }
+
+    /**
+     * DataIntegrityViolationException role_permission (role_id, permission_id) unique
+     * constraint violation ekanligini tekshiradi.
+     */
+    private static boolean isDuplicateRolePermissionConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("role_permission")
+                    && constraintName.contains("role_id")
+                    && constraintName.contains("permission_id");
         }
         return false;
     }
