@@ -177,6 +177,70 @@ public class TenantConfigDetailsFacade {
             Instant createdAt) {}
 
     /**
+     * Berilgan global rol uchun to'liq detail ko'rinishini qaytaradi:
+     * tenantId, roleId, code, name, description, systemRole, active, createdAt.
+     *
+     * Rol GLOBAL — tenantga tegishli emas. tenantId endpoint-family izchilligi
+     * va admin authorization context uchun tekshiriladi.
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId null bo'lmasligi kerak
+     * 2. roleId null bo'lmasligi kerak
+     * 3. authorizeRead chaqiriladi
+     * 4. tenant mavjudligi tekshiriladi
+     * 5. rol mavjudligi tekshiriladi (global katalogdan)
+     *
+     * Bu detail kompakt list (`RoleItemView`) qaytarmaydigan `active` operatsion
+     * holatni ham yetkazadi. Rol-permission bog'lanishi YO'Q — buning uchun
+     * alohida endpoint mavjud: GET /roles/{roleId}/permissions.
+     *
+     * @param tenantId admin kontekst tenant identifikatori
+     * @param roleId global rol identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return rol detail
+     * @throws IllegalArgumentException agar tenantId yoki roleId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant yoki rol topilmasa
+     */
+    public RoleDetailView getRoleDetails(UUID tenantId, UUID roleId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (roleId == null) {
+            throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        Role role = identityQueryService.findRoleById(roleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+
+        return new RoleDetailView(
+                tenantId,
+                role.getId(),
+                role.getCode(),
+                role.getName(),
+                role.getDescription(),
+                role.isSystemRole(),
+                role.isActive(),
+                role.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — global rol detail.
+     */
+    public record RoleDetailView(
+            UUID tenantId,
+            UUID roleId,
+            String code,
+            String name,
+            String description,
+            boolean systemRole,
+            boolean active,
+            Instant createdAt) {}
+
+    /**
      * Berilgan global rol uchun biriktirilgan ruxsat (permission)
      * binding'larini katalog ko'rinishida qaytaradi.
      *

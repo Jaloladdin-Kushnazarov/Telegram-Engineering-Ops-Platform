@@ -33,6 +33,7 @@ import java.util.UUID;
  * - GET /memberships/{membershipId} — a'zolik to'liq detail (user identity bilan)
  * - GET /memberships/{membershipId}/roles — a'zolikka biriktirilgan rollar ro'yxati
  * - GET /roles — global rol katalogi ro'yxati
+ * - GET /roles/{roleId} — global rol detail (active holat bilan)
  * - GET /roles/{roleId}/permissions — global rol uchun biriktirilgan ruxsatlar ro'yxati
  * - GET /permissions — global ruxsat katalogi ro'yxati
  * - GET /permissions/{permissionId}/roles — global ruxsat uchun biriktirilgan rollar ro'yxati
@@ -459,6 +460,41 @@ public class TenantConfigController {
                 detailsFacade.getRoles(tenantId, actorUserId);
 
         return ResponseEntity.ok(toRoleListResponse(view));
+    }
+
+    /**
+     * Berilgan global rol uchun to'liq detail qaytaradi (active holat bilan).
+     *
+     * Bu endpoint permission'lar ro'yxatini QAYTARMAYDI —
+     * buning uchun GET /roles/{roleId}/permissions ishlatiladi.
+     *
+     * @param roleId global rol identifikatori
+     * @param tenantId admin kontekst tenant identifikatori
+     * @return rol detail
+     */
+    @GetMapping("/roles/{roleId}")
+    public ResponseEntity<TenantConfigRoleDetailResponse> getRoleDetails(
+            @PathVariable UUID roleId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.RoleDetailView view =
+                detailsFacade.getRoleDetails(tenantId, roleId, actorUserId);
+
+        return ResponseEntity.ok(toRoleDetailResponse(view));
+    }
+
+    private TenantConfigRoleDetailResponse toRoleDetailResponse(
+            TenantConfigDetailsFacade.RoleDetailView view) {
+        return new TenantConfigRoleDetailResponse(
+                view.tenantId(),
+                view.roleId(),
+                view.code(),
+                view.name(),
+                view.description(),
+                view.systemRole(),
+                view.active(),
+                view.createdAt());
     }
 
     /**

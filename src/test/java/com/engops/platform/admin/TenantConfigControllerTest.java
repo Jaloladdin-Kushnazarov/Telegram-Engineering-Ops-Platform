@@ -2024,6 +2024,112 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 
+    // ========== GET /roles/{roleId} — role detail read endpoint ==========
+
+    @Test
+    void roleDetailsReturnsOkWithFullDetail() throws Exception {
+        UUID roleId = UUID.fromString("cc991111-1111-1111-1111-111111111111");
+        var view = new TenantConfigDetailsFacade.RoleDetailView(
+                TENANT_ID, roleId, "ENGINEER", "Engineer", "Engineering role",
+                true, true, Instant.parse("2026-01-15T08:00:00Z"));
+
+        when(detailsFacade.getRoleDetails(eq(TENANT_ID), eq(roleId), any())).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.roleId").value(roleId.toString()))
+                .andExpect(jsonPath("$.code").value("ENGINEER"))
+                .andExpect(jsonPath("$.name").value("Engineer"))
+                .andExpect(jsonPath("$.description").value("Engineering role"))
+                .andExpect(jsonPath("$.systemRole").value(true))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").value("2026-01-15T08:00:00Z"));
+    }
+
+    @Test
+    void roleDetailsNullDescriptionOmittedFromJson() throws Exception {
+        UUID roleId = UUID.fromString("cc991111-1111-1111-1111-111111111111");
+        var view = new TenantConfigDetailsFacade.RoleDetailView(
+                TENANT_ID, roleId, "CUSTOM", "Custom", null,
+                false, false, Instant.parse("2026-02-01T08:00:00Z"));
+
+        when(detailsFacade.getRoleDetails(eq(TENANT_ID), eq(roleId), any())).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("CUSTOM"))
+                .andExpect(jsonPath("$.description").doesNotExist())
+                .andExpect(jsonPath("$.systemRole").value(false))
+                .andExpect(jsonPath("$.active").value(false));
+    }
+
+    @Test
+    void roleDetailsTenantNotFoundReturns404() throws Exception {
+        UUID roleId = UUID.fromString("cc991111-1111-1111-1111-111111111111");
+        when(detailsFacade.getRoleDetails(eq(TENANT_ID), eq(roleId), any()))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void roleDetailsRoleNotFoundReturns404() throws Exception {
+        UUID roleId = UUID.fromString("cc991111-1111-1111-1111-111111111111");
+        when(detailsFacade.getRoleDetails(eq(TENANT_ID), eq(roleId), any()))
+                .thenThrow(new ResourceNotFoundException("Role", roleId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void roleDetailsMissingTenantIdReturns400() throws Exception {
+        UUID roleId = UUID.fromString("cc991111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void roleDetailsInvalidTenantIdFormatReturns400() throws Exception {
+        UUID roleId = UUID.fromString("cc991111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
+                        .param("tenantId", "not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void roleDetailsInvalidRoleIdFormatReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", "not-a-uuid")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void roleDetailsAccessDeniedReturns403() throws Exception {
+        UUID roleId = UUID.fromString("cc991111-1111-1111-1111-111111111111");
+        when(detailsFacade.getRoleDetails(eq(TENANT_ID), eq(roleId), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
     // ========== POST /workflow-definitions endpoint ==========
 
     @Test
