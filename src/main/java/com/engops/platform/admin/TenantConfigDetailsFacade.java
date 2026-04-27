@@ -248,6 +248,79 @@ public class TenantConfigDetailsFacade {
             List<PermissionItemView> items) {}
 
     /**
+     * Berilgan global ruxsat (permission) uchun unga biriktirilgan global rol'lar
+     * ro'yxatini katalog ko'rinishida qaytaradi.
+     *
+     * Rol va ruxsat ikkalasi ham GLOBAL — tenantga tegishli emas. tenantId
+     * endpoint-family izchilligi va admin kontekst validatsiyasi uchun tekshiriladi.
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId null bo'lmasligi kerak
+     * 2. permissionId null bo'lmasligi kerak
+     * 3. authorizeRead chaqiriladi
+     * 4. tenant mavjudligi tekshiriladi
+     * 5. permission mavjudligi tekshiriladi (ID bo'yicha global katalogdan)
+     * 6. permission uchun rol binding'lar yig'iladi
+     *
+     * Ordering: code ASC -> id ASC
+     *
+     * Duplicate item bo'lmaydi — underlying (role_id, permission_id) UNIQUE
+     * constraint kafolatlaydi.
+     *
+     * @param tenantId admin kontekst tenant identifikatori
+     * @param permissionId global ruxsat identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return permission header + biriktirilgan rol'lar ro'yxati
+     * @throws IllegalArgumentException agar tenantId yoki permissionId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant yoki permission topilmasa
+     */
+    public PermissionRoleListView getPermissionRoles(UUID tenantId, UUID permissionId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (permissionId == null) {
+            throw new IllegalArgumentException("permissionId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        Permission permission = identityQueryService.findPermissionById(permissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Permission", permissionId));
+
+        List<RolePermission> bindings = identityQueryService.findPermissionRoles(permissionId);
+
+        List<RoleItemView> items = bindings.stream()
+                .map(RolePermission::getRole)
+                .sorted(Comparator.comparing(Role::getCode)
+                        .thenComparing(Role::getId))
+                .map(r -> new RoleItemView(
+                        r.getId(),
+                        r.getCode(),
+                        r.getName(),
+                        r.getDescription(),
+                        r.isSystemRole(),
+                        r.getCreatedAt()))
+                .toList();
+
+        return new PermissionRoleListView(
+                tenantId,
+                permission.getId(),
+                permission.getCode(),
+                items);
+    }
+
+    /**
+     * Facade natija modeli — permission uchun biriktirilgan rol ro'yxati.
+     */
+    public record PermissionRoleListView(
+            UUID tenantId,
+            UUID permissionId,
+            String permissionCode,
+            List<RoleItemView> items) {}
+
+    /**
      * Global ruxsat (permission) katalogi ro'yxatini qaytaradi.
      *
      * Rollar kabi ruxsatlar ham GLOBAL — tenantga tegishli emas. tenantId endpoint-family

@@ -29,6 +29,7 @@ import java.util.UUID;
  * - GET /roles — global rol katalogi ro'yxati
  * - GET /roles/{roleId}/permissions — global rol uchun biriktirilgan ruxsatlar ro'yxati
  * - GET /permissions — global ruxsat katalogi ro'yxati
+ * - GET /permissions/{permissionId}/roles — global ruxsat uchun biriktirilgan rollar ro'yxati
  *
  * Write endpoint'lar:
  * - POST /workflow-definitions — yangi workflow definition yaratish
@@ -251,6 +252,44 @@ public class TenantConfigController {
                 detailsFacade.getPermissions(tenantId, actorUserId);
 
         return ResponseEntity.ok(toPermissionListResponse(view));
+    }
+
+    /**
+     * Berilgan global ruxsat (permission) uchun unga biriktirilgan rol'lar
+     * ro'yxatini qaytaradi.
+     *
+     * @param permissionId global ruxsat identifikatori
+     * @param tenantId admin kontekst tenant identifikatori
+     * @return permission header + biriktirilgan rol ro'yxati
+     */
+    @GetMapping("/permissions/{permissionId}/roles")
+    public ResponseEntity<TenantConfigPermissionRoleListResponse> getPermissionRoles(
+            @PathVariable UUID permissionId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.PermissionRoleListView view =
+                detailsFacade.getPermissionRoles(tenantId, permissionId, actorUserId);
+
+        return ResponseEntity.ok(toPermissionRoleListResponse(view));
+    }
+
+    private TenantConfigPermissionRoleListResponse toPermissionRoleListResponse(
+            TenantConfigDetailsFacade.PermissionRoleListView view) {
+        List<TenantConfigPermissionRoleListResponse.RoleItem> items = view.items().stream()
+                .map(i -> new TenantConfigPermissionRoleListResponse.RoleItem(
+                        i.roleId(),
+                        i.code(),
+                        i.name(),
+                        i.description(),
+                        i.systemRole(),
+                        i.createdAt()))
+                .toList();
+        return new TenantConfigPermissionRoleListResponse(
+                view.tenantId(),
+                view.permissionId(),
+                view.permissionCode(),
+                items);
     }
 
     // ========== Write endpoint'lar ==========

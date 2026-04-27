@@ -938,6 +938,157 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(jsonPath("$.items[0].description").doesNotExist());
     }
 
+    // ========== GET /permissions/{permissionId}/roles — permission-role read endpoint ==========
+
+    @Test
+    void permissionRolesReturnsOkWithItems() throws Exception {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        var items = List.of(
+                new TenantConfigDetailsFacade.RoleItemView(
+                        UUID.fromString("cc111111-1111-1111-1111-111111111111"),
+                        "ADMIN",
+                        "Administrator",
+                        null,
+                        true,
+                        Instant.parse("2026-01-05T08:00:00Z")),
+                new TenantConfigDetailsFacade.RoleItemView(
+                        UUID.fromString("cc222222-2222-2222-2222-222222222222"),
+                        "ENGINEER",
+                        "Engineer",
+                        "Engineering role",
+                        false,
+                        Instant.parse("2026-01-10T08:00:00Z")));
+        var view = new TenantConfigDetailsFacade.PermissionRoleListView(
+                TENANT_ID, permissionId, "TENANT_CONFIG_READ", items);
+
+        when(detailsFacade.getPermissionRoles(eq(TENANT_ID), eq(permissionId), any())).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.permissionId").value(permissionId.toString()))
+                .andExpect(jsonPath("$.permissionCode").value("TENANT_CONFIG_READ"))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].roleId").value("cc111111-1111-1111-1111-111111111111"))
+                .andExpect(jsonPath("$.items[0].code").value("ADMIN"))
+                .andExpect(jsonPath("$.items[0].name").value("Administrator"))
+                .andExpect(jsonPath("$.items[0].description").doesNotExist())
+                .andExpect(jsonPath("$.items[0].systemRole").value(true))
+                .andExpect(jsonPath("$.items[0].createdAt").value("2026-01-05T08:00:00Z"))
+                .andExpect(jsonPath("$.items[1].roleId").value("cc222222-2222-2222-2222-222222222222"))
+                .andExpect(jsonPath("$.items[1].code").value("ENGINEER"))
+                .andExpect(jsonPath("$.items[1].name").value("Engineer"))
+                .andExpect(jsonPath("$.items[1].description").value("Engineering role"))
+                .andExpect(jsonPath("$.items[1].systemRole").value(false));
+    }
+
+    @Test
+    void permissionRolesWithEmptyListReturnsValidResponse() throws Exception {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        var view = new TenantConfigDetailsFacade.PermissionRoleListView(
+                TENANT_ID, permissionId, "TENANT_CONFIG_READ", List.of());
+
+        when(detailsFacade.getPermissionRoles(eq(TENANT_ID), eq(permissionId), any())).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.permissionId").value(permissionId.toString()))
+                .andExpect(jsonPath("$.permissionCode").value("TENANT_CONFIG_READ"))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void permissionRolesTenantNotFoundReturns404() throws Exception {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        when(detailsFacade.getPermissionRoles(eq(TENANT_ID), eq(permissionId), any()))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void permissionRolesPermissionNotFoundReturns404() throws Exception {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        when(detailsFacade.getPermissionRoles(eq(TENANT_ID), eq(permissionId), any()))
+                .thenThrow(new ResourceNotFoundException("Permission", permissionId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void permissionRolesMissingTenantIdReturns400() throws Exception {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void permissionRolesInvalidTenantIdFormatReturns400() throws Exception {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
+                        .param("tenantId", "not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void permissionRolesInvalidPermissionIdFormatReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", "not-a-uuid")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void permissionRolesAccessDeniedReturns403() throws Exception {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        when(detailsFacade.getPermissionRoles(eq(TENANT_ID), eq(permissionId), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void permissionRolesNullDescriptionOmittedFromJson() throws Exception {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        var items = List.of(
+                new TenantConfigDetailsFacade.RoleItemView(
+                        UUID.fromString("cc111111-1111-1111-1111-111111111111"),
+                        "ADMIN",
+                        "Administrator",
+                        null,
+                        true,
+                        Instant.parse("2026-01-05T08:00:00Z")));
+        var view = new TenantConfigDetailsFacade.PermissionRoleListView(
+                TENANT_ID, permissionId, "TENANT_CONFIG_READ", items);
+
+        when(detailsFacade.getPermissionRoles(eq(TENANT_ID), eq(permissionId), any())).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].description").doesNotExist());
+    }
+
     // ========== POST /workflow-definitions endpoint ==========
 
     @Test

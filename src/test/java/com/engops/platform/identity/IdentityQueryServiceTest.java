@@ -177,4 +177,54 @@ class IdentityQueryServiceTest {
 
         assertThat(result).isEmpty();
     }
+
+    @Test
+    void idBoYichaPermissionTopish() {
+        UUID permissionId = UUID.randomUUID();
+        Permission permission = new Permission("TENANT_CONFIG_READ", "Tenant config o'qish");
+        when(permissionRepository.findById(permissionId)).thenReturn(Optional.of(permission));
+
+        Optional<Permission> result = identityQueryService.findPermissionById(permissionId);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getCode()).isEqualTo("TENANT_CONFIG_READ");
+    }
+
+    @Test
+    void idBoYichaPermissionTopilmasaBoshOptional() {
+        UUID permissionId = UUID.randomUUID();
+        when(permissionRepository.findById(permissionId)).thenReturn(Optional.empty());
+
+        Optional<Permission> result = identityQueryService.findPermissionById(permissionId);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void permissionUchunRolBindinglarToGriQaytish() {
+        UUID permissionId = UUID.randomUUID();
+        Permission shared = new Permission("TENANT_CONFIG_READ", "Tenant config o'qish");
+        RolePermission b1 = new RolePermission(
+                new Role("ADMIN", "Administrator", true), shared);
+        RolePermission b2 = new RolePermission(
+                new Role("ENGINEER", "Engineer", true), shared);
+
+        when(rolePermissionRepository.findByPermissionId(permissionId)).thenReturn(List.of(b1, b2));
+
+        List<RolePermission> result = identityQueryService.findPermissionRoles(permissionId);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getRole().getCode()).isEqualTo("ADMIN");
+        assertThat(result.get(1).getRole().getCode()).isEqualTo("ENGINEER");
+    }
+
+    @Test
+    void permissionUchunRolYoqBolsaBoshList() {
+        UUID permissionId = UUID.randomUUID();
+        when(rolePermissionRepository.findByPermissionId(permissionId)).thenReturn(List.of());
+
+        List<RolePermission> result = identityQueryService.findPermissionRoles(permissionId);
+
+        assertThat(result).isEmpty();
+    }
 }

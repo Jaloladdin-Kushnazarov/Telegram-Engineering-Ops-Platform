@@ -1337,6 +1337,228 @@ class TenantConfigDetailsFacadeTest {
         verifyNoInteractions(identityQueryService);
     }
 
+    // ========== getPermissionRoles tests ==========
+
+    @Test
+    void permissionRolesReturnsCorrectItemListOrderedByCode() {
+        Tenant tenant = mockTenant();
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        UUID roleId1 = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+        UUID roleId2 = UUID.fromString("cc222222-2222-2222-2222-222222222222");
+
+        Permission permission = mock(Permission.class);
+        when(permission.getId()).thenReturn(permissionId);
+        when(permission.getCode()).thenReturn("TENANT_CONFIG_READ");
+
+        Role role1 = mock(Role.class);
+        when(role1.getId()).thenReturn(roleId1);
+        when(role1.getCode()).thenReturn("ENGINEER");
+        when(role1.getName()).thenReturn("Engineer");
+        when(role1.getDescription()).thenReturn("Engineering role");
+        when(role1.isSystemRole()).thenReturn(false);
+        when(role1.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-10T08:00:00Z"));
+
+        Role role2 = mock(Role.class);
+        when(role2.getId()).thenReturn(roleId2);
+        when(role2.getCode()).thenReturn("ADMIN");
+        when(role2.getName()).thenReturn("Administrator");
+        when(role2.getDescription()).thenReturn(null);
+        when(role2.isSystemRole()).thenReturn(true);
+        when(role2.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-05T08:00:00Z"));
+
+        RolePermission b1 = mock(RolePermission.class);
+        when(b1.getRole()).thenReturn(role1);
+        RolePermission b2 = mock(RolePermission.class);
+        when(b2.getRole()).thenReturn(role2);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findPermissionById(permissionId)).thenReturn(Optional.of(permission));
+        when(identityQueryService.findPermissionRoles(permissionId)).thenReturn(List.of(b1, b2));
+
+        var result = facade.getPermissionRoles(TENANT_ID, permissionId, ACTOR_USER_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.permissionId()).isEqualTo(permissionId);
+        assertThat(result.permissionCode()).isEqualTo("TENANT_CONFIG_READ");
+        assertThat(result.items()).hasSize(2);
+
+        // code ASC — "ADMIN" birinchi, "ENGINEER" ikkinchi
+        var item1 = result.items().get(0);
+        assertThat(item1.roleId()).isEqualTo(roleId2);
+        assertThat(item1.code()).isEqualTo("ADMIN");
+        assertThat(item1.name()).isEqualTo("Administrator");
+        assertThat(item1.description()).isNull();
+        assertThat(item1.systemRole()).isTrue();
+        assertThat(item1.createdAt()).isEqualTo(java.time.Instant.parse("2026-01-05T08:00:00Z"));
+
+        var item2 = result.items().get(1);
+        assertThat(item2.roleId()).isEqualTo(roleId1);
+        assertThat(item2.code()).isEqualTo("ENGINEER");
+        assertThat(item2.name()).isEqualTo("Engineer");
+        assertThat(item2.description()).isEqualTo("Engineering role");
+        assertThat(item2.systemRole()).isFalse();
+        assertThat(item2.createdAt()).isEqualTo(java.time.Instant.parse("2026-01-10T08:00:00Z"));
+    }
+
+    @Test
+    void permissionRolesTieBreakerByRoleId() {
+        Tenant tenant = mockTenant();
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        UUID roleIdA = UUID.fromString("cc000000-0000-0000-0000-00000000000a");
+        UUID roleIdB = UUID.fromString("cc000000-0000-0000-0000-00000000000b");
+
+        Permission permission = mock(Permission.class);
+        when(permission.getId()).thenReturn(permissionId);
+        when(permission.getCode()).thenReturn("TENANT_CONFIG_READ");
+
+        // Ikkala rol bir xil code'ga ega — tie-breaker roleId ASC bo'lishi kerak
+        Role roleB = mock(Role.class);
+        when(roleB.getId()).thenReturn(roleIdB);
+        when(roleB.getCode()).thenReturn("SAME_CODE");
+        when(roleB.getName()).thenReturn("Same B");
+        when(roleB.getDescription()).thenReturn(null);
+        when(roleB.isSystemRole()).thenReturn(false);
+        when(roleB.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-10T08:00:00Z"));
+
+        Role roleA = mock(Role.class);
+        when(roleA.getId()).thenReturn(roleIdA);
+        when(roleA.getCode()).thenReturn("SAME_CODE");
+        when(roleA.getName()).thenReturn("Same A");
+        when(roleA.getDescription()).thenReturn(null);
+        when(roleA.isSystemRole()).thenReturn(false);
+        when(roleA.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-05T08:00:00Z"));
+
+        RolePermission bB = mock(RolePermission.class);
+        when(bB.getRole()).thenReturn(roleB);
+        RolePermission bA = mock(RolePermission.class);
+        when(bA.getRole()).thenReturn(roleA);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findPermissionById(permissionId)).thenReturn(Optional.of(permission));
+        when(identityQueryService.findPermissionRoles(permissionId)).thenReturn(List.of(bB, bA));
+
+        var result = facade.getPermissionRoles(TENANT_ID, permissionId, ACTOR_USER_ID);
+
+        assertThat(result.items()).hasSize(2);
+        // roleIdA (...0a) roleIdB (...0b) dan oldin kelishi kerak
+        assertThat(result.items().get(0).roleId()).isEqualTo(roleIdA);
+        assertThat(result.items().get(1).roleId()).isEqualTo(roleIdB);
+    }
+
+    @Test
+    void permissionRolesReturnsEmptyListWhenNoneAssigned() {
+        Tenant tenant = mockTenant();
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        Permission permission = mock(Permission.class);
+        when(permission.getId()).thenReturn(permissionId);
+        when(permission.getCode()).thenReturn("TENANT_CONFIG_READ");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findPermissionById(permissionId)).thenReturn(Optional.of(permission));
+        when(identityQueryService.findPermissionRoles(permissionId)).thenReturn(List.of());
+
+        var result = facade.getPermissionRoles(TENANT_ID, permissionId, ACTOR_USER_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.permissionId()).isEqualTo(permissionId);
+        assertThat(result.permissionCode()).isEqualTo("TENANT_CONFIG_READ");
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void permissionRolesThrowsResourceNotFoundWhenTenantMissing() {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> facade.getPermissionRoles(TENANT_ID, permissionId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(identityQueryService, never()).findPermissionById(any());
+        verify(identityQueryService, never()).findPermissionRoles(any());
+    }
+
+    @Test
+    void permissionRolesThrowsResourceNotFoundWhenPermissionMissing() {
+        Tenant tenant = mockTenant();
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findPermissionById(permissionId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> facade.getPermissionRoles(TENANT_ID, permissionId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(identityQueryService).findPermissionById(permissionId);
+        verify(identityQueryService, never()).findPermissionRoles(any());
+    }
+
+    @Test
+    void permissionRolesThrowsIllegalArgumentWhenTenantIdNull() {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        assertThatThrownBy(() -> facade.getPermissionRoles(null, permissionId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void permissionRolesThrowsIllegalArgumentWhenPermissionIdNull() {
+        assertThatThrownBy(() -> facade.getPermissionRoles(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("permissionId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void permissionRolesCallsAuthorizeRead() {
+        Tenant tenant = mockTenant();
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        Permission permission = mock(Permission.class);
+        when(permission.getId()).thenReturn(permissionId);
+        when(permission.getCode()).thenReturn("TENANT_CONFIG_READ");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findPermissionById(permissionId)).thenReturn(Optional.of(permission));
+        when(identityQueryService.findPermissionRoles(permissionId)).thenReturn(List.of());
+
+        facade.getPermissionRoles(TENANT_ID, permissionId, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void permissionRolesNullTenantIdSkipsAuthorization() {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        assertThatThrownBy(() -> facade.getPermissionRoles(null, permissionId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void permissionRolesNullPermissionIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.getPermissionRoles(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void permissionRolesDeniedWhenAuthorizationFails() {
+        UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.getPermissionRoles(TENANT_ID, permissionId, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(tenantConfigQueryService);
+        verifyNoInteractions(identityQueryService);
+    }
+
     // ========== Authorization enforcement ==========
 
     @Test
