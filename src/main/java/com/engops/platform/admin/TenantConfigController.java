@@ -27,6 +27,7 @@ import java.util.UUID;
  * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
  * - GET /memberships — tenant a'zolik ro'yxati
  * - GET /roles — global rol katalogi ro'yxati
+ * - GET /roles/{roleId}/permissions — global rol uchun biriktirilgan ruxsatlar ro'yxati
  * - GET /permissions — global ruxsat katalogi ro'yxati
  *
  * Write endpoint'lar:
@@ -197,6 +198,42 @@ public class TenantConfigController {
                 detailsFacade.getRoles(tenantId, actorUserId);
 
         return ResponseEntity.ok(toRoleListResponse(view));
+    }
+
+    /**
+     * Berilgan global rol uchun biriktirilgan ruxsatlar ro'yxatini qaytaradi.
+     *
+     * @param roleId global rol identifikatori
+     * @param tenantId admin kontekst tenant identifikatori
+     * @return rol header + biriktirilgan permission ro'yxati
+     */
+    @GetMapping("/roles/{roleId}/permissions")
+    public ResponseEntity<TenantConfigRolePermissionListResponse> getRolePermissions(
+            @PathVariable UUID roleId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.RolePermissionListView view =
+                detailsFacade.getRolePermissions(tenantId, roleId, actorUserId);
+
+        return ResponseEntity.ok(toRolePermissionListResponse(view));
+    }
+
+    private TenantConfigRolePermissionListResponse toRolePermissionListResponse(
+            TenantConfigDetailsFacade.RolePermissionListView view) {
+        List<TenantConfigRolePermissionListResponse.PermissionItem> items = view.items().stream()
+                .map(i -> new TenantConfigRolePermissionListResponse.PermissionItem(
+                        i.permissionId(),
+                        i.code(),
+                        i.description(),
+                        i.createdAt()))
+                .toList();
+        return new TenantConfigRolePermissionListResponse(
+                view.tenantId(),
+                view.roleId(),
+                view.roleCode(),
+                view.roleName(),
+                items);
     }
 
     /**

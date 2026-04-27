@@ -8,6 +8,7 @@ import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.Permission;
 import com.engops.platform.identity.model.Role;
+import com.engops.platform.identity.model.RolePermission;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.Tenant;
@@ -1115,6 +1116,221 @@ class TenantConfigDetailsFacadeTest {
                 .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
 
         assertThatThrownBy(() -> facade.getPermissions(TENANT_ID, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(tenantConfigQueryService);
+        verifyNoInteractions(identityQueryService);
+    }
+
+    // ========== getRolePermissions tests ==========
+
+    @Test
+    void rolePermissionsReturnsCorrectItemListOrderedByCode() {
+        Tenant tenant = mockTenant();
+        UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+        UUID permId1 = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        UUID permId2 = UUID.fromString("dd222222-2222-2222-2222-222222222222");
+
+        Role role = mock(Role.class);
+        when(role.getId()).thenReturn(roleId);
+        when(role.getCode()).thenReturn("ADMIN");
+        when(role.getName()).thenReturn("Administrator");
+
+        Permission perm1 = mock(Permission.class);
+        when(perm1.getId()).thenReturn(permId1);
+        when(perm1.getCode()).thenReturn("TENANT_CONFIG_WRITE");
+        when(perm1.getDescription()).thenReturn("Tenant config yozish");
+        when(perm1.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-10T08:00:00Z"));
+
+        Permission perm2 = mock(Permission.class);
+        when(perm2.getId()).thenReturn(permId2);
+        when(perm2.getCode()).thenReturn("TENANT_CONFIG_READ");
+        when(perm2.getDescription()).thenReturn(null);
+        when(perm2.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-05T08:00:00Z"));
+
+        RolePermission b1 = mock(RolePermission.class);
+        when(b1.getPermission()).thenReturn(perm1);
+        RolePermission b2 = mock(RolePermission.class);
+        when(b2.getPermission()).thenReturn(perm2);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findRoleById(roleId)).thenReturn(Optional.of(role));
+        when(identityQueryService.findRolePermissions(roleId)).thenReturn(List.of(b1, b2));
+
+        var result = facade.getRolePermissions(TENANT_ID, roleId, ACTOR_USER_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.roleId()).isEqualTo(roleId);
+        assertThat(result.roleCode()).isEqualTo("ADMIN");
+        assertThat(result.roleName()).isEqualTo("Administrator");
+        assertThat(result.items()).hasSize(2);
+
+        // code ASC — "TENANT_CONFIG_READ" birinchi, "TENANT_CONFIG_WRITE" ikkinchi
+        var item1 = result.items().get(0);
+        assertThat(item1.permissionId()).isEqualTo(permId2);
+        assertThat(item1.code()).isEqualTo("TENANT_CONFIG_READ");
+        assertThat(item1.description()).isNull();
+        assertThat(item1.createdAt()).isEqualTo(java.time.Instant.parse("2026-01-05T08:00:00Z"));
+
+        var item2 = result.items().get(1);
+        assertThat(item2.permissionId()).isEqualTo(permId1);
+        assertThat(item2.code()).isEqualTo("TENANT_CONFIG_WRITE");
+        assertThat(item2.description()).isEqualTo("Tenant config yozish");
+        assertThat(item2.createdAt()).isEqualTo(java.time.Instant.parse("2026-01-10T08:00:00Z"));
+    }
+
+    @Test
+    void rolePermissionsTieBreakerByPermissionId() {
+        Tenant tenant = mockTenant();
+        UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+        UUID permIdA = UUID.fromString("dd000000-0000-0000-0000-00000000000a");
+        UUID permIdB = UUID.fromString("dd000000-0000-0000-0000-00000000000b");
+
+        Role role = mock(Role.class);
+        when(role.getId()).thenReturn(roleId);
+        when(role.getCode()).thenReturn("ADMIN");
+        when(role.getName()).thenReturn("Administrator");
+
+        // Ikkala permission bir xil code'ga ega — tie-breaker permissionId ASC bo'lishi kerak
+        Permission permB = mock(Permission.class);
+        when(permB.getId()).thenReturn(permIdB);
+        when(permB.getCode()).thenReturn("SAME_CODE");
+        when(permB.getDescription()).thenReturn(null);
+        when(permB.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-10T08:00:00Z"));
+
+        Permission permA = mock(Permission.class);
+        when(permA.getId()).thenReturn(permIdA);
+        when(permA.getCode()).thenReturn("SAME_CODE");
+        when(permA.getDescription()).thenReturn(null);
+        when(permA.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-05T08:00:00Z"));
+
+        RolePermission bB = mock(RolePermission.class);
+        when(bB.getPermission()).thenReturn(permB);
+        RolePermission bA = mock(RolePermission.class);
+        when(bA.getPermission()).thenReturn(permA);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findRoleById(roleId)).thenReturn(Optional.of(role));
+        when(identityQueryService.findRolePermissions(roleId)).thenReturn(List.of(bB, bA));
+
+        var result = facade.getRolePermissions(TENANT_ID, roleId, ACTOR_USER_ID);
+
+        assertThat(result.items()).hasSize(2);
+        // permIdA (...0a) permIdB (...0b) dan oldin kelishi kerak
+        assertThat(result.items().get(0).permissionId()).isEqualTo(permIdA);
+        assertThat(result.items().get(1).permissionId()).isEqualTo(permIdB);
+    }
+
+    @Test
+    void rolePermissionsReturnsEmptyListWhenNoneAssigned() {
+        Tenant tenant = mockTenant();
+        UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+        Role role = mock(Role.class);
+        when(role.getId()).thenReturn(roleId);
+        when(role.getCode()).thenReturn("ADMIN");
+        when(role.getName()).thenReturn("Administrator");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findRoleById(roleId)).thenReturn(Optional.of(role));
+        when(identityQueryService.findRolePermissions(roleId)).thenReturn(List.of());
+
+        var result = facade.getRolePermissions(TENANT_ID, roleId, ACTOR_USER_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.roleId()).isEqualTo(roleId);
+        assertThat(result.roleCode()).isEqualTo("ADMIN");
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void rolePermissionsThrowsResourceNotFoundWhenTenantMissing() {
+        UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> facade.getRolePermissions(TENANT_ID, roleId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(identityQueryService, never()).findRoleById(any());
+        verify(identityQueryService, never()).findRolePermissions(any());
+    }
+
+    @Test
+    void rolePermissionsThrowsResourceNotFoundWhenRoleMissing() {
+        Tenant tenant = mockTenant();
+        UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findRoleById(roleId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> facade.getRolePermissions(TENANT_ID, roleId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(identityQueryService).findRoleById(roleId);
+        verify(identityQueryService, never()).findRolePermissions(any());
+    }
+
+    @Test
+    void rolePermissionsThrowsIllegalArgumentWhenTenantIdNull() {
+        UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+        assertThatThrownBy(() -> facade.getRolePermissions(null, roleId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void rolePermissionsThrowsIllegalArgumentWhenRoleIdNull() {
+        assertThatThrownBy(() -> facade.getRolePermissions(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("roleId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void rolePermissionsCallsAuthorizeRead() {
+        Tenant tenant = mockTenant();
+        UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+        Role role = mock(Role.class);
+        when(role.getId()).thenReturn(roleId);
+        when(role.getCode()).thenReturn("ADMIN");
+        when(role.getName()).thenReturn("Administrator");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findRoleById(roleId)).thenReturn(Optional.of(role));
+        when(identityQueryService.findRolePermissions(roleId)).thenReturn(List.of());
+
+        facade.getRolePermissions(TENANT_ID, roleId, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void rolePermissionsNullTenantIdSkipsAuthorization() {
+        UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+        assertThatThrownBy(() -> facade.getRolePermissions(null, roleId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void rolePermissionsNullRoleIdSkipsAuthorization() {
+        assertThatThrownBy(() -> facade.getRolePermissions(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void rolePermissionsDeniedWhenAuthorizationFails() {
+        UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.getRolePermissions(TENANT_ID, roleId, ACTOR_USER_ID))
                 .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
 
         verifyNoInteractions(tenantConfigQueryService);

@@ -127,6 +127,26 @@ public class IdentityQueryService {
     }
 
     /**
+     * ID bo'yicha global rolni topadi.
+     *
+     * Admin moduli role-permission read surface uchun rol header'ini
+     * (id, code, name) yig'ish maqsadida ishlatadi.
+     */
+    public Optional<Role> findRoleById(UUID roleId) {
+        return roleRepository.findById(roleId);
+    }
+
+    /**
+     * Rolga tayinlangan ruxsat (permission) binding'larini qaytaradi.
+     *
+     * Admin moduli role-permission read surface uchun shu bog'lanishlarni
+     * yig'adi va permission'larni katalog tartibida ko'rsatadi.
+     */
+    public List<RolePermission> findRolePermissions(UUID roleId) {
+        return rolePermissionRepository.findByRoleId(roleId);
+    }
+
+    /**
      * Foydalanuvchining berilgan tenantdagi barcha ruxsat (permission) kodlarini qaytaradi.
      *
      * Zanjir: Membership -> MembershipRoleBinding -> Role -> RolePermission -> Permission.code

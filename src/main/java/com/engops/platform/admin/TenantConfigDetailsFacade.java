@@ -8,6 +8,7 @@ import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.Permission;
 import com.engops.platform.identity.model.Role;
+import com.engops.platform.identity.model.RolePermission;
 import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
@@ -172,6 +173,79 @@ public class TenantConfigDetailsFacade {
             String description,
             boolean systemRole,
             Instant createdAt) {}
+
+    /**
+     * Berilgan global rol uchun biriktirilgan ruxsat (permission)
+     * binding'larini katalog ko'rinishida qaytaradi.
+     *
+     * Rol va ruxsat ikkalasi ham GLOBAL — tenantga tegishli emas. tenantId
+     * endpoint-family izchilligi va admin kontekst validatsiyasi uchun tekshiriladi.
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId null bo'lmasligi kerak
+     * 2. roleId null bo'lmasligi kerak
+     * 3. authorizeRead chaqiriladi
+     * 4. tenant mavjudligi tekshiriladi
+     * 5. role mavjudligi tekshiriladi (ID bo'yicha global katalogdan)
+     * 6. role uchun permission binding'lar yig'iladi
+     *
+     * Ordering: code ASC -> id ASC
+     *
+     * Duplicate item bo'lmaydi — underlying (role_id, permission_id) UNIQUE
+     * constraint kafolatlaydi.
+     *
+     * @param tenantId admin kontekst tenant identifikatori
+     * @param roleId global rol identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return rol header + biriktirilgan permission'lar ro'yxati
+     * @throws IllegalArgumentException agar tenantId yoki roleId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant yoki rol topilmasa
+     */
+    public RolePermissionListView getRolePermissions(UUID tenantId, UUID roleId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (roleId == null) {
+            throw new IllegalArgumentException("roleId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        Role role = identityQueryService.findRoleById(roleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", roleId));
+
+        List<RolePermission> bindings = identityQueryService.findRolePermissions(roleId);
+
+        List<PermissionItemView> items = bindings.stream()
+                .map(RolePermission::getPermission)
+                .sorted(Comparator.comparing(Permission::getCode)
+                        .thenComparing(Permission::getId))
+                .map(p -> new PermissionItemView(
+                        p.getId(),
+                        p.getCode(),
+                        p.getDescription(),
+                        p.getCreatedAt()))
+                .toList();
+
+        return new RolePermissionListView(
+                tenantId,
+                role.getId(),
+                role.getCode(),
+                role.getName(),
+                items);
+    }
+
+    /**
+     * Facade natija modeli — rol uchun biriktirilgan permission ro'yxati.
+     */
+    public record RolePermissionListView(
+            UUID tenantId,
+            UUID roleId,
+            String roleCode,
+            String roleName,
+            List<PermissionItemView> items) {}
 
     /**
      * Global ruxsat (permission) katalogi ro'yxatini qaytaradi.

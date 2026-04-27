@@ -5,10 +5,12 @@ import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipStatus;
 import com.engops.platform.identity.model.Permission;
 import com.engops.platform.identity.model.Role;
+import com.engops.platform.identity.model.RolePermission;
 import com.engops.platform.identity.repository.AppUserRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
 import com.engops.platform.identity.repository.PermissionRepository;
+import com.engops.platform.identity.repository.RolePermissionRepository;
 import com.engops.platform.identity.repository.RoleRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +36,7 @@ class IdentityQueryServiceTest {
     @Mock private MembershipRoleBindingRepository membershipRoleBindingRepository;
     @Mock private RoleRepository roleRepository;
     @Mock private PermissionRepository permissionRepository;
+    @Mock private RolePermissionRepository rolePermissionRepository;
 
     @InjectMocks
     private IdentityQueryService identityQueryService;
@@ -122,5 +125,56 @@ class IdentityQueryServiceTest {
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getCode()).isEqualTo("TENANT_CONFIG_READ");
         assertThat(result.get(1).getCode()).isEqualTo("TENANT_CONFIG_WRITE");
+    }
+
+    @Test
+    void idBoYichaRolniTopish() {
+        UUID roleId = UUID.randomUUID();
+        Role role = new Role("ADMIN", "Administrator", true);
+        when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
+
+        Optional<Role> result = identityQueryService.findRoleById(roleId);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getCode()).isEqualTo("ADMIN");
+    }
+
+    @Test
+    void idBoYichaRolTopilmasaBoshOptional() {
+        UUID roleId = UUID.randomUUID();
+        when(roleRepository.findById(roleId)).thenReturn(Optional.empty());
+
+        Optional<Role> result = identityQueryService.findRoleById(roleId);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void rolUchunPermissionBindinglarToGriQaytish() {
+        UUID roleId = UUID.randomUUID();
+        RolePermission b1 = new RolePermission(
+                new Role("ADMIN", "Administrator", true),
+                new Permission("TENANT_CONFIG_READ", "Tenant config o'qish"));
+        RolePermission b2 = new RolePermission(
+                new Role("ADMIN", "Administrator", true),
+                new Permission("TENANT_CONFIG_WRITE", "Tenant config yozish"));
+
+        when(rolePermissionRepository.findByRoleId(roleId)).thenReturn(List.of(b1, b2));
+
+        List<RolePermission> result = identityQueryService.findRolePermissions(roleId);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getPermission().getCode()).isEqualTo("TENANT_CONFIG_READ");
+        assertThat(result.get(1).getPermission().getCode()).isEqualTo("TENANT_CONFIG_WRITE");
+    }
+
+    @Test
+    void rolUchunPermissionYoqBolsaBoshList() {
+        UUID roleId = UUID.randomUUID();
+        when(rolePermissionRepository.findByRoleId(roleId)).thenReturn(List.of());
+
+        List<RolePermission> result = identityQueryService.findRolePermissions(roleId);
+
+        assertThat(result).isEmpty();
     }
 }
