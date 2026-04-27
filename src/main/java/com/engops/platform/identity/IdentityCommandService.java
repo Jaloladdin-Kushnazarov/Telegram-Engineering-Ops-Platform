@@ -429,6 +429,16 @@ public class IdentityCommandService {
                 throw new BusinessRuleException("ROLE_IN_USE",
                         "Rol hozirda membership'larga tayinlangan, o'chirilmaydi (roleId=" + roleId + ")");
             }
+            // Phase 94 role-permission write surface qo'shgandan keyin role
+            // ham role_permission jadvali tomonidan FK orqali ushlab turilishi
+            // mumkin. Phase 78 dagi pre-check membership_role_binding'ni
+            // qoplagan, lekin role_permission'ni qoplamagan — admin permission
+            // biriktirilgan rolni o'chirmoqchi bo'lsa raw DB exception 500
+            // bo'lib chiqib qolardi. Endi shu holat ham clean ROLE_IN_USE 422.
+            if (isRoleReferencedByRolePermissionConstraint(ex)) {
+                throw new BusinessRuleException("ROLE_IN_USE",
+                        "Rolga ruxsatlar biriktirilgan, o'chirilmaydi (roleId=" + roleId + ")");
+            }
             throw ex;
         }
 
@@ -660,6 +670,22 @@ public class IdentityCommandService {
             String constraintName = cve.getConstraintName();
             return constraintName != null
                     && constraintName.contains("membership_role_binding")
+                    && constraintName.contains("role_id");
+        }
+        return false;
+    }
+
+    /**
+     * DataIntegrityViolationException role o'chirishda role_permission jadvali FK
+     * reference violation ekanligini tekshiradi (Phase 94 role-permission write
+     * surface'idan kelib chiqadigan inbound FK).
+     */
+    private static boolean isRoleReferencedByRolePermissionConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("role_permission")
                     && constraintName.contains("role_id");
         }
         return false;

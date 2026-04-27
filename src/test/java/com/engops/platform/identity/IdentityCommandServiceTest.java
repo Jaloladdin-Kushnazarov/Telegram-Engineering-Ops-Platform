@@ -1118,6 +1118,32 @@ class IdentityCommandServiceTest {
         verifyNoInteractions(auditService);
     }
 
+    @Test
+    void deleteRoleTranslatesRolePermissionFKViolationToBusinessRule() {
+        // Phase 94 dan keyin role role_permission jadvali tomonidan ham FK
+        // orqali ushlab turilishi mumkin. Phase 78 dagi pre-check faqat
+        // membership_role_binding'ni qoplagan, shuning uchun bu yo'l ilgari
+        // raw DataIntegrityViolationException 500 sifatida qaytib ketardi.
+        // Endi clean ROLE_IN_USE 422 ga aylantiriladi.
+        Role existing = existingRoleEntity();
+        when(roleRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(membershipRoleBindingRepository.existsByRoleId(existing.getId())).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "FK violation", new SQLException(),
+                "role_permission_role_id_fkey");
+        doThrow(new DataIntegrityViolationException("FK", cause))
+                .when(roleRepository).flush();
+
+        assertThatThrownBy(() -> service.deleteRole(existing.getId()))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("ruxsatlar")
+                .hasMessageContaining(existing.getId().toString());
+
+        // FK violation rollback bo'lsa audit yozilmasligi kerak
+        verifyNoInteractions(auditService);
+    }
+
     // ========== assignPermissionToRole tests ==========
 
     private Permission existingPermission() {
