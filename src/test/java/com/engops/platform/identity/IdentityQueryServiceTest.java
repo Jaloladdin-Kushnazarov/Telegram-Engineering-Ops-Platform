@@ -227,4 +227,34 @@ class IdentityQueryServiceTest {
 
         assertThat(result).isEmpty();
     }
+
+    @Test
+    void tenantSafeMembershipniIdBoYichaTopish() {
+        UUID tenantId = UUID.randomUUID();
+        UUID membershipId = UUID.randomUUID();
+        Membership membership = new Membership(tenantId, UUID.randomUUID());
+
+        when(membershipRepository.findByIdAndTenantId(membershipId, tenantId))
+                .thenReturn(Optional.of(membership));
+
+        Optional<Membership> result =
+                identityQueryService.findMembershipByIdAndTenantId(membershipId, tenantId);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getTenantId()).isEqualTo(tenantId);
+    }
+
+    @Test
+    void tenantSafeMembershipTopilmasaBoshOptional() {
+        UUID tenantId = UUID.randomUUID();
+        UUID membershipId = UUID.randomUUID();
+
+        when(membershipRepository.findByIdAndTenantId(membershipId, tenantId))
+                .thenReturn(Optional.empty());
+
+        Optional<Membership> result =
+                identityQueryService.findMembershipByIdAndTenantId(membershipId, tenantId);
+
+        assertThat(result).isEmpty();
+    }
 }

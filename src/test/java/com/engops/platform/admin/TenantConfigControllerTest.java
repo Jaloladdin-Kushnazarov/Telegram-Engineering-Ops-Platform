@@ -1089,6 +1089,162 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(jsonPath("$.items[0].description").doesNotExist());
     }
 
+    // ========== GET /memberships/{membershipId}/roles — membership-role read endpoint ==========
+
+    @Test
+    void membershipRolesReturnsOkWithItems() throws Exception {
+        UUID membershipId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("ff111111-1111-1111-1111-111111111111");
+        var items = List.of(
+                new TenantConfigDetailsFacade.RoleItemView(
+                        UUID.fromString("cc111111-1111-1111-1111-111111111111"),
+                        "ADMIN",
+                        "Administrator",
+                        null,
+                        true,
+                        Instant.parse("2026-01-05T08:00:00Z")),
+                new TenantConfigDetailsFacade.RoleItemView(
+                        UUID.fromString("cc222222-2222-2222-2222-222222222222"),
+                        "ENGINEER",
+                        "Engineer",
+                        "Engineering role",
+                        false,
+                        Instant.parse("2026-01-10T08:00:00Z")));
+        var view = new TenantConfigDetailsFacade.MembershipRoleListView(
+                TENANT_ID, membershipId, userId, "ACTIVE", items);
+
+        when(detailsFacade.getMembershipRoles(eq(TENANT_ID), eq(membershipId), any())).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.membershipId").value(membershipId.toString()))
+                .andExpect(jsonPath("$.userId").value(userId.toString()))
+                .andExpect(jsonPath("$.membershipStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].roleId").value("cc111111-1111-1111-1111-111111111111"))
+                .andExpect(jsonPath("$.items[0].code").value("ADMIN"))
+                .andExpect(jsonPath("$.items[0].name").value("Administrator"))
+                .andExpect(jsonPath("$.items[0].description").doesNotExist())
+                .andExpect(jsonPath("$.items[0].systemRole").value(true))
+                .andExpect(jsonPath("$.items[0].createdAt").value("2026-01-05T08:00:00Z"))
+                .andExpect(jsonPath("$.items[1].roleId").value("cc222222-2222-2222-2222-222222222222"))
+                .andExpect(jsonPath("$.items[1].code").value("ENGINEER"))
+                .andExpect(jsonPath("$.items[1].name").value("Engineer"))
+                .andExpect(jsonPath("$.items[1].description").value("Engineering role"))
+                .andExpect(jsonPath("$.items[1].systemRole").value(false));
+    }
+
+    @Test
+    void membershipRolesWithEmptyListReturnsValidResponse() throws Exception {
+        UUID membershipId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("ff111111-1111-1111-1111-111111111111");
+        var view = new TenantConfigDetailsFacade.MembershipRoleListView(
+                TENANT_ID, membershipId, userId, "SUSPENDED", List.of());
+
+        when(detailsFacade.getMembershipRoles(eq(TENANT_ID), eq(membershipId), any())).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.membershipId").value(membershipId.toString()))
+                .andExpect(jsonPath("$.userId").value(userId.toString()))
+                .andExpect(jsonPath("$.membershipStatus").value("SUSPENDED"))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void membershipRolesTenantNotFoundReturns404() throws Exception {
+        UUID membershipId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
+        when(detailsFacade.getMembershipRoles(eq(TENANT_ID), eq(membershipId), any()))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void membershipRolesMembershipNotFoundReturns404() throws Exception {
+        UUID membershipId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
+        when(detailsFacade.getMembershipRoles(eq(TENANT_ID), eq(membershipId), any()))
+                .thenThrow(new ResourceNotFoundException("Membership", membershipId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void membershipRolesMissingTenantIdReturns400() throws Exception {
+        UUID membershipId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void membershipRolesInvalidTenantIdFormatReturns400() throws Exception {
+        UUID membershipId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
+                        .param("tenantId", "not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void membershipRolesInvalidMembershipIdFormatReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", "not-a-uuid")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void membershipRolesAccessDeniedReturns403() throws Exception {
+        UUID membershipId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
+        when(detailsFacade.getMembershipRoles(eq(TENANT_ID), eq(membershipId), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void membershipRolesNullDescriptionOmittedFromJson() throws Exception {
+        UUID membershipId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("ff111111-1111-1111-1111-111111111111");
+        var items = List.of(
+                new TenantConfigDetailsFacade.RoleItemView(
+                        UUID.fromString("cc111111-1111-1111-1111-111111111111"),
+                        "ADMIN",
+                        "Administrator",
+                        null,
+                        true,
+                        Instant.parse("2026-01-05T08:00:00Z")));
+        var view = new TenantConfigDetailsFacade.MembershipRoleListView(
+                TENANT_ID, membershipId, userId, "ACTIVE", items);
+
+        when(detailsFacade.getMembershipRoles(eq(TENANT_ID), eq(membershipId), any())).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].description").doesNotExist());
+    }
+
     // ========== POST /workflow-definitions endpoint ==========
 
     @Test

@@ -321,6 +321,81 @@ public class TenantConfigDetailsFacade {
             List<RoleItemView> items) {}
 
     /**
+     * Berilgan a'zolik (membership) uchun unga biriktirilgan global rol'lar
+     * ro'yxatini qaytaradi.
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId null bo'lmasligi kerak
+     * 2. membershipId null bo'lmasligi kerak
+     * 3. authorizeRead chaqiriladi
+     * 4. tenant mavjudligi tekshiriladi
+     * 5. membership shu tenantga tegishli bo'lishi tekshiriladi (tenant-safe lookup —
+     *    cross-tenant lookup natijasi NOT FOUND ko'rinishida qaytadi)
+     * 6. membership uchun rol binding'lar yig'iladi
+     *
+     * Ordering: role code ASC -> role id ASC
+     *
+     * Duplicate item bo'lmaydi — underlying (membership_id, role_id) UNIQUE
+     * constraint kafolatlaydi.
+     *
+     * @param tenantId admin kontekst tenant identifikatori
+     * @param membershipId a'zolik identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return membership header + biriktirilgan rol'lar ro'yxati
+     * @throws IllegalArgumentException agar tenantId yoki membershipId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant yoki membership topilmasa
+     *         (membership boshqa tenantga tegishli bo'lsa ham)
+     */
+    public MembershipRoleListView getMembershipRoles(UUID tenantId, UUID membershipId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (membershipId == null) {
+            throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        Membership membership = identityQueryService
+                .findMembershipByIdAndTenantId(membershipId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Membership", membershipId));
+
+        List<MembershipRoleBinding> bindings = identityQueryService.getMembershipRoles(membershipId);
+
+        List<RoleItemView> items = bindings.stream()
+                .map(MembershipRoleBinding::getRole)
+                .sorted(Comparator.comparing(Role::getCode)
+                        .thenComparing(Role::getId))
+                .map(r -> new RoleItemView(
+                        r.getId(),
+                        r.getCode(),
+                        r.getName(),
+                        r.getDescription(),
+                        r.isSystemRole(),
+                        r.getCreatedAt()))
+                .toList();
+
+        return new MembershipRoleListView(
+                tenantId,
+                membership.getId(),
+                membership.getUserId(),
+                membership.getStatus().name(),
+                items);
+    }
+
+    /**
+     * Facade natija modeli — membership uchun biriktirilgan rol ro'yxati.
+     */
+    public record MembershipRoleListView(
+            UUID tenantId,
+            UUID membershipId,
+            UUID userId,
+            String membershipStatus,
+            List<RoleItemView> items) {}
+
+    /**
      * Global ruxsat (permission) katalogi ro'yxatini qaytaradi.
      *
      * Rollar kabi ruxsatlar ham GLOBAL — tenantga tegishli emas. tenantId endpoint-family

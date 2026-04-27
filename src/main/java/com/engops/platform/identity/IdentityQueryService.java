@@ -99,6 +99,17 @@ public class IdentityQueryService {
     }
 
     /**
+     * Tenant-safe lookup: ID va tenant bo'yicha a'zolikni topadi.
+     *
+     * Admin moduli membership-role read surface uchun ishlatadi —
+     * shu metod orqali ham mavjudlik, ham tenant ownership bir lookup'da
+     * tekshiriladi (cross-tenant himoya).
+     */
+    public Optional<Membership> findMembershipByIdAndTenantId(UUID membershipId, UUID tenantId) {
+        return membershipRepository.findByIdAndTenantId(membershipId, tenantId);
+    }
+
+    /**
      * A'zolikka tayinlangan rollarni qaytaradi.
      */
     public List<MembershipRoleBinding> getMembershipRoles(UUID membershipId) {

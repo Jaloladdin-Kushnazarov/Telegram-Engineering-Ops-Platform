@@ -26,6 +26,7 @@ import java.util.UUID;
  * - GET /chat-bindings — tenant Telegram chat bog'lanishlari ro'yxati
  * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
  * - GET /memberships — tenant a'zolik ro'yxati
+ * - GET /memberships/{membershipId}/roles — a'zolikka biriktirilgan rollar ro'yxati
  * - GET /roles — global rol katalogi ro'yxati
  * - GET /roles/{roleId}/permissions — global rol uchun biriktirilgan ruxsatlar ro'yxati
  * - GET /permissions — global ruxsat katalogi ro'yxati
@@ -182,6 +183,45 @@ public class TenantConfigController {
                 detailsFacade.getMemberships(tenantId, actorUserId);
 
         return ResponseEntity.ok(toMembershipListResponse(view));
+    }
+
+    /**
+     * Berilgan a'zolik (membership) uchun unga biriktirilgan rol'lar
+     * ro'yxatini qaytaradi.
+     *
+     * @param membershipId a'zolik identifikatori
+     * @param tenantId tenant identifikatori
+     * @return membership header + biriktirilgan rol ro'yxati
+     */
+    @GetMapping("/memberships/{membershipId}/roles")
+    public ResponseEntity<TenantConfigMembershipRoleListResponse> getMembershipRoles(
+            @PathVariable UUID membershipId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.MembershipRoleListView view =
+                detailsFacade.getMembershipRoles(tenantId, membershipId, actorUserId);
+
+        return ResponseEntity.ok(toMembershipRoleListResponse(view));
+    }
+
+    private TenantConfigMembershipRoleListResponse toMembershipRoleListResponse(
+            TenantConfigDetailsFacade.MembershipRoleListView view) {
+        List<TenantConfigMembershipRoleListResponse.RoleItem> items = view.items().stream()
+                .map(i -> new TenantConfigMembershipRoleListResponse.RoleItem(
+                        i.roleId(),
+                        i.code(),
+                        i.name(),
+                        i.description(),
+                        i.systemRole(),
+                        i.createdAt()))
+                .toList();
+        return new TenantConfigMembershipRoleListResponse(
+                view.tenantId(),
+                view.membershipId(),
+                view.userId(),
+                view.membershipStatus(),
+                items);
     }
 
     /**
