@@ -722,6 +722,111 @@ public class TenantConfigDetailsFacade {
     }
 
     /**
+     * Berilgan routing rule uchun to'liq detail ko'rinishini qaytaradi:
+     * header (id, name, workItemType, priority, conditionExpression, active, createdAt)
+     * + (ixtiyoriy) targetTopicBinding context (topic + parent chat).
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId null bo'lmasligi kerak
+     * 2. ruleId null bo'lmasligi kerak
+     * 3. authorizeRead chaqiriladi
+     * 4. tenant mavjudligi tekshiriladi
+     * 5. routing rule shu tenantga tegishli bo'lishi tekshiriladi
+     *    (tenant-safe lookup — boshqa tenantga tegishli bo'lsa NOT FOUND)
+     * 6. agar targetTopicBindingId mavjud bo'lsa, tenant-safe topic binding
+     *    context MAJBURIY ravishda topiladi; topic binding orqali parent chat
+     *    binding ham olinadi
+     *
+     * Target semantics:
+     * - targetTopicBindingId == null  → nested target null (JSON omit)
+     * - targetTopicBindingId != null  → target binding mavjud bo'lishi shart;
+     *   topilmasa (jumladan cross-tenant dangling reference)
+     *   ResourceNotFoundException("TopicBinding", targetId) tashlanadi.
+     *   Silent omit qilinmaydi — dangling target invariantni buzgan konfiguratsiya
+     *   bo'lib, admin'ga 404 sifatida ko'rsatilishi kerak.
+     *
+     * @param tenantId tenant identifikatori
+     * @param ruleId routing rule identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return routing rule header + ixtiyoriy target context
+     * @throws IllegalArgumentException agar tenantId yoki ruleId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant, routing rule yoki
+     *         non-null targetTopicBindingId ko'rsatgan topic binding topilmasa
+     */
+    public RoutingRuleDetailView getRoutingRuleDetails(
+            UUID tenantId, UUID ruleId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (ruleId == null) {
+            throw new IllegalArgumentException("ruleId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        RoutingRule rule = tenantConfigQueryService
+                .findRoutingRuleById(tenantId, ruleId)
+                .orElseThrow(() -> new ResourceNotFoundException("RoutingRule", ruleId));
+
+        TargetTopicBindingView target = null;
+        UUID targetId = rule.getTargetTopicBindingId();
+        if (targetId != null) {
+            TelegramTopicBinding topicBinding = tenantConfigQueryService
+                    .findTopicBindingById(tenantId, targetId)
+                    .orElseThrow(() -> new ResourceNotFoundException("TopicBinding", targetId));
+            TelegramChatBinding chatBinding = topicBinding.getChatBinding();
+            target = new TargetTopicBindingView(
+                    topicBinding.getId(),
+                    topicBinding.getTopicId(),
+                    topicBinding.getTopicName(),
+                    topicBinding.getPurpose(),
+                    topicBinding.isActive(),
+                    chatBinding.getId(),
+                    chatBinding.getChatId(),
+                    chatBinding.getChatTitle(),
+                    chatBinding.getBindingType().name());
+        }
+
+        return new RoutingRuleDetailView(
+                tenantId,
+                rule.getId(),
+                rule.getName(),
+                rule.getWorkItemType(),
+                rule.getPriority(),
+                rule.getConditionExpression(),
+                rule.isActive(),
+                rule.getCreatedAt(),
+                target);
+    }
+
+    /**
+     * Facade natija modeli — routing rule to'liq detail.
+     */
+    public record RoutingRuleDetailView(
+            UUID tenantId,
+            UUID ruleId,
+            String name,
+            String workItemType,
+            int priority,
+            String conditionExpression,
+            boolean active,
+            Instant createdAt,
+            TargetTopicBindingView targetTopicBinding) {}
+
+    public record TargetTopicBindingView(
+            UUID topicBindingId,
+            long topicId,
+            String topicName,
+            String purpose,
+            boolean active,
+            UUID chatBindingId,
+            long chatId,
+            String chatTitle,
+            String chatBindingType) {}
+
+    /**
      * Tenant uchun barcha Telegram chat bog'lanishlarining compact ro'yxatini qaytaradi.
      *
      * Har bir chat binding uchun activeTopicBindingCount ham hisoblanadi —

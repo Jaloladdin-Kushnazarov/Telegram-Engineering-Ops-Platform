@@ -73,6 +73,16 @@ public class TenantConfigQueryService {
     }
 
     /**
+     * Tenant-safe lookup: ID va tenant bo'yicha routing rule'ni topadi.
+     * Admin moduli routing rule detail read surface uchun ishlatadi —
+     * shu metod orqali ham mavjudlik, ham tenant ownership bir lookup'da
+     * tekshiriladi (cross-tenant himoya).
+     */
+    public Optional<RoutingRule> findRoutingRuleById(UUID tenantId, UUID ruleId) {
+        return routingRuleRepository.findByIdAndTenantId(ruleId, tenantId);
+    }
+
+    /**
      * Tenant va ID bo'yicha workflow ta'rifini topadi (tenant-safe).
      */
     public Optional<WorkflowDefinition> findWorkflowDefinitionById(UUID tenantId, UUID definitionId) {

@@ -2164,6 +2164,253 @@ class TenantConfigDetailsFacadeTest {
         verifyNoInteractions(identityQueryService);
     }
 
+    // ========== getRoutingRuleDetails tests ==========
+
+    @Test
+    void routingRuleDetailsReturnsHeaderWithTargetContext() {
+        Tenant tenant = mockTenant();
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        UUID topicBindingId = UUID.fromString("bb999999-9999-9999-9999-999999999991");
+        UUID chatBindingId = UUID.fromString("cc999999-9999-9999-9999-999999999991");
+
+        RoutingRule rule = mock(RoutingRule.class);
+        when(rule.getId()).thenReturn(ruleId);
+        when(rule.getTenantId()).thenReturn(TENANT_ID);
+        when(rule.getName()).thenReturn("Bug Routing");
+        when(rule.getWorkItemType()).thenReturn("BUG");
+        when(rule.getPriority()).thenReturn(10);
+        when(rule.getConditionExpression()).thenReturn(null);
+        when(rule.isActive()).thenReturn(true);
+        when(rule.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+        when(rule.getTargetTopicBindingId()).thenReturn(topicBindingId);
+
+        TelegramChatBinding chatBinding = mock(TelegramChatBinding.class);
+        when(chatBinding.getId()).thenReturn(chatBindingId);
+        when(chatBinding.getChatId()).thenReturn(-1001234567890L);
+        when(chatBinding.getChatTitle()).thenReturn("Engineering Chat");
+        when(chatBinding.getBindingType()).thenReturn(ChatBindingType.MAIN_GROUP);
+
+        TelegramTopicBinding topicBinding = mock(TelegramTopicBinding.class);
+        when(topicBinding.getId()).thenReturn(topicBindingId);
+        when(topicBinding.getTopicId()).thenReturn(123L);
+        when(topicBinding.getTopicName()).thenReturn("Bugs Topic");
+        when(topicBinding.getPurpose()).thenReturn("BUGS");
+        when(topicBinding.isActive()).thenReturn(true);
+        when(topicBinding.getChatBinding()).thenReturn(chatBinding);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findRoutingRuleById(TENANT_ID, ruleId))
+                .thenReturn(Optional.of(rule));
+        when(tenantConfigQueryService.findTopicBindingById(TENANT_ID, topicBindingId))
+                .thenReturn(Optional.of(topicBinding));
+
+        var result = facade.getRoutingRuleDetails(TENANT_ID, ruleId, ACTOR_USER_ID);
+
+        // Header
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.ruleId()).isEqualTo(ruleId);
+        assertThat(result.name()).isEqualTo("Bug Routing");
+        assertThat(result.workItemType()).isEqualTo("BUG");
+        assertThat(result.priority()).isEqualTo(10);
+        assertThat(result.conditionExpression()).isNull();
+        assertThat(result.active()).isTrue();
+        assertThat(result.createdAt()).isEqualTo(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+
+        // Nested target context
+        assertThat(result.targetTopicBinding()).isNotNull();
+        assertThat(result.targetTopicBinding().topicBindingId()).isEqualTo(topicBindingId);
+        assertThat(result.targetTopicBinding().topicId()).isEqualTo(123L);
+        assertThat(result.targetTopicBinding().topicName()).isEqualTo("Bugs Topic");
+        assertThat(result.targetTopicBinding().purpose()).isEqualTo("BUGS");
+        assertThat(result.targetTopicBinding().active()).isTrue();
+        assertThat(result.targetTopicBinding().chatBindingId()).isEqualTo(chatBindingId);
+        assertThat(result.targetTopicBinding().chatId()).isEqualTo(-1001234567890L);
+        assertThat(result.targetTopicBinding().chatTitle()).isEqualTo("Engineering Chat");
+        assertThat(result.targetTopicBinding().chatBindingType()).isEqualTo("MAIN_GROUP");
+    }
+
+    @Test
+    void routingRuleDetailsReturnsHeaderWithoutTargetWhenTargetIdNull() {
+        Tenant tenant = mockTenant();
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+
+        RoutingRule rule = mock(RoutingRule.class);
+        when(rule.getId()).thenReturn(ruleId);
+        when(rule.getName()).thenReturn("Conditional Rule");
+        when(rule.getWorkItemType()).thenReturn("INCIDENT");
+        when(rule.getPriority()).thenReturn(5);
+        when(rule.getConditionExpression()).thenReturn("priority == HIGH");
+        when(rule.isActive()).thenReturn(false);
+        when(rule.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-02-01T08:00:00Z"));
+        when(rule.getTargetTopicBindingId()).thenReturn(null);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findRoutingRuleById(TENANT_ID, ruleId))
+                .thenReturn(Optional.of(rule));
+
+        var result = facade.getRoutingRuleDetails(TENANT_ID, ruleId, ACTOR_USER_ID);
+
+        assertThat(result.targetTopicBinding()).isNull();
+        assertThat(result.conditionExpression()).isEqualTo("priority == HIGH");
+        assertThat(result.active()).isFalse();
+
+        // Topic binding lookup'i shaqirilmasligi kerak
+        verify(tenantConfigQueryService, never()).findTopicBindingById(any(), any());
+    }
+
+    @Test
+    void routingRuleDetailsThrowsResourceNotFoundWhenTenantMissing() {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getRoutingRuleDetails(TENANT_ID, ruleId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(tenantConfigQueryService, never()).findRoutingRuleById(any(), any());
+    }
+
+    @Test
+    void routingRuleDetailsThrowsResourceNotFoundWhenRuleMissing() {
+        Tenant tenant = mockTenant();
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findRoutingRuleById(TENANT_ID, ruleId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getRoutingRuleDetails(TENANT_ID, ruleId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("RoutingRule");
+    }
+
+    @Test
+    void routingRuleDetailsThrowsResourceNotFoundWhenTargetTopicBindingMissing() {
+        // Routing rule mavjud, lekin targetTopicBindingId tomonidan ko'rsatilgan
+        // topic binding tenant ichida yo'q (dangling reference) — 404 bo'lishi shart,
+        // silent omit qilinmasligi kerak.
+        Tenant tenant = mockTenant();
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        UUID targetId = UUID.fromString("bb999999-9999-9999-9999-999999999991");
+
+        RoutingRule rule = mock(RoutingRule.class);
+        when(rule.getId()).thenReturn(ruleId);
+        when(rule.getTargetTopicBindingId()).thenReturn(targetId);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findRoutingRuleById(TENANT_ID, ruleId))
+                .thenReturn(Optional.of(rule));
+        when(tenantConfigQueryService.findTopicBindingById(TENANT_ID, targetId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getRoutingRuleDetails(TENANT_ID, ruleId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("TopicBinding")
+                .hasMessageContaining(targetId.toString());
+
+        // Authorization allaqachon o'tgan bo'lishi kerak — downstream lookup ishladi
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+        verify(tenantConfigQueryService).findRoutingRuleById(TENANT_ID, ruleId);
+        verify(tenantConfigQueryService).findTopicBindingById(TENANT_ID, targetId);
+    }
+
+    @Test
+    void routingRuleDetailsCrossTenantReturnsNotFound() {
+        // Boshqa tenantga tegishli routing rule — tenant-safe lookup empty qaytaradi
+        Tenant tenant = mockTenant();
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findRoutingRuleById(TENANT_ID, ruleId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getRoutingRuleDetails(TENANT_ID, ruleId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("RoutingRule");
+    }
+
+    @Test
+    void routingRuleDetailsThrowsIllegalArgumentWhenTenantIdNull() {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        assertThatThrownBy(() ->
+                facade.getRoutingRuleDetails(null, ruleId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void routingRuleDetailsThrowsIllegalArgumentWhenRuleIdNull() {
+        assertThatThrownBy(() ->
+                facade.getRoutingRuleDetails(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("ruleId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void routingRuleDetailsCallsAuthorizeRead() {
+        Tenant tenant = mockTenant();
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+
+        RoutingRule rule = mock(RoutingRule.class);
+        when(rule.getId()).thenReturn(ruleId);
+        when(rule.getName()).thenReturn("Rule");
+        when(rule.getWorkItemType()).thenReturn("BUG");
+        when(rule.getPriority()).thenReturn(0);
+        when(rule.getConditionExpression()).thenReturn(null);
+        when(rule.isActive()).thenReturn(true);
+        when(rule.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+        when(rule.getTargetTopicBindingId()).thenReturn(null);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findRoutingRuleById(TENANT_ID, ruleId))
+                .thenReturn(Optional.of(rule));
+
+        facade.getRoutingRuleDetails(TENANT_ID, ruleId, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void routingRuleDetailsNullTenantIdSkipsAuthorization() {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        assertThatThrownBy(() ->
+                facade.getRoutingRuleDetails(null, ruleId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void routingRuleDetailsNullRuleIdSkipsAuthorization() {
+        assertThatThrownBy(() ->
+                facade.getRoutingRuleDetails(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void routingRuleDetailsDeniedWhenAuthorizationFails() {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() ->
+                facade.getRoutingRuleDetails(TENANT_ID, ruleId, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(tenantConfigQueryService);
+        verifyNoInteractions(identityQueryService);
+    }
+
     // ========== Authorization enforcement ==========
 
     @Test

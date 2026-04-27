@@ -1416,6 +1416,185 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(jsonPath("$.transitionRules[0].requiredPermissionId").doesNotExist());
     }
 
+    // ========== GET /routing-rules/{ruleId} — routing rule detail read endpoint ==========
+
+    @Test
+    void routingRuleDetailsReturnsOkWithFullTargetContext() throws Exception {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        UUID topicBindingId = UUID.fromString("bb999999-9999-9999-9999-999999999991");
+        UUID chatBindingId = UUID.fromString("cc999999-9999-9999-9999-999999999991");
+
+        var target = new TenantConfigDetailsFacade.TargetTopicBindingView(
+                topicBindingId, 123L, "Bugs Topic", "BUGS", true,
+                chatBindingId, -1001234567890L, "Engineering Chat", "MAIN_GROUP");
+        var view = new TenantConfigDetailsFacade.RoutingRuleDetailView(
+                TENANT_ID, ruleId, "Bug Routing", "BUG", 10, "priority == HIGH", true,
+                Instant.parse("2026-01-15T08:00:00Z"), target);
+
+        when(detailsFacade.getRoutingRuleDetails(eq(TENANT_ID), eq(ruleId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.ruleId").value(ruleId.toString()))
+                .andExpect(jsonPath("$.name").value("Bug Routing"))
+                .andExpect(jsonPath("$.workItemType").value("BUG"))
+                .andExpect(jsonPath("$.priority").value(10))
+                .andExpect(jsonPath("$.conditionExpression").value("priority == HIGH"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").value("2026-01-15T08:00:00Z"))
+                .andExpect(jsonPath("$.targetTopicBinding.topicBindingId").value(topicBindingId.toString()))
+                .andExpect(jsonPath("$.targetTopicBinding.topicId").value(123))
+                .andExpect(jsonPath("$.targetTopicBinding.topicName").value("Bugs Topic"))
+                .andExpect(jsonPath("$.targetTopicBinding.purpose").value("BUGS"))
+                .andExpect(jsonPath("$.targetTopicBinding.active").value(true))
+                .andExpect(jsonPath("$.targetTopicBinding.chatBindingId").value(chatBindingId.toString()))
+                .andExpect(jsonPath("$.targetTopicBinding.chatId").value(-1001234567890L))
+                .andExpect(jsonPath("$.targetTopicBinding.chatTitle").value("Engineering Chat"))
+                .andExpect(jsonPath("$.targetTopicBinding.chatBindingType").value("MAIN_GROUP"));
+    }
+
+    @Test
+    void routingRuleDetailsReturnsOkWithoutTargetTopicBinding() throws Exception {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        var view = new TenantConfigDetailsFacade.RoutingRuleDetailView(
+                TENANT_ID, ruleId, "No Target", "TASK", 0, null, false,
+                Instant.parse("2026-01-15T08:00:00Z"), null);
+
+        when(detailsFacade.getRoutingRuleDetails(eq(TENANT_ID), eq(ruleId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetTopicBinding").doesNotExist())
+                .andExpect(jsonPath("$.conditionExpression").doesNotExist())
+                .andExpect(jsonPath("$.active").value(false));
+    }
+
+    @Test
+    void routingRuleDetailsTenantNotFoundReturns404() throws Exception {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        when(detailsFacade.getRoutingRuleDetails(eq(TENANT_ID), eq(ruleId), any()))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void routingRuleDetailsRuleNotFoundReturns404() throws Exception {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        when(detailsFacade.getRoutingRuleDetails(eq(TENANT_ID), eq(ruleId), any()))
+                .thenThrow(new ResourceNotFoundException("RoutingRule", ruleId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void routingRuleDetailsTargetTopicBindingNotFoundReturns404() throws Exception {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        UUID targetId = UUID.fromString("bb999999-9999-9999-9999-999999999991");
+        when(detailsFacade.getRoutingRuleDetails(eq(TENANT_ID), eq(ruleId), any()))
+                .thenThrow(new ResourceNotFoundException("TopicBinding", targetId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void routingRuleDetailsMissingTenantIdReturns400() throws Exception {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void routingRuleDetailsInvalidTenantIdFormatReturns400() throws Exception {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
+                        .param("tenantId", "not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void routingRuleDetailsInvalidRuleIdFormatReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", "not-a-uuid")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void routingRuleDetailsAccessDeniedReturns403() throws Exception {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        when(detailsFacade.getRoutingRuleDetails(eq(TENANT_ID), eq(ruleId), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void routingRuleDetailsNullConditionExpressionOmittedFromJson() throws Exception {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        var view = new TenantConfigDetailsFacade.RoutingRuleDetailView(
+                TENANT_ID, ruleId, "Rule", "BUG", 5, null, true,
+                Instant.parse("2026-01-15T08:00:00Z"), null);
+
+        when(detailsFacade.getRoutingRuleDetails(eq(TENANT_ID), eq(ruleId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conditionExpression").doesNotExist());
+    }
+
+    @Test
+    void routingRuleDetailsNestedNullChatTitleAndTopicNameOmittedFromJson() throws Exception {
+        UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
+        UUID topicBindingId = UUID.fromString("bb999999-9999-9999-9999-999999999991");
+        UUID chatBindingId = UUID.fromString("cc999999-9999-9999-9999-999999999991");
+
+        var target = new TenantConfigDetailsFacade.TargetTopicBindingView(
+                topicBindingId, 123L, null, "BUGS", true,
+                chatBindingId, -1001234567890L, null, "MAIN_GROUP");
+        var view = new TenantConfigDetailsFacade.RoutingRuleDetailView(
+                TENANT_ID, ruleId, "Rule", "BUG", 5, null, true,
+                Instant.parse("2026-01-15T08:00:00Z"), target);
+
+        when(detailsFacade.getRoutingRuleDetails(eq(TENANT_ID), eq(ruleId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetTopicBinding.topicName").doesNotExist())
+                .andExpect(jsonPath("$.targetTopicBinding.chatTitle").doesNotExist())
+                .andExpect(jsonPath("$.targetTopicBinding.purpose").value("BUGS"))
+                .andExpect(jsonPath("$.targetTopicBinding.chatBindingType").value("MAIN_GROUP"));
+    }
+
     // ========== POST /workflow-definitions endpoint ==========
 
     @Test

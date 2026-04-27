@@ -24,6 +24,7 @@ import java.util.UUID;
  * - GET /workflow-definitions — tenant workflow ta'riflari ro'yxati
  * - GET /workflow-definitions/{definitionId} — workflow definition to'liq detail (statuses + transitionRules)
  * - GET /routing-rules — tenant routing qoidalari ro'yxati
+ * - GET /routing-rules/{ruleId} — routing rule to'liq detail (target topic binding context bilan)
  * - GET /chat-bindings — tenant Telegram chat bog'lanishlari ro'yxati
  * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
  * - GET /memberships — tenant a'zolik ro'yxati
@@ -184,6 +185,54 @@ public class TenantConfigController {
                 detailsFacade.getRoutingRules(tenantId, actorUserId);
 
         return ResponseEntity.ok(toRoutingRuleListResponse(view));
+    }
+
+    /**
+     * Berilgan routing rule uchun to'liq detail qaytaradi (ixtiyoriy
+     * target topic binding context bilan).
+     *
+     * @param ruleId routing rule identifikatori
+     * @param tenantId tenant identifikatori
+     * @return routing rule header + nested target context (agar mavjud bo'lsa)
+     */
+    @GetMapping("/routing-rules/{ruleId}")
+    public ResponseEntity<TenantConfigRoutingRuleDetailResponse> getRoutingRuleDetails(
+            @PathVariable UUID ruleId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.RoutingRuleDetailView view =
+                detailsFacade.getRoutingRuleDetails(tenantId, ruleId, actorUserId);
+
+        return ResponseEntity.ok(toRoutingRuleDetailResponse(view));
+    }
+
+    private TenantConfigRoutingRuleDetailResponse toRoutingRuleDetailResponse(
+            TenantConfigDetailsFacade.RoutingRuleDetailView view) {
+        TenantConfigRoutingRuleDetailResponse.TargetTopicBinding target = null;
+        if (view.targetTopicBinding() != null) {
+            var t = view.targetTopicBinding();
+            target = new TenantConfigRoutingRuleDetailResponse.TargetTopicBinding(
+                    t.topicBindingId(),
+                    t.topicId(),
+                    t.topicName(),
+                    t.purpose(),
+                    t.active(),
+                    t.chatBindingId(),
+                    t.chatId(),
+                    t.chatTitle(),
+                    t.chatBindingType());
+        }
+        return new TenantConfigRoutingRuleDetailResponse(
+                view.tenantId(),
+                view.ruleId(),
+                view.name(),
+                view.workItemType(),
+                view.priority(),
+                view.conditionExpression(),
+                view.active(),
+                view.createdAt(),
+                target);
     }
 
     /**
