@@ -28,6 +28,7 @@ import java.util.UUID;
  * - GET /chat-bindings — tenant Telegram chat bog'lanishlari ro'yxati
  * - GET /chat-bindings/{chatBindingId} — chat binding to'liq detail (nested topic bindings bilan)
  * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
+ * - GET /topic-bindings/{topicBindingId} — topic binding to'liq detail (parent chat context bilan)
  * - GET /memberships — tenant a'zolik ro'yxati
  * - GET /memberships/{membershipId}/roles — a'zolikka biriktirilgan rollar ro'yxati
  * - GET /roles — global rol katalogi ro'yxati
@@ -309,6 +310,45 @@ public class TenantConfigController {
                 detailsFacade.getTopicBindings(tenantId, actorUserId);
 
         return ResponseEntity.ok(toTopicBindingListResponse(view));
+    }
+
+    /**
+     * Berilgan topic binding uchun to'liq detail qaytaradi (parent chat context bilan).
+     *
+     * @param topicBindingId topic binding identifikatori
+     * @param tenantId tenant identifikatori
+     * @return topic binding header + parent chat binding context
+     */
+    @GetMapping("/topic-bindings/{topicBindingId}")
+    public ResponseEntity<TenantConfigTopicBindingDetailResponse> getTopicBindingDetails(
+            @PathVariable UUID topicBindingId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.TopicBindingDetailView view =
+                detailsFacade.getTopicBindingDetails(tenantId, topicBindingId, actorUserId);
+
+        return ResponseEntity.ok(toTopicBindingDetailResponse(view));
+    }
+
+    private TenantConfigTopicBindingDetailResponse toTopicBindingDetailResponse(
+            TenantConfigDetailsFacade.TopicBindingDetailView view) {
+        var p = view.parentChatBinding();
+        TenantConfigTopicBindingDetailResponse.ParentChatBinding parent =
+                new TenantConfigTopicBindingDetailResponse.ParentChatBinding(
+                        p.chatBindingId(),
+                        p.chatId(),
+                        p.chatTitle(),
+                        p.bindingType());
+        return new TenantConfigTopicBindingDetailResponse(
+                view.tenantId(),
+                view.topicBindingId(),
+                view.topicId(),
+                view.topicName(),
+                view.purpose(),
+                view.active(),
+                view.createdAt(),
+                parent);
     }
 
     /**

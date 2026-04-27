@@ -962,6 +962,85 @@ public class TenantConfigDetailsFacade {
             Instant createdAt) {}
 
     /**
+     * Berilgan topic binding uchun to'liq detail ko'rinishini qaytaradi:
+     * header (id, topicId, topicName, purpose, active, createdAt)
+     * + parent chat binding context (id, chatId, chatTitle, bindingType).
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId null bo'lmasligi kerak
+     * 2. topicBindingId null bo'lmasligi kerak
+     * 3. authorizeRead chaqiriladi
+     * 4. tenant mavjudligi tekshiriladi
+     * 5. topic binding shu tenantga tegishli bo'lishi tekshiriladi
+     *    (tenant-safe lookup — boshqa tenantga tegishli bo'lsa NOT FOUND)
+     *
+     * Topic binding bu child entity — parent chat kontekst child'siz tushunarsiz
+     * bo'lgani uchun majburiy nested obyekt sifatida qaytadi. Parent kontekst
+     * `topicBinding.getChatBinding()` lazy navigation orqali olinadi (read-only
+     * tx ichida ishlaydi, qo'shimcha lookup talab qilmaydi).
+     *
+     * @param tenantId tenant identifikatori
+     * @param topicBindingId topic binding identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return topic binding header + parent chat binding context
+     * @throws IllegalArgumentException agar tenantId yoki topicBindingId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant yoki topic binding topilmasa
+     */
+    public TopicBindingDetailView getTopicBindingDetails(
+            UUID tenantId, UUID topicBindingId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (topicBindingId == null) {
+            throw new IllegalArgumentException("topicBindingId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramTopicBinding topicBinding = tenantConfigQueryService
+                .findTopicBindingById(tenantId, topicBindingId)
+                .orElseThrow(() -> new ResourceNotFoundException("TopicBinding", topicBindingId));
+
+        TelegramChatBinding chatBinding = topicBinding.getChatBinding();
+        ParentChatBindingView parent = new ParentChatBindingView(
+                chatBinding.getId(),
+                chatBinding.getChatId(),
+                chatBinding.getChatTitle(),
+                chatBinding.getBindingType().name());
+
+        return new TopicBindingDetailView(
+                tenantId,
+                topicBinding.getId(),
+                topicBinding.getTopicId(),
+                topicBinding.getTopicName(),
+                topicBinding.getPurpose(),
+                topicBinding.isActive(),
+                topicBinding.getCreatedAt(),
+                parent);
+    }
+
+    /**
+     * Facade natija modeli — topic binding to'liq detail (parent chat context bilan).
+     */
+    public record TopicBindingDetailView(
+            UUID tenantId,
+            UUID topicBindingId,
+            long topicId,
+            String topicName,
+            String purpose,
+            boolean active,
+            Instant createdAt,
+            ParentChatBindingView parentChatBinding) {}
+
+    public record ParentChatBindingView(
+            UUID chatBindingId,
+            long chatId,
+            String chatTitle,
+            String bindingType) {}
+
+    /**
      * Tenant uchun barcha Telegram topic bog'lanishlarining compact flat ro'yxatini qaytaradi.
      *
      * Barcha chat binding'lar bo'ylab iteratsiya qilib, har birining topic binding'larini

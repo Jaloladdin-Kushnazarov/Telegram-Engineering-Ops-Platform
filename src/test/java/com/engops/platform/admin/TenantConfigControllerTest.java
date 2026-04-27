@@ -1753,6 +1753,147 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(jsonPath("$.topicBindings[0].purpose").value("BUGS"));
     }
 
+    // ========== GET /topic-bindings/{topicBindingId} — topic binding detail read endpoint ==========
+
+    @Test
+    void topicBindingDetailsReturnsOkWithParentChatContext() throws Exception {
+        UUID topicBindingId = UUID.fromString("aabb1111-1111-1111-1111-111111111111");
+        UUID chatBindingId = UUID.fromString("aabb2222-2222-2222-2222-222222222222");
+
+        var parent = new TenantConfigDetailsFacade.ParentChatBindingView(
+                chatBindingId, -1001234567890L, "Engineering Chat", "MAIN_GROUP");
+        var view = new TenantConfigDetailsFacade.TopicBindingDetailView(
+                TENANT_ID, topicBindingId, 101L, "Bugs Topic", "BUGS", true,
+                Instant.parse("2026-01-15T08:00:00Z"), parent);
+
+        when(detailsFacade.getTopicBindingDetails(eq(TENANT_ID), eq(topicBindingId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.topicBindingId").value(topicBindingId.toString()))
+                .andExpect(jsonPath("$.topicId").value(101))
+                .andExpect(jsonPath("$.topicName").value("Bugs Topic"))
+                .andExpect(jsonPath("$.purpose").value("BUGS"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").value("2026-01-15T08:00:00Z"))
+                .andExpect(jsonPath("$.parentChatBinding.chatBindingId").value(chatBindingId.toString()))
+                .andExpect(jsonPath("$.parentChatBinding.chatId").value(-1001234567890L))
+                .andExpect(jsonPath("$.parentChatBinding.chatTitle").value("Engineering Chat"))
+                .andExpect(jsonPath("$.parentChatBinding.bindingType").value("MAIN_GROUP"));
+    }
+
+    @Test
+    void topicBindingDetailsNullTopicNameOmittedFromJson() throws Exception {
+        UUID topicBindingId = UUID.fromString("aabb1111-1111-1111-1111-111111111111");
+        UUID chatBindingId = UUID.fromString("aabb2222-2222-2222-2222-222222222222");
+
+        var parent = new TenantConfigDetailsFacade.ParentChatBindingView(
+                chatBindingId, -99L, "Chat", "NOTIFICATION_GROUP");
+        var view = new TenantConfigDetailsFacade.TopicBindingDetailView(
+                TENANT_ID, topicBindingId, 202L, null, "INCIDENTS", false,
+                Instant.parse("2026-01-15T08:00:00Z"), parent);
+
+        when(detailsFacade.getTopicBindingDetails(eq(TENANT_ID), eq(topicBindingId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.topicName").doesNotExist())
+                .andExpect(jsonPath("$.active").value(false))
+                .andExpect(jsonPath("$.parentChatBinding.bindingType").value("NOTIFICATION_GROUP"));
+    }
+
+    @Test
+    void topicBindingDetailsNullParentChatTitleOmittedFromJson() throws Exception {
+        UUID topicBindingId = UUID.fromString("aabb1111-1111-1111-1111-111111111111");
+        UUID chatBindingId = UUID.fromString("aabb2222-2222-2222-2222-222222222222");
+
+        var parent = new TenantConfigDetailsFacade.ParentChatBindingView(
+                chatBindingId, -99L, null, "MAIN_GROUP");
+        var view = new TenantConfigDetailsFacade.TopicBindingDetailView(
+                TENANT_ID, topicBindingId, 303L, "Tasks", "TASKS", true,
+                Instant.parse("2026-01-15T08:00:00Z"), parent);
+
+        when(detailsFacade.getTopicBindingDetails(eq(TENANT_ID), eq(topicBindingId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parentChatBinding.chatTitle").doesNotExist())
+                .andExpect(jsonPath("$.parentChatBinding.chatId").value(-99L))
+                .andExpect(jsonPath("$.topicName").value("Tasks"));
+    }
+
+    @Test
+    void topicBindingDetailsTenantNotFoundReturns404() throws Exception {
+        UUID topicBindingId = UUID.fromString("aabb1111-1111-1111-1111-111111111111");
+        when(detailsFacade.getTopicBindingDetails(eq(TENANT_ID), eq(topicBindingId), any()))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void topicBindingDetailsTopicBindingNotFoundReturns404() throws Exception {
+        UUID topicBindingId = UUID.fromString("aabb1111-1111-1111-1111-111111111111");
+        when(detailsFacade.getTopicBindingDetails(eq(TENANT_ID), eq(topicBindingId), any()))
+                .thenThrow(new ResourceNotFoundException("TopicBinding", topicBindingId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void topicBindingDetailsMissingTenantIdReturns400() throws Exception {
+        UUID topicBindingId = UUID.fromString("aabb1111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void topicBindingDetailsInvalidTenantIdFormatReturns400() throws Exception {
+        UUID topicBindingId = UUID.fromString("aabb1111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
+                        .param("tenantId", "not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void topicBindingDetailsInvalidTopicBindingIdFormatReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", "not-a-uuid")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void topicBindingDetailsAccessDeniedReturns403() throws Exception {
+        UUID topicBindingId = UUID.fromString("aabb1111-1111-1111-1111-111111111111");
+        when(detailsFacade.getTopicBindingDetails(eq(TENANT_ID), eq(topicBindingId), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
     // ========== POST /workflow-definitions endpoint ==========
 
     @Test
