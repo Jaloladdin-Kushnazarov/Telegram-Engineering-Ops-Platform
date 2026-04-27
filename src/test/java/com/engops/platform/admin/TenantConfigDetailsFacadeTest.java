@@ -15,6 +15,8 @@ import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
+import com.engops.platform.tenantconfig.model.WorkflowStatus;
+import com.engops.platform.tenantconfig.model.WorkflowTransitionRule;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -1811,6 +1813,351 @@ class TenantConfigDetailsFacadeTest {
                 .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
 
         assertThatThrownBy(() -> facade.getMembershipRoles(TENANT_ID, membershipId, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(tenantConfigQueryService);
+        verifyNoInteractions(identityQueryService);
+    }
+
+    // ========== getWorkflowDefinitionDetails tests ==========
+
+    @Test
+    void workflowDetailsReturnsHeaderStatusesAndTransitionRules() {
+        Tenant tenant = mockTenant();
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        UUID s1Id = UUID.fromString("bb111111-1111-1111-1111-111111111111");
+        UUID s2Id = UUID.fromString("bb222222-2222-2222-2222-222222222222");
+        UUID s3Id = UUID.fromString("bb333333-3333-3333-3333-333333333333");
+        UUID r1Id = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        UUID r2Id = UUID.fromString("dd222222-2222-2222-2222-222222222222");
+        UUID requiredPermId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
+
+        WorkflowStatus s1 = mock(WorkflowStatus.class);
+        when(s1.getId()).thenReturn(s1Id);
+        when(s1.getName()).thenReturn("BUGS");
+        when(s1.getStatusOrder()).thenReturn(0);
+        when(s1.isInitial()).thenReturn(true);
+        when(s1.isTerminal()).thenReturn(false);
+
+        WorkflowStatus s2 = mock(WorkflowStatus.class);
+        when(s2.getId()).thenReturn(s2Id);
+        when(s2.getName()).thenReturn("PROCESSING");
+        when(s2.getStatusOrder()).thenReturn(1);
+        when(s2.isInitial()).thenReturn(false);
+        when(s2.isTerminal()).thenReturn(false);
+
+        WorkflowStatus s3 = mock(WorkflowStatus.class);
+        when(s3.getId()).thenReturn(s3Id);
+        when(s3.getName()).thenReturn("FIXED");
+        when(s3.getStatusOrder()).thenReturn(2);
+        when(s3.isInitial()).thenReturn(false);
+        when(s3.isTerminal()).thenReturn(true);
+
+        // Sort by statusOrder ASC: s1 (0), s2 (1), s3 (2). Insertion order shuffled.
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(definition.getId()).thenReturn(definitionId);
+        when(definition.getTenantId()).thenReturn(TENANT_ID);
+        when(definition.getName()).thenReturn("Bug Flow");
+        when(definition.getWorkItemType()).thenReturn("BUG");
+        when(definition.getDescription()).thenReturn("Bug workflow");
+        when(definition.isActive()).thenReturn(true);
+        when(definition.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+        when(definition.getStatuses()).thenReturn(List.of(s2, s3, s1));
+
+        // Two transition rules: BUGS -> PROCESSING, PROCESSING -> FIXED
+        WorkflowTransitionRule r1 = mock(WorkflowTransitionRule.class);
+        when(r1.getId()).thenReturn(r1Id);
+        when(r1.getFromStatus()).thenReturn(s1);
+        when(r1.getToStatus()).thenReturn(s2);
+        when(r1.getRequiredPermissionId()).thenReturn(requiredPermId);
+
+        WorkflowTransitionRule r2 = mock(WorkflowTransitionRule.class);
+        when(r2.getId()).thenReturn(r2Id);
+        when(r2.getFromStatus()).thenReturn(s2);
+        when(r2.getToStatus()).thenReturn(s3);
+        when(r2.getRequiredPermissionId()).thenReturn(null);
+
+        when(definition.getTransitionRules()).thenReturn(List.of(r2, r1));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findWorkflowDefinitionById(TENANT_ID, definitionId))
+                .thenReturn(Optional.of(definition));
+
+        var result = facade.getWorkflowDefinitionDetails(TENANT_ID, definitionId, ACTOR_USER_ID);
+
+        // Header
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.definitionId()).isEqualTo(definitionId);
+        assertThat(result.name()).isEqualTo("Bug Flow");
+        assertThat(result.workItemType()).isEqualTo("BUG");
+        assertThat(result.description()).isEqualTo("Bug workflow");
+        assertThat(result.active()).isTrue();
+        assertThat(result.createdAt()).isEqualTo(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+
+        // Statuses ordered by statusOrder ASC
+        assertThat(result.statuses()).hasSize(3);
+        assertThat(result.statuses().get(0).statusId()).isEqualTo(s1Id);
+        assertThat(result.statuses().get(0).name()).isEqualTo("BUGS");
+        assertThat(result.statuses().get(0).statusOrder()).isZero();
+        assertThat(result.statuses().get(0).initial()).isTrue();
+        assertThat(result.statuses().get(0).terminal()).isFalse();
+        assertThat(result.statuses().get(1).statusId()).isEqualTo(s2Id);
+        assertThat(result.statuses().get(1).name()).isEqualTo("PROCESSING");
+        assertThat(result.statuses().get(2).statusId()).isEqualTo(s3Id);
+        assertThat(result.statuses().get(2).name()).isEqualTo("FIXED");
+        assertThat(result.statuses().get(2).terminal()).isTrue();
+
+        // Transition rules ordered by fromStatus.name ASC: BUGS->PROCESSING, PROCESSING->FIXED
+        assertThat(result.transitionRules()).hasSize(2);
+        assertThat(result.transitionRules().get(0).ruleId()).isEqualTo(r1Id);
+        assertThat(result.transitionRules().get(0).fromStatusId()).isEqualTo(s1Id);
+        assertThat(result.transitionRules().get(0).fromStatusName()).isEqualTo("BUGS");
+        assertThat(result.transitionRules().get(0).toStatusId()).isEqualTo(s2Id);
+        assertThat(result.transitionRules().get(0).toStatusName()).isEqualTo("PROCESSING");
+        assertThat(result.transitionRules().get(0).requiredPermissionId()).isEqualTo(requiredPermId);
+        assertThat(result.transitionRules().get(1).ruleId()).isEqualTo(r2Id);
+        assertThat(result.transitionRules().get(1).fromStatusName()).isEqualTo("PROCESSING");
+        assertThat(result.transitionRules().get(1).toStatusName()).isEqualTo("FIXED");
+        assertThat(result.transitionRules().get(1).requiredPermissionId()).isNull();
+    }
+
+    @Test
+    void workflowDetailsStatusTieBreakerByNameThenId() {
+        Tenant tenant = mockTenant();
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        UUID sBId = UUID.fromString("bb000000-0000-0000-0000-00000000000b");
+        UUID sAId = UUID.fromString("bb000000-0000-0000-0000-00000000000a");
+
+        // Same statusOrder but different names — name ASC tie-breaker
+        WorkflowStatus sB = mock(WorkflowStatus.class);
+        when(sB.getId()).thenReturn(sBId);
+        when(sB.getName()).thenReturn("ZETA");
+        when(sB.getStatusOrder()).thenReturn(5);
+        when(sB.isInitial()).thenReturn(false);
+        when(sB.isTerminal()).thenReturn(false);
+
+        WorkflowStatus sA = mock(WorkflowStatus.class);
+        when(sA.getId()).thenReturn(sAId);
+        when(sA.getName()).thenReturn("ALPHA");
+        when(sA.getStatusOrder()).thenReturn(5);
+        when(sA.isInitial()).thenReturn(false);
+        when(sA.isTerminal()).thenReturn(false);
+
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(definition.getId()).thenReturn(definitionId);
+        when(definition.getName()).thenReturn("Wf");
+        when(definition.getWorkItemType()).thenReturn("BUG");
+        when(definition.getDescription()).thenReturn(null);
+        when(definition.isActive()).thenReturn(true);
+        when(definition.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+        when(definition.getStatuses()).thenReturn(List.of(sB, sA));
+        when(definition.getTransitionRules()).thenReturn(List.of());
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findWorkflowDefinitionById(TENANT_ID, definitionId))
+                .thenReturn(Optional.of(definition));
+
+        var result = facade.getWorkflowDefinitionDetails(TENANT_ID, definitionId, ACTOR_USER_ID);
+
+        assertThat(result.statuses()).hasSize(2);
+        assertThat(result.statuses().get(0).name()).isEqualTo("ALPHA");
+        assertThat(result.statuses().get(1).name()).isEqualTo("ZETA");
+    }
+
+    @Test
+    void workflowDetailsTransitionRuleTieBreakerByRuleId() {
+        Tenant tenant = mockTenant();
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        UUID sId = UUID.fromString("bb111111-1111-1111-1111-111111111111");
+        UUID rB = UUID.fromString("dd000000-0000-0000-0000-00000000000b");
+        UUID rA = UUID.fromString("dd000000-0000-0000-0000-00000000000a");
+
+        WorkflowStatus sFrom = mock(WorkflowStatus.class);
+        when(sFrom.getName()).thenReturn("X");
+        when(sFrom.getId()).thenReturn(sId);
+
+        WorkflowStatus sTo = mock(WorkflowStatus.class);
+        when(sTo.getName()).thenReturn("Y");
+        when(sTo.getId()).thenReturn(UUID.fromString("bb222222-2222-2222-2222-222222222222"));
+
+        // Identical from/to names — tie-breaker on ruleId
+        WorkflowTransitionRule ruleB = mock(WorkflowTransitionRule.class);
+        when(ruleB.getId()).thenReturn(rB);
+        when(ruleB.getFromStatus()).thenReturn(sFrom);
+        when(ruleB.getToStatus()).thenReturn(sTo);
+        when(ruleB.getRequiredPermissionId()).thenReturn(null);
+
+        WorkflowTransitionRule ruleA = mock(WorkflowTransitionRule.class);
+        when(ruleA.getId()).thenReturn(rA);
+        when(ruleA.getFromStatus()).thenReturn(sFrom);
+        when(ruleA.getToStatus()).thenReturn(sTo);
+        when(ruleA.getRequiredPermissionId()).thenReturn(null);
+
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(definition.getId()).thenReturn(definitionId);
+        when(definition.getName()).thenReturn("Wf");
+        when(definition.getWorkItemType()).thenReturn("BUG");
+        when(definition.getDescription()).thenReturn(null);
+        when(definition.isActive()).thenReturn(true);
+        when(definition.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+        when(definition.getStatuses()).thenReturn(List.of());
+        when(definition.getTransitionRules()).thenReturn(List.of(ruleB, ruleA));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findWorkflowDefinitionById(TENANT_ID, definitionId))
+                .thenReturn(Optional.of(definition));
+
+        var result = facade.getWorkflowDefinitionDetails(TENANT_ID, definitionId, ACTOR_USER_ID);
+
+        assertThat(result.transitionRules()).hasSize(2);
+        // ruleA (...0a) ruleB (...0b) dan oldin
+        assertThat(result.transitionRules().get(0).ruleId()).isEqualTo(rA);
+        assertThat(result.transitionRules().get(1).ruleId()).isEqualTo(rB);
+    }
+
+    @Test
+    void workflowDetailsReturnsEmptyListsWhenNoneExist() {
+        Tenant tenant = mockTenant();
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(definition.getId()).thenReturn(definitionId);
+        when(definition.getName()).thenReturn("Empty Wf");
+        when(definition.getWorkItemType()).thenReturn("TASK");
+        when(definition.getDescription()).thenReturn(null);
+        when(definition.isActive()).thenReturn(false);
+        when(definition.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+        when(definition.getStatuses()).thenReturn(List.of());
+        when(definition.getTransitionRules()).thenReturn(List.of());
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findWorkflowDefinitionById(TENANT_ID, definitionId))
+                .thenReturn(Optional.of(definition));
+
+        var result = facade.getWorkflowDefinitionDetails(TENANT_ID, definitionId, ACTOR_USER_ID);
+
+        assertThat(result.statuses()).isEmpty();
+        assertThat(result.transitionRules()).isEmpty();
+        assertThat(result.active()).isFalse();
+        assertThat(result.workItemType()).isEqualTo("TASK");
+    }
+
+    @Test
+    void workflowDetailsThrowsResourceNotFoundWhenTenantMissing() {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getWorkflowDefinitionDetails(TENANT_ID, definitionId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(tenantConfigQueryService, never()).findWorkflowDefinitionById(any(), any());
+    }
+
+    @Test
+    void workflowDetailsThrowsResourceNotFoundWhenDefinitionMissing() {
+        Tenant tenant = mockTenant();
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findWorkflowDefinitionById(TENANT_ID, definitionId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getWorkflowDefinitionDetails(TENANT_ID, definitionId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("WorkflowDefinition");
+    }
+
+    @Test
+    void workflowDetailsCrossTenantReturnsNotFound() {
+        Tenant tenant = mockTenant();
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+
+        // Tenant-safe lookup empty for foreign tenant — same NOT FOUND semantics
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findWorkflowDefinitionById(TENANT_ID, definitionId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getWorkflowDefinitionDetails(TENANT_ID, definitionId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("WorkflowDefinition");
+    }
+
+    @Test
+    void workflowDetailsThrowsIllegalArgumentWhenTenantIdNull() {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        assertThatThrownBy(() ->
+                facade.getWorkflowDefinitionDetails(null, definitionId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void workflowDetailsThrowsIllegalArgumentWhenDefinitionIdNull() {
+        assertThatThrownBy(() ->
+                facade.getWorkflowDefinitionDetails(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("definitionId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void workflowDetailsCallsAuthorizeRead() {
+        Tenant tenant = mockTenant();
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(definition.getId()).thenReturn(definitionId);
+        when(definition.getName()).thenReturn("Wf");
+        when(definition.getWorkItemType()).thenReturn("BUG");
+        when(definition.getDescription()).thenReturn(null);
+        when(definition.isActive()).thenReturn(true);
+        when(definition.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+        when(definition.getStatuses()).thenReturn(List.of());
+        when(definition.getTransitionRules()).thenReturn(List.of());
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantConfigQueryService.findWorkflowDefinitionById(TENANT_ID, definitionId))
+                .thenReturn(Optional.of(definition));
+
+        facade.getWorkflowDefinitionDetails(TENANT_ID, definitionId, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void workflowDetailsNullTenantIdSkipsAuthorization() {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        assertThatThrownBy(() ->
+                facade.getWorkflowDefinitionDetails(null, definitionId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void workflowDetailsNullDefinitionIdSkipsAuthorization() {
+        assertThatThrownBy(() ->
+                facade.getWorkflowDefinitionDetails(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void workflowDetailsDeniedWhenAuthorizationFails() {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() ->
+                facade.getWorkflowDefinitionDetails(TENANT_ID, definitionId, ACTOR_USER_ID))
                 .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
 
         verifyNoInteractions(tenantConfigQueryService);

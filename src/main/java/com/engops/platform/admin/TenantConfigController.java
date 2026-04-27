@@ -22,6 +22,7 @@ import java.util.UUID;
  * Read endpoint'lar:
  * - GET /details — tenant konfiguratsiyasining compact details view'i
  * - GET /workflow-definitions — tenant workflow ta'riflari ro'yxati
+ * - GET /workflow-definitions/{definitionId} — workflow definition to'liq detail (statuses + transitionRules)
  * - GET /routing-rules — tenant routing qoidalari ro'yxati
  * - GET /chat-bindings — tenant Telegram chat bog'lanishlari ro'yxati
  * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
@@ -115,6 +116,57 @@ public class TenantConfigController {
                 detailsFacade.getWorkflowDefinitions(tenantId, actorUserId);
 
         return ResponseEntity.ok(toWorkflowListResponse(view));
+    }
+
+    /**
+     * Berilgan workflow definition uchun to'liq detail (statuses + transitionRules) qaytaradi.
+     *
+     * @param definitionId workflow definition identifikatori
+     * @param tenantId tenant identifikatori
+     * @return workflow definition header + statuses + transitionRules
+     */
+    @GetMapping("/workflow-definitions/{definitionId}")
+    public ResponseEntity<TenantConfigWorkflowDefinitionDetailResponse> getWorkflowDefinitionDetails(
+            @PathVariable UUID definitionId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.WorkflowDefinitionDetailView view =
+                detailsFacade.getWorkflowDefinitionDetails(tenantId, definitionId, actorUserId);
+
+        return ResponseEntity.ok(toWorkflowDefinitionDetailResponse(view));
+    }
+
+    private TenantConfigWorkflowDefinitionDetailResponse toWorkflowDefinitionDetailResponse(
+            TenantConfigDetailsFacade.WorkflowDefinitionDetailView view) {
+        List<TenantConfigWorkflowDefinitionDetailResponse.StatusItem> statuses = view.statuses().stream()
+                .map(s -> new TenantConfigWorkflowDefinitionDetailResponse.StatusItem(
+                        s.statusId(),
+                        s.name(),
+                        s.statusOrder(),
+                        s.initial(),
+                        s.terminal()))
+                .toList();
+        List<TenantConfigWorkflowDefinitionDetailResponse.TransitionRuleItem> rules =
+                view.transitionRules().stream()
+                        .map(r -> new TenantConfigWorkflowDefinitionDetailResponse.TransitionRuleItem(
+                                r.ruleId(),
+                                r.fromStatusId(),
+                                r.fromStatusName(),
+                                r.toStatusId(),
+                                r.toStatusName(),
+                                r.requiredPermissionId()))
+                        .toList();
+        return new TenantConfigWorkflowDefinitionDetailResponse(
+                view.tenantId(),
+                view.definitionId(),
+                view.name(),
+                view.workItemType(),
+                view.description(),
+                view.active(),
+                view.createdAt(),
+                statuses,
+                rules);
     }
 
     /**

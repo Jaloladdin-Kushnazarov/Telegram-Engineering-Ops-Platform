@@ -14,6 +14,8 @@ import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
+import com.engops.platform.tenantconfig.model.WorkflowStatus;
+import com.engops.platform.tenantconfig.model.WorkflowTransitionRule;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -564,6 +566,121 @@ public class TenantConfigDetailsFacade {
 
         return new WorkflowDefinitionListView(tenantId, items);
     }
+
+    /**
+     * Berilgan workflow definition uchun to'liq detail ko'rinishini qaytaradi:
+     * header (id, name, workItemType, description, active, createdAt)
+     * + statuses[] (id, name, statusOrder, initial, terminal)
+     * + transitionRules[] (id, fromStatus*, toStatus*, requiredPermissionId)
+     *
+     * Eslatma: status va transition rule sub-entity'larida createdAt ataylab
+     * chiqarilmaydi — ular workflow definition bilan birga seed qilinadi va
+     * alohida yaratilish vaqti operatsion qiymat bermaydi.
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId null bo'lmasligi kerak
+     * 2. definitionId null bo'lmasligi kerak
+     * 3. authorizeRead chaqiriladi
+     * 4. tenant mavjudligi tekshiriladi
+     * 5. workflow definition shu tenantga tegishli bo'lishi tekshiriladi
+     *    (tenant-safe lookup — boshqa tenantga tegishli bo'lsa NOT FOUND)
+     * 6. statuses + transitionRules yig'iladi
+     *
+     * Statuses ordering: statusOrder ASC -> name ASC -> id ASC
+     * Transition rules ordering: fromStatus.name ASC -> toStatus.name ASC -> id ASC
+     *
+     * Transition rule item'da fromStatus va toStatus ikkala name ham id ham
+     * ko'rsatiladi — admin/support workflow shape'ini darhol tushunsin.
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return workflow definition header + statuses + transition rules
+     * @throws IllegalArgumentException agar tenantId yoki definitionId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant yoki workflow definition topilmasa
+     */
+    public WorkflowDefinitionDetailView getWorkflowDefinitionDetails(
+            UUID tenantId, UUID definitionId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (definitionId == null) {
+            throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        WorkflowDefinition definition = tenantConfigQueryService
+                .findWorkflowDefinitionById(tenantId, definitionId)
+                .orElseThrow(() -> new ResourceNotFoundException("WorkflowDefinition", definitionId));
+
+        List<WorkflowStatusItemView> statusItems = definition.getStatuses().stream()
+                .sorted(Comparator.comparingInt(WorkflowStatus::getStatusOrder)
+                        .thenComparing(WorkflowStatus::getName)
+                        .thenComparing(WorkflowStatus::getId))
+                .map(s -> new WorkflowStatusItemView(
+                        s.getId(),
+                        s.getName(),
+                        s.getStatusOrder(),
+                        s.isInitial(),
+                        s.isTerminal()))
+                .toList();
+
+        List<WorkflowTransitionRuleItemView> ruleItems = definition.getTransitionRules().stream()
+                .sorted(Comparator.comparing((WorkflowTransitionRule r) -> r.getFromStatus().getName())
+                        .thenComparing(r -> r.getToStatus().getName())
+                        .thenComparing(WorkflowTransitionRule::getId))
+                .map(r -> new WorkflowTransitionRuleItemView(
+                        r.getId(),
+                        r.getFromStatus().getId(),
+                        r.getFromStatus().getName(),
+                        r.getToStatus().getId(),
+                        r.getToStatus().getName(),
+                        r.getRequiredPermissionId()))
+                .toList();
+
+        return new WorkflowDefinitionDetailView(
+                tenantId,
+                definition.getId(),
+                definition.getName(),
+                definition.getWorkItemType(),
+                definition.getDescription(),
+                definition.isActive(),
+                definition.getCreatedAt(),
+                statusItems,
+                ruleItems);
+    }
+
+    /**
+     * Facade natija modeli — workflow definition to'liq detail.
+     */
+    public record WorkflowDefinitionDetailView(
+            UUID tenantId,
+            UUID definitionId,
+            String name,
+            String workItemType,
+            String description,
+            boolean active,
+            Instant createdAt,
+            List<WorkflowStatusItemView> statuses,
+            List<WorkflowTransitionRuleItemView> transitionRules) {}
+
+    public record WorkflowStatusItemView(
+            UUID statusId,
+            String name,
+            int statusOrder,
+            boolean initial,
+            boolean terminal) {}
+
+    public record WorkflowTransitionRuleItemView(
+            UUID ruleId,
+            UUID fromStatusId,
+            String fromStatusName,
+            UUID toStatusId,
+            String toStatusName,
+            UUID requiredPermissionId) {}
 
     /**
      * Tenant uchun barcha routing qoidalarining compact ro'yxatini qaytaradi.

@@ -1245,6 +1245,177 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(jsonPath("$.items[0].description").doesNotExist());
     }
 
+    // ========== GET /workflow-definitions/{definitionId} — workflow detail read endpoint ==========
+
+    @Test
+    void workflowDetailsReturnsOkWithStatusesAndRules() throws Exception {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        UUID s1Id = UUID.fromString("bb111111-1111-1111-1111-111111111111");
+        UUID s2Id = UUID.fromString("bb222222-2222-2222-2222-222222222222");
+        UUID r1Id = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+        UUID requiredPermId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
+
+        var statuses = List.of(
+                new TenantConfigDetailsFacade.WorkflowStatusItemView(s1Id, "BUGS", 0, true, false),
+                new TenantConfigDetailsFacade.WorkflowStatusItemView(s2Id, "FIXED", 1, false, true));
+        var rules = List.of(
+                new TenantConfigDetailsFacade.WorkflowTransitionRuleItemView(
+                        r1Id, s1Id, "BUGS", s2Id, "FIXED", requiredPermId));
+        var view = new TenantConfigDetailsFacade.WorkflowDefinitionDetailView(
+                TENANT_ID, definitionId,
+                "Bug Flow", "BUG", "Bug workflow", true,
+                Instant.parse("2026-01-15T08:00:00Z"),
+                statuses, rules);
+
+        when(detailsFacade.getWorkflowDefinitionDetails(eq(TENANT_ID), eq(definitionId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.definitionId").value(definitionId.toString()))
+                .andExpect(jsonPath("$.name").value("Bug Flow"))
+                .andExpect(jsonPath("$.workItemType").value("BUG"))
+                .andExpect(jsonPath("$.description").value("Bug workflow"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").value("2026-01-15T08:00:00Z"))
+                .andExpect(jsonPath("$.statuses").isArray())
+                .andExpect(jsonPath("$.statuses.length()").value(2))
+                .andExpect(jsonPath("$.statuses[0].statusId").value(s1Id.toString()))
+                .andExpect(jsonPath("$.statuses[0].name").value("BUGS"))
+                .andExpect(jsonPath("$.statuses[0].statusOrder").value(0))
+                .andExpect(jsonPath("$.statuses[0].initial").value(true))
+                .andExpect(jsonPath("$.statuses[0].terminal").value(false))
+                .andExpect(jsonPath("$.statuses[1].name").value("FIXED"))
+                .andExpect(jsonPath("$.statuses[1].terminal").value(true))
+                .andExpect(jsonPath("$.transitionRules").isArray())
+                .andExpect(jsonPath("$.transitionRules.length()").value(1))
+                .andExpect(jsonPath("$.transitionRules[0].ruleId").value(r1Id.toString()))
+                .andExpect(jsonPath("$.transitionRules[0].fromStatusId").value(s1Id.toString()))
+                .andExpect(jsonPath("$.transitionRules[0].fromStatusName").value("BUGS"))
+                .andExpect(jsonPath("$.transitionRules[0].toStatusId").value(s2Id.toString()))
+                .andExpect(jsonPath("$.transitionRules[0].toStatusName").value("FIXED"))
+                .andExpect(jsonPath("$.transitionRules[0].requiredPermissionId").value(requiredPermId.toString()));
+    }
+
+    @Test
+    void workflowDetailsReturnsOkWithEmptyStatusesAndRules() throws Exception {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        var view = new TenantConfigDetailsFacade.WorkflowDefinitionDetailView(
+                TENANT_ID, definitionId,
+                "Empty Wf", "TASK", null, false,
+                Instant.parse("2026-01-15T08:00:00Z"),
+                List.of(), List.of());
+
+        when(detailsFacade.getWorkflowDefinitionDetails(eq(TENANT_ID), eq(definitionId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.statuses").isArray())
+                .andExpect(jsonPath("$.statuses.length()").value(0))
+                .andExpect(jsonPath("$.transitionRules").isArray())
+                .andExpect(jsonPath("$.transitionRules.length()").value(0))
+                .andExpect(jsonPath("$.description").doesNotExist())
+                .andExpect(jsonPath("$.active").value(false));
+    }
+
+    @Test
+    void workflowDetailsTenantNotFoundReturns404() throws Exception {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        when(detailsFacade.getWorkflowDefinitionDetails(eq(TENANT_ID), eq(definitionId), any()))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void workflowDetailsDefinitionNotFoundReturns404() throws Exception {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        when(detailsFacade.getWorkflowDefinitionDetails(eq(TENANT_ID), eq(definitionId), any()))
+                .thenThrow(new ResourceNotFoundException("WorkflowDefinition", definitionId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void workflowDetailsMissingTenantIdReturns400() throws Exception {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void workflowDetailsInvalidTenantIdFormatReturns400() throws Exception {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
+                        .param("tenantId", "not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void workflowDetailsInvalidDefinitionIdFormatReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", "not-a-uuid")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void workflowDetailsAccessDeniedReturns403() throws Exception {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        when(detailsFacade.getWorkflowDefinitionDetails(eq(TENANT_ID), eq(definitionId), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void workflowDetailsNullDescriptionAndNullRequiredPermissionOmittedFromJson() throws Exception {
+        UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
+        UUID s1Id = UUID.fromString("bb111111-1111-1111-1111-111111111111");
+        UUID s2Id = UUID.fromString("bb222222-2222-2222-2222-222222222222");
+        UUID r1Id = UUID.fromString("dd111111-1111-1111-1111-111111111111");
+
+        var statuses = List.of(
+                new TenantConfigDetailsFacade.WorkflowStatusItemView(s1Id, "BUGS", 0, true, false),
+                new TenantConfigDetailsFacade.WorkflowStatusItemView(s2Id, "FIXED", 1, false, true));
+        var rules = List.of(
+                new TenantConfigDetailsFacade.WorkflowTransitionRuleItemView(
+                        r1Id, s1Id, "BUGS", s2Id, "FIXED", null));
+        var view = new TenantConfigDetailsFacade.WorkflowDefinitionDetailView(
+                TENANT_ID, definitionId,
+                "Bug Flow", "BUG", null, true,
+                Instant.parse("2026-01-15T08:00:00Z"),
+                statuses, rules);
+
+        when(detailsFacade.getWorkflowDefinitionDetails(eq(TENANT_ID), eq(definitionId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.description").doesNotExist())
+                .andExpect(jsonPath("$.transitionRules[0].requiredPermissionId").doesNotExist());
+    }
+
     // ========== POST /workflow-definitions endpoint ==========
 
     @Test
