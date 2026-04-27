@@ -1894,6 +1894,136 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 
+    // ========== GET /memberships/{membershipId} — membership detail read endpoint ==========
+
+    @Test
+    void membershipDetailsReturnsOkWithUserIdentity() throws Exception {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("ff881111-1111-1111-1111-111111111111");
+
+        var userIdentity = new TenantConfigDetailsFacade.UserIdentityView(
+                userId, 123456789L, "Engineer One", "eng_one");
+        var view = new TenantConfigDetailsFacade.MembershipDetailView(
+                TENANT_ID, membershipId, "ACTIVE",
+                Instant.parse("2026-01-15T08:00:00Z"), userIdentity);
+
+        when(detailsFacade.getMembershipDetails(eq(TENANT_ID), eq(membershipId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.membershipId").value(membershipId.toString()))
+                .andExpect(jsonPath("$.membershipStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.createdAt").value("2026-01-15T08:00:00Z"))
+                .andExpect(jsonPath("$.userIdentity.userId").value(userId.toString()))
+                .andExpect(jsonPath("$.userIdentity.telegramUserId").value(123456789L))
+                .andExpect(jsonPath("$.userIdentity.displayName").value("Engineer One"))
+                .andExpect(jsonPath("$.userIdentity.username").value("eng_one"));
+    }
+
+    @Test
+    void membershipDetailsNullDisplayNameAndUsernameOmittedFromJson() throws Exception {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("ff881111-1111-1111-1111-111111111111");
+
+        var userIdentity = new TenantConfigDetailsFacade.UserIdentityView(
+                userId, 987654321L, null, null);
+        var view = new TenantConfigDetailsFacade.MembershipDetailView(
+                TENANT_ID, membershipId, "SUSPENDED",
+                Instant.parse("2026-02-01T08:00:00Z"), userIdentity);
+
+        when(detailsFacade.getMembershipDetails(eq(TENANT_ID), eq(membershipId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.membershipStatus").value("SUSPENDED"))
+                .andExpect(jsonPath("$.userIdentity.telegramUserId").value(987654321L))
+                .andExpect(jsonPath("$.userIdentity.displayName").doesNotExist())
+                .andExpect(jsonPath("$.userIdentity.username").doesNotExist());
+    }
+
+    @Test
+    void membershipDetailsTenantNotFoundReturns404() throws Exception {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        when(detailsFacade.getMembershipDetails(eq(TENANT_ID), eq(membershipId), any()))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void membershipDetailsMembershipNotFoundReturns404() throws Exception {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        when(detailsFacade.getMembershipDetails(eq(TENANT_ID), eq(membershipId), any()))
+                .thenThrow(new ResourceNotFoundException("Membership", membershipId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void membershipDetailsOrphanUserReturns404() throws Exception {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("ff881111-1111-1111-1111-111111111111");
+        when(detailsFacade.getMembershipDetails(eq(TENANT_ID), eq(membershipId), any()))
+                .thenThrow(new ResourceNotFoundException("User", userId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void membershipDetailsMissingTenantIdReturns400() throws Exception {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void membershipDetailsInvalidTenantIdFormatReturns400() throws Exception {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
+                        .param("tenantId", "not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void membershipDetailsInvalidMembershipIdFormatReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", "not-a-uuid")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void membershipDetailsAccessDeniedReturns403() throws Exception {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        when(detailsFacade.getMembershipDetails(eq(TENANT_ID), eq(membershipId), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
     // ========== POST /workflow-definitions endpoint ==========
 
     @Test

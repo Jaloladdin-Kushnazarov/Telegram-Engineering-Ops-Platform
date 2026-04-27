@@ -2919,6 +2919,237 @@ class TenantConfigDetailsFacadeTest {
         verifyNoInteractions(identityQueryService);
     }
 
+    // ========== getMembershipDetails tests ==========
+
+    @Test
+    void membershipDetailsReturnsHeaderWithUserIdentity() {
+        Tenant tenant = mockTenant();
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("ff881111-1111-1111-1111-111111111111");
+
+        Membership membership = mock(Membership.class);
+        when(membership.getId()).thenReturn(membershipId);
+        when(membership.getUserId()).thenReturn(userId);
+        when(membership.getStatus())
+                .thenReturn(com.engops.platform.identity.model.MembershipStatus.ACTIVE);
+        when(membership.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(user.getTelegramUserId()).thenReturn(123456789L);
+        when(user.getDisplayName()).thenReturn("Engineer One");
+        when(user.getUsername()).thenReturn("eng_one");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findMembershipByIdAndTenantId(membershipId, TENANT_ID))
+                .thenReturn(Optional.of(membership));
+        when(identityQueryService.findUserById(userId)).thenReturn(Optional.of(user));
+
+        var result = facade.getMembershipDetails(TENANT_ID, membershipId, ACTOR_USER_ID);
+
+        // Header
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.membershipId()).isEqualTo(membershipId);
+        assertThat(result.membershipStatus()).isEqualTo("ACTIVE");
+        assertThat(result.createdAt()).isEqualTo(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+
+        // User identity
+        assertThat(result.userIdentity()).isNotNull();
+        assertThat(result.userIdentity().userId()).isEqualTo(userId);
+        assertThat(result.userIdentity().telegramUserId()).isEqualTo(123456789L);
+        assertThat(result.userIdentity().displayName()).isEqualTo("Engineer One");
+        assertThat(result.userIdentity().username()).isEqualTo("eng_one");
+    }
+
+    @Test
+    void membershipDetailsReturnsHeaderWithNullDisplayNameAndUsername() {
+        Tenant tenant = mockTenant();
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("ff881111-1111-1111-1111-111111111111");
+
+        Membership membership = mock(Membership.class);
+        when(membership.getId()).thenReturn(membershipId);
+        when(membership.getUserId()).thenReturn(userId);
+        when(membership.getStatus())
+                .thenReturn(com.engops.platform.identity.model.MembershipStatus.SUSPENDED);
+        when(membership.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-02-01T08:00:00Z"));
+
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(user.getTelegramUserId()).thenReturn(987654321L);
+        when(user.getDisplayName()).thenReturn(null);
+        when(user.getUsername()).thenReturn(null);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findMembershipByIdAndTenantId(membershipId, TENANT_ID))
+                .thenReturn(Optional.of(membership));
+        when(identityQueryService.findUserById(userId)).thenReturn(Optional.of(user));
+
+        var result = facade.getMembershipDetails(TENANT_ID, membershipId, ACTOR_USER_ID);
+
+        assertThat(result.membershipStatus()).isEqualTo("SUSPENDED");
+        assertThat(result.userIdentity().displayName()).isNull();
+        assertThat(result.userIdentity().username()).isNull();
+        assertThat(result.userIdentity().telegramUserId()).isEqualTo(987654321L);
+    }
+
+    @Test
+    void membershipDetailsThrowsResourceNotFoundWhenTenantMissing() {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getMembershipDetails(TENANT_ID, membershipId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Tenant");
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(identityQueryService, never()).findMembershipByIdAndTenantId(any(), any());
+        verify(identityQueryService, never()).findUserById(any());
+    }
+
+    @Test
+    void membershipDetailsThrowsResourceNotFoundWhenMembershipMissing() {
+        Tenant tenant = mockTenant();
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findMembershipByIdAndTenantId(membershipId, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getMembershipDetails(TENANT_ID, membershipId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Membership");
+
+        verify(identityQueryService, never()).findUserById(any());
+    }
+
+    @Test
+    void membershipDetailsCrossTenantReturnsNotFound() {
+        Tenant tenant = mockTenant();
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findMembershipByIdAndTenantId(membershipId, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getMembershipDetails(TENANT_ID, membershipId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Membership");
+    }
+
+    @Test
+    void membershipDetailsThrowsResourceNotFoundWhenUserOrphan() {
+        // Membership topildi, lekin AppUser orphan — admin'ga 404 sifatida ko'rsatiladi
+        // (defensive omit emas, dangling reference invariant buzilgan)
+        Tenant tenant = mockTenant();
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("ff881111-1111-1111-1111-111111111111");
+
+        Membership membership = mock(Membership.class);
+        when(membership.getId()).thenReturn(membershipId);
+        when(membership.getUserId()).thenReturn(userId);
+        when(membership.getStatus())
+                .thenReturn(com.engops.platform.identity.model.MembershipStatus.ACTIVE);
+        when(membership.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findMembershipByIdAndTenantId(membershipId, TENANT_ID))
+                .thenReturn(Optional.of(membership));
+        when(identityQueryService.findUserById(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getMembershipDetails(TENANT_ID, membershipId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("User")
+                .hasMessageContaining(userId.toString());
+    }
+
+    @Test
+    void membershipDetailsThrowsIllegalArgumentWhenTenantIdNull() {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        assertThatThrownBy(() ->
+                facade.getMembershipDetails(null, membershipId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void membershipDetailsThrowsIllegalArgumentWhenMembershipIdNull() {
+        assertThatThrownBy(() ->
+                facade.getMembershipDetails(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("membershipId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void membershipDetailsCallsAuthorizeRead() {
+        Tenant tenant = mockTenant();
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("ff881111-1111-1111-1111-111111111111");
+
+        Membership membership = mock(Membership.class);
+        when(membership.getId()).thenReturn(membershipId);
+        when(membership.getUserId()).thenReturn(userId);
+        when(membership.getStatus())
+                .thenReturn(com.engops.platform.identity.model.MembershipStatus.ACTIVE);
+        when(membership.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+
+        AppUser user = mock(AppUser.class);
+        when(user.getId()).thenReturn(userId);
+        when(user.getTelegramUserId()).thenReturn(1L);
+        when(user.getDisplayName()).thenReturn(null);
+        when(user.getUsername()).thenReturn(null);
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findMembershipByIdAndTenantId(membershipId, TENANT_ID))
+                .thenReturn(Optional.of(membership));
+        when(identityQueryService.findUserById(userId)).thenReturn(Optional.of(user));
+
+        facade.getMembershipDetails(TENANT_ID, membershipId, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void membershipDetailsNullTenantIdSkipsAuthorization() {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        assertThatThrownBy(() ->
+                facade.getMembershipDetails(null, membershipId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void membershipDetailsNullMembershipIdSkipsAuthorization() {
+        assertThatThrownBy(() ->
+                facade.getMembershipDetails(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void membershipDetailsDeniedWhenAuthorizationFails() {
+        UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() ->
+                facade.getMembershipDetails(TENANT_ID, membershipId, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(tenantConfigQueryService);
+        verifyNoInteractions(identityQueryService);
+    }
+
     // ========== Authorization enforcement ==========
 
     @Test

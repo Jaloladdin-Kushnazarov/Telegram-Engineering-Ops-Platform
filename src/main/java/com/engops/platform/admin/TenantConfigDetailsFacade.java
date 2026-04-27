@@ -398,6 +398,86 @@ public class TenantConfigDetailsFacade {
             List<RoleItemView> items) {}
 
     /**
+     * Berilgan a'zolik (membership) uchun to'liq detail ko'rinishini qaytaradi:
+     * header (membershipId, status, createdAt) + nested user identity
+     * (userId, telegramUserId, displayName, username).
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId null bo'lmasligi kerak
+     * 2. membershipId null bo'lmasligi kerak
+     * 3. authorizeRead chaqiriladi
+     * 4. tenant mavjudligi tekshiriladi
+     * 5. membership shu tenantga tegishli bo'lishi tekshiriladi (tenant-safe)
+     * 6. membership.userId orqali AppUser identity yig'iladi
+     *
+     * User semantics:
+     * - Membership child entity bo'lib, u FK orqali AppUser'ga bog'langan.
+     * - Normal holatda user mavjud bo'lishi kerak.
+     * - Topilmasa (orphan reference) — ResourceNotFoundException("User", userId)
+     *   tashlanadi. List view defensive null pattern detail uchun mos kelmaydi:
+     *   bu yerda admin'ga buzilgan invariant aniq ko'rsatilishi kerak.
+     *
+     * Bu endpoint a'zolikning rol items'ini QAYTARMAYDI — buning uchun alohida
+     * endpoint mavjud: GET /memberships/{membershipId}/roles.
+     *
+     * @param tenantId tenant identifikatori
+     * @param membershipId a'zolik identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return membership header + nested user identity
+     * @throws IllegalArgumentException agar tenantId yoki membershipId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant, membership yoki user topilmasa
+     */
+    public MembershipDetailView getMembershipDetails(
+            UUID tenantId, UUID membershipId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (membershipId == null) {
+            throw new IllegalArgumentException("membershipId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        Membership membership = identityQueryService
+                .findMembershipByIdAndTenantId(membershipId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Membership", membershipId));
+
+        AppUser user = identityQueryService.findUserById(membership.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", membership.getUserId()));
+
+        UserIdentityView userIdentity = new UserIdentityView(
+                user.getId(),
+                user.getTelegramUserId(),
+                user.getDisplayName(),
+                user.getUsername());
+
+        return new MembershipDetailView(
+                tenantId,
+                membership.getId(),
+                membership.getStatus().name(),
+                membership.getCreatedAt(),
+                userIdentity);
+    }
+
+    /**
+     * Facade natija modeli — membership to'liq detail.
+     */
+    public record MembershipDetailView(
+            UUID tenantId,
+            UUID membershipId,
+            String membershipStatus,
+            Instant createdAt,
+            UserIdentityView userIdentity) {}
+
+    public record UserIdentityView(
+            UUID userId,
+            Long telegramUserId,
+            String displayName,
+            String username) {}
+
+    /**
      * Global ruxsat (permission) katalogi ro'yxatini qaytaradi.
      *
      * Rollar kabi ruxsatlar ham GLOBAL — tenantga tegishli emas. tenantId endpoint-family

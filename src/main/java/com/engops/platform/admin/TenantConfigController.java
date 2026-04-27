@@ -30,6 +30,7 @@ import java.util.UUID;
  * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
  * - GET /topic-bindings/{topicBindingId} — topic binding to'liq detail (parent chat context bilan)
  * - GET /memberships — tenant a'zolik ro'yxati
+ * - GET /memberships/{membershipId} — a'zolik to'liq detail (user identity bilan)
  * - GET /memberships/{membershipId}/roles — a'zolikka biriktirilgan rollar ro'yxati
  * - GET /roles — global rol katalogi ro'yxati
  * - GET /roles/{roleId}/permissions — global rol uchun biriktirilgan ruxsatlar ro'yxati
@@ -366,6 +367,42 @@ public class TenantConfigController {
                 detailsFacade.getMemberships(tenantId, actorUserId);
 
         return ResponseEntity.ok(toMembershipListResponse(view));
+    }
+
+    /**
+     * Berilgan a'zolik uchun to'liq detail qaytaradi (user identity bilan).
+     *
+     * @param membershipId a'zolik identifikatori
+     * @param tenantId tenant identifikatori
+     * @return membership header + nested user identity
+     */
+    @GetMapping("/memberships/{membershipId}")
+    public ResponseEntity<TenantConfigMembershipDetailResponse> getMembershipDetails(
+            @PathVariable UUID membershipId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.MembershipDetailView view =
+                detailsFacade.getMembershipDetails(tenantId, membershipId, actorUserId);
+
+        return ResponseEntity.ok(toMembershipDetailResponse(view));
+    }
+
+    private TenantConfigMembershipDetailResponse toMembershipDetailResponse(
+            TenantConfigDetailsFacade.MembershipDetailView view) {
+        var u = view.userIdentity();
+        TenantConfigMembershipDetailResponse.UserIdentity userIdentity =
+                new TenantConfigMembershipDetailResponse.UserIdentity(
+                        u.userId(),
+                        u.telegramUserId(),
+                        u.displayName(),
+                        u.username());
+        return new TenantConfigMembershipDetailResponse(
+                view.tenantId(),
+                view.membershipId(),
+                view.membershipStatus(),
+                view.createdAt(),
+                userIdentity);
     }
 
     /**
