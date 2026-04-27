@@ -593,6 +593,64 @@ public class TenantConfigDetailsFacade {
             Instant createdAt) {}
 
     /**
+     * Berilgan global ruxsat (permission) uchun to'liq detail ko'rinishini qaytaradi:
+     * tenantId, permissionId, code, description, createdAt.
+     *
+     * Permission GLOBAL — tenantga tegishli emas. tenantId endpoint-family
+     * izchilligi va admin authorization context uchun tekshiriladi.
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId null bo'lmasligi kerak
+     * 2. permissionId null bo'lmasligi kerak
+     * 3. authorizeRead chaqiriladi
+     * 4. tenant mavjudligi tekshiriladi
+     * 5. permission mavjudligi tekshiriladi (global katalogdan)
+     *
+     * Bu detail rol-permission bog'lanishlarini QAYTARMAYDI — buning uchun
+     * alohida endpoint mavjud: GET /permissions/{permissionId}/roles.
+     *
+     * @param tenantId admin kontekst tenant identifikatori
+     * @param permissionId global ruxsat identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return permission detail
+     * @throws IllegalArgumentException agar tenantId yoki permissionId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant yoki permission topilmasa
+     */
+    public PermissionDetailView getPermissionDetails(
+            UUID tenantId, UUID permissionId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (permissionId == null) {
+            throw new IllegalArgumentException("permissionId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        Permission permission = identityQueryService.findPermissionById(permissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Permission", permissionId));
+
+        return new PermissionDetailView(
+                tenantId,
+                permission.getId(),
+                permission.getCode(),
+                permission.getDescription(),
+                permission.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — global permission detail.
+     */
+    public record PermissionDetailView(
+            UUID tenantId,
+            UUID permissionId,
+            String code,
+            String description,
+            Instant createdAt) {}
+
+    /**
      * Tenant uchun barcha a'zoliklarning compact ro'yxatini qaytaradi.
      *
      * Har bir membership uchun user ma'lumotlari va rol nomlari ham olinadi —

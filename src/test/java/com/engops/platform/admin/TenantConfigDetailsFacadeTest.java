@@ -3312,6 +3312,154 @@ class TenantConfigDetailsFacadeTest {
         verifyNoInteractions(identityQueryService);
     }
 
+    // ========== getPermissionDetails tests ==========
+
+    @Test
+    void permissionDetailsReturnsFullDetail() {
+        Tenant tenant = mockTenant();
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+
+        Permission permission = mock(Permission.class);
+        when(permission.getId()).thenReturn(permissionId);
+        when(permission.getCode()).thenReturn("TENANT_CONFIG_READ");
+        when(permission.getDescription()).thenReturn("Tenant config o'qish");
+        when(permission.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findPermissionById(permissionId)).thenReturn(Optional.of(permission));
+
+        var result = facade.getPermissionDetails(TENANT_ID, permissionId, ACTOR_USER_ID);
+
+        assertThat(result.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.permissionId()).isEqualTo(permissionId);
+        assertThat(result.code()).isEqualTo("TENANT_CONFIG_READ");
+        assertThat(result.description()).isEqualTo("Tenant config o'qish");
+        assertThat(result.createdAt()).isEqualTo(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+    }
+
+    @Test
+    void permissionDetailsReturnsNullDescription() {
+        Tenant tenant = mockTenant();
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+
+        Permission permission = mock(Permission.class);
+        when(permission.getId()).thenReturn(permissionId);
+        when(permission.getCode()).thenReturn("CUSTOM_PERM");
+        when(permission.getDescription()).thenReturn(null);
+        when(permission.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-02-01T08:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findPermissionById(permissionId)).thenReturn(Optional.of(permission));
+
+        var result = facade.getPermissionDetails(TENANT_ID, permissionId, ACTOR_USER_ID);
+
+        assertThat(result.code()).isEqualTo("CUSTOM_PERM");
+        assertThat(result.description()).isNull();
+    }
+
+    @Test
+    void permissionDetailsThrowsResourceNotFoundWhenTenantMissing() {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getPermissionDetails(TENANT_ID, permissionId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Tenant");
+
+        verify(tenantConfigQueryService).findTenantById(TENANT_ID);
+        verify(identityQueryService, never()).findPermissionById(any());
+    }
+
+    @Test
+    void permissionDetailsThrowsResourceNotFoundWhenPermissionMissing() {
+        Tenant tenant = mockTenant();
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findPermissionById(permissionId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                facade.getPermissionDetails(TENANT_ID, permissionId, ACTOR_USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Permission");
+
+        verify(identityQueryService).findPermissionById(permissionId);
+    }
+
+    @Test
+    void permissionDetailsThrowsIllegalArgumentWhenTenantIdNull() {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        assertThatThrownBy(() ->
+                facade.getPermissionDetails(null, permissionId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void permissionDetailsThrowsIllegalArgumentWhenPermissionIdNull() {
+        assertThatThrownBy(() ->
+                facade.getPermissionDetails(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("permissionId");
+
+        verifyNoInteractions(authorizationService, tenantConfigQueryService, identityQueryService);
+    }
+
+    @Test
+    void permissionDetailsCallsAuthorizeRead() {
+        Tenant tenant = mockTenant();
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+
+        Permission permission = mock(Permission.class);
+        when(permission.getId()).thenReturn(permissionId);
+        when(permission.getCode()).thenReturn("P");
+        when(permission.getDescription()).thenReturn(null);
+        when(permission.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-15T08:00:00Z"));
+
+        when(tenantConfigQueryService.findTenantById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(identityQueryService.findPermissionById(permissionId)).thenReturn(Optional.of(permission));
+
+        facade.getPermissionDetails(TENANT_ID, permissionId, ACTOR_USER_ID);
+
+        verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void permissionDetailsNullTenantIdSkipsAuthorization() {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        assertThatThrownBy(() ->
+                facade.getPermissionDetails(null, permissionId, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void permissionDetailsNullPermissionIdSkipsAuthorization() {
+        assertThatThrownBy(() ->
+                facade.getPermissionDetails(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void permissionDetailsDeniedWhenAuthorizationFails() {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() ->
+                facade.getPermissionDetails(TENANT_ID, permissionId, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(tenantConfigQueryService);
+        verifyNoInteractions(identityQueryService);
+    }
+
     // ========== Authorization enforcement ==========
 
     @Test

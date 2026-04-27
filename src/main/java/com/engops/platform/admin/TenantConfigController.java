@@ -36,6 +36,7 @@ import java.util.UUID;
  * - GET /roles/{roleId} — global rol detail (active holat bilan)
  * - GET /roles/{roleId}/permissions — global rol uchun biriktirilgan ruxsatlar ro'yxati
  * - GET /permissions — global ruxsat katalogi ro'yxati
+ * - GET /permissions/{permissionId} — global ruxsat detail
  * - GET /permissions/{permissionId}/roles — global ruxsat uchun biriktirilgan rollar ro'yxati
  *
  * Write endpoint'lar:
@@ -548,6 +549,38 @@ public class TenantConfigController {
                 detailsFacade.getPermissions(tenantId, actorUserId);
 
         return ResponseEntity.ok(toPermissionListResponse(view));
+    }
+
+    /**
+     * Berilgan global ruxsat uchun to'liq detail qaytaradi.
+     *
+     * Bu endpoint rol bog'lanishlarini QAYTARMAYDI —
+     * buning uchun GET /permissions/{permissionId}/roles ishlatiladi.
+     *
+     * @param permissionId global ruxsat identifikatori
+     * @param tenantId admin kontekst tenant identifikatori
+     * @return permission detail
+     */
+    @GetMapping("/permissions/{permissionId}")
+    public ResponseEntity<TenantConfigPermissionDetailResponse> getPermissionDetails(
+            @PathVariable UUID permissionId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.PermissionDetailView view =
+                detailsFacade.getPermissionDetails(tenantId, permissionId, actorUserId);
+
+        return ResponseEntity.ok(toPermissionDetailResponse(view));
+    }
+
+    private TenantConfigPermissionDetailResponse toPermissionDetailResponse(
+            TenantConfigDetailsFacade.PermissionDetailView view) {
+        return new TenantConfigPermissionDetailResponse(
+                view.tenantId(),
+                view.permissionId(),
+                view.code(),
+                view.description(),
+                view.createdAt());
     }
 
     /**

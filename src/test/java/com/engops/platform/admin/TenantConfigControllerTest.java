@@ -2130,6 +2130,107 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 
+    // ========== GET /permissions/{permissionId} — permission detail read endpoint ==========
+
+    @Test
+    void permissionDetailsReturnsOkWithFullDetail() throws Exception {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        var view = new TenantConfigDetailsFacade.PermissionDetailView(
+                TENANT_ID, permissionId, "TENANT_CONFIG_READ", "Tenant config o'qish",
+                Instant.parse("2026-01-15T08:00:00Z"));
+
+        when(detailsFacade.getPermissionDetails(eq(TENANT_ID), eq(permissionId), any())).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.permissionId").value(permissionId.toString()))
+                .andExpect(jsonPath("$.code").value("TENANT_CONFIG_READ"))
+                .andExpect(jsonPath("$.description").value("Tenant config o'qish"))
+                .andExpect(jsonPath("$.createdAt").value("2026-01-15T08:00:00Z"));
+    }
+
+    @Test
+    void permissionDetailsNullDescriptionOmittedFromJson() throws Exception {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        var view = new TenantConfigDetailsFacade.PermissionDetailView(
+                TENANT_ID, permissionId, "CUSTOM_PERM", null,
+                Instant.parse("2026-02-01T08:00:00Z"));
+
+        when(detailsFacade.getPermissionDetails(eq(TENANT_ID), eq(permissionId), any())).thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("CUSTOM_PERM"))
+                .andExpect(jsonPath("$.description").doesNotExist());
+    }
+
+    @Test
+    void permissionDetailsTenantNotFoundReturns404() throws Exception {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        when(detailsFacade.getPermissionDetails(eq(TENANT_ID), eq(permissionId), any()))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void permissionDetailsPermissionNotFoundReturns404() throws Exception {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        when(detailsFacade.getPermissionDetails(eq(TENANT_ID), eq(permissionId), any()))
+                .thenThrow(new ResourceNotFoundException("Permission", permissionId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void permissionDetailsMissingTenantIdReturns400() throws Exception {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void permissionDetailsInvalidTenantIdFormatReturns400() throws Exception {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
+                        .param("tenantId", "not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void permissionDetailsInvalidPermissionIdFormatReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", "not-a-uuid")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void permissionDetailsAccessDeniedReturns403() throws Exception {
+        UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
+        when(detailsFacade.getPermissionDetails(eq(TENANT_ID), eq(permissionId), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
     // ========== POST /workflow-definitions endpoint ==========
 
     @Test
