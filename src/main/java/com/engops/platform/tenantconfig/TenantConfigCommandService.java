@@ -247,7 +247,22 @@ public class TenantConfigCommandService {
 
         String oldValue = definition.getName() + " | type=" + definition.getWorkItemType();
 
-        workflowDefinitionRepository.delete(definition);
+        // FK violation -> clean 422. Workflow definition uchun 3 ta inbound FK
+        // mavjud (work_item, workflow_status, workflow_transition_rule).
+        // Cross-module pre-check qilish workitem modulga sun'iy bog'lanish hosil
+        // qilar edi, shuning uchun Phase 78 (deleteRole) fallback patterni bilan
+        // bir xil DB constraint translation ishlatiladi.
+        try {
+            workflowDefinitionRepository.delete(definition);
+            workflowDefinitionRepository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            if (isWorkflowDefinitionReferencedConstraint(ex)) {
+                throw new BusinessRuleException("WORKFLOW_DEFINITION_IN_USE",
+                        "Workflow definition hozirda ishlatilmoqda, o'chirilmaydi "
+                                + "(definitionId=" + definitionId + ")");
+            }
+            throw ex;
+        }
 
         auditService.recordEvent(tenantId, "WORKFLOW_DEFINITION", definitionId,
                 "DELETED", null, "ADMIN_API", oldValue, null);
@@ -885,6 +900,21 @@ public class TenantConfigCommandService {
                     && constraintName.contains("telegram_chat_binding")
                     && constraintName.contains("tenant_id")
                     && constraintName.contains("chat_id");
+        }
+        return false;
+    }
+
+    /**
+     * DataIntegrityViolationException workflow_definition delete paytida child
+     * jadvallardan biri (work_item, workflow_status, workflow_transition_rule)
+     * tomonidan referans (FK) violation ekanligini tekshiradi.
+     */
+    private static boolean isWorkflowDefinitionReferencedConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("workflow_definition_id");
         }
         return false;
     }

@@ -528,6 +528,57 @@ class TenantConfigCommandServiceTest {
         verifyNoInteractions(auditService);
     }
 
+    @Test
+    void deleteWorkflowDefinitionTranslatesFKViolationToBusinessRuleWhenInUse() {
+        // Workflow_definition'ga ishora qiluvchi child jadvallaridan biri
+        // (work_item, workflow_status, workflow_transition_rule) FK violation tashlasa,
+        // bu DB-level 500 emas, balki clean WORKFLOW_DEFINITION_IN_USE 422 ga aylantirilishi kerak.
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222244");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "In-Use Flow", "BUG");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+
+        ConstraintViolationException cause = new ConstraintViolationException(
+                "FK violation", new SQLException(),
+                "fk_work_item_workflow_definition_id");
+        doThrow(new DataIntegrityViolationException("FK", cause))
+                .when(workflowDefinitionRepository).flush();
+
+        assertThatThrownBy(() -> service.deleteWorkflowDefinition(TENANT_ID, defId))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("ishlatilmoqda")
+                .hasMessageContaining(defId.toString());
+
+        // FK violation rollback bo'lsa audit yozilmasligi kerak
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void deleteWorkflowDefinitionRethrowsUnrelatedIntegrityViolation() {
+        // FK violation workflow_definition_id ga aloqasi bo'lmasa, exception
+        // BusinessRuleException ga aylantirilmasligi va o'z holicha qaytishi kerak.
+        UUID defId = UUID.fromString("22222222-2222-2222-2222-222222222245");
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition existing = new WorkflowDefinition(TENANT_ID, "Unrelated", "TASK");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, defId))
+                .thenReturn(Optional.of(existing));
+
+        ConstraintViolationException cause = new ConstraintViolationException(
+                "other", new SQLException(), "some_other_constraint");
+        doThrow(new DataIntegrityViolationException("other", cause))
+                .when(workflowDefinitionRepository).flush();
+
+        assertThatThrownBy(() -> service.deleteWorkflowDefinition(TENANT_ID, defId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        verifyNoInteractions(auditService);
+    }
+
     // ========== createChatBinding tests ==========
 
     @Test
