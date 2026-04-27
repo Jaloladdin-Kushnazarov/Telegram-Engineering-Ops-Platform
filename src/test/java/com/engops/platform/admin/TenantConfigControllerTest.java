@@ -1595,6 +1595,164 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(jsonPath("$.targetTopicBinding.chatBindingType").value("MAIN_GROUP"));
     }
 
+    // ========== GET /chat-bindings/{chatBindingId} — chat binding detail read endpoint ==========
+
+    @Test
+    void chatBindingDetailsReturnsOkWithNestedTopicBindings() throws Exception {
+        UUID chatBindingId = UUID.fromString("88991111-1111-1111-1111-111111111111");
+        UUID t1Id = UUID.fromString("99991111-1111-1111-1111-111111111111");
+        UUID t2Id = UUID.fromString("99992222-2222-2222-2222-222222222222");
+
+        var topics = List.of(
+                new TenantConfigDetailsFacade.ChatBindingTopicItemView(
+                        t1Id, 101L, "Bugs", "BUGS", true,
+                        Instant.parse("2026-01-16T08:00:00Z")),
+                new TenantConfigDetailsFacade.ChatBindingTopicItemView(
+                        t2Id, 202L, "Incidents", "INCIDENTS", false,
+                        Instant.parse("2026-01-17T08:00:00Z")));
+        var view = new TenantConfigDetailsFacade.ChatBindingDetailView(
+                TENANT_ID, chatBindingId, -1001234567890L, "Engineering Chat",
+                "MAIN_GROUP", true,
+                Instant.parse("2026-01-15T08:00:00Z"),
+                topics);
+
+        when(detailsFacade.getChatBindingDetails(eq(TENANT_ID), eq(chatBindingId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.chatBindingId").value(chatBindingId.toString()))
+                .andExpect(jsonPath("$.chatId").value(-1001234567890L))
+                .andExpect(jsonPath("$.chatTitle").value("Engineering Chat"))
+                .andExpect(jsonPath("$.bindingType").value("MAIN_GROUP"))
+                .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.createdAt").value("2026-01-15T08:00:00Z"))
+                .andExpect(jsonPath("$.topicBindings").isArray())
+                .andExpect(jsonPath("$.topicBindings.length()").value(2))
+                .andExpect(jsonPath("$.topicBindings[0].topicBindingId").value(t1Id.toString()))
+                .andExpect(jsonPath("$.topicBindings[0].topicId").value(101))
+                .andExpect(jsonPath("$.topicBindings[0].topicName").value("Bugs"))
+                .andExpect(jsonPath("$.topicBindings[0].purpose").value("BUGS"))
+                .andExpect(jsonPath("$.topicBindings[0].active").value(true))
+                .andExpect(jsonPath("$.topicBindings[1].topicBindingId").value(t2Id.toString()))
+                .andExpect(jsonPath("$.topicBindings[1].purpose").value("INCIDENTS"))
+                .andExpect(jsonPath("$.topicBindings[1].active").value(false));
+    }
+
+    @Test
+    void chatBindingDetailsReturnsOkWithEmptyTopicBindings() throws Exception {
+        UUID chatBindingId = UUID.fromString("88991111-1111-1111-1111-111111111111");
+        var view = new TenantConfigDetailsFacade.ChatBindingDetailView(
+                TENANT_ID, chatBindingId, -99L, null,
+                "NOTIFICATION_GROUP", false,
+                Instant.parse("2026-01-15T08:00:00Z"),
+                List.of());
+
+        when(detailsFacade.getChatBindingDetails(eq(TENANT_ID), eq(chatBindingId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bindingType").value("NOTIFICATION_GROUP"))
+                .andExpect(jsonPath("$.active").value(false))
+                .andExpect(jsonPath("$.chatTitle").doesNotExist())
+                .andExpect(jsonPath("$.topicBindings").isArray())
+                .andExpect(jsonPath("$.topicBindings.length()").value(0));
+    }
+
+    @Test
+    void chatBindingDetailsTenantNotFoundReturns404() throws Exception {
+        UUID chatBindingId = UUID.fromString("88991111-1111-1111-1111-111111111111");
+        when(detailsFacade.getChatBindingDetails(eq(TENANT_ID), eq(chatBindingId), any()))
+                .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
+
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void chatBindingDetailsChatBindingNotFoundReturns404() throws Exception {
+        UUID chatBindingId = UUID.fromString("88991111-1111-1111-1111-111111111111");
+        when(detailsFacade.getChatBindingDetails(eq(TENANT_ID), eq(chatBindingId), any()))
+                .thenThrow(new ResourceNotFoundException("ChatBinding", chatBindingId));
+
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void chatBindingDetailsMissingTenantIdReturns400() throws Exception {
+        UUID chatBindingId = UUID.fromString("88991111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void chatBindingDetailsInvalidTenantIdFormatReturns400() throws Exception {
+        UUID chatBindingId = UUID.fromString("88991111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
+                        .param("tenantId", "not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void chatBindingDetailsInvalidChatBindingIdFormatReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", "not-a-uuid")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void chatBindingDetailsAccessDeniedReturns403() throws Exception {
+        UUID chatBindingId = UUID.fromString("88991111-1111-1111-1111-111111111111");
+        when(detailsFacade.getChatBindingDetails(eq(TENANT_ID), eq(chatBindingId), any()))
+                .thenThrow(new AccessDeniedException("TENANT_CONFIG_READ ruxsati talab qilinadi"));
+
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void chatBindingDetailsNullTopicNameOmittedFromJson() throws Exception {
+        UUID chatBindingId = UUID.fromString("88991111-1111-1111-1111-111111111111");
+        UUID t1Id = UUID.fromString("99991111-1111-1111-1111-111111111111");
+        var topics = List.of(
+                new TenantConfigDetailsFacade.ChatBindingTopicItemView(
+                        t1Id, 101L, null, "BUGS", true,
+                        Instant.parse("2026-01-16T08:00:00Z")));
+        var view = new TenantConfigDetailsFacade.ChatBindingDetailView(
+                TENANT_ID, chatBindingId, -1L, null,
+                "MAIN_GROUP", true,
+                Instant.parse("2026-01-15T08:00:00Z"),
+                topics);
+
+        when(detailsFacade.getChatBindingDetails(eq(TENANT_ID), eq(chatBindingId), any()))
+                .thenReturn(view);
+
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.chatTitle").doesNotExist())
+                .andExpect(jsonPath("$.topicBindings[0].topicName").doesNotExist())
+                .andExpect(jsonPath("$.topicBindings[0].purpose").value("BUGS"));
+    }
+
     // ========== POST /workflow-definitions endpoint ==========
 
     @Test

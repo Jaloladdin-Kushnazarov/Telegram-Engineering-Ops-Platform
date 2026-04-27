@@ -26,6 +26,7 @@ import java.util.UUID;
  * - GET /routing-rules — tenant routing qoidalari ro'yxati
  * - GET /routing-rules/{ruleId} — routing rule to'liq detail (target topic binding context bilan)
  * - GET /chat-bindings — tenant Telegram chat bog'lanishlari ro'yxati
+ * - GET /chat-bindings/{chatBindingId} — chat binding to'liq detail (nested topic bindings bilan)
  * - GET /topic-bindings — tenant Telegram topic bog'lanishlari ro'yxati
  * - GET /memberships — tenant a'zolik ro'yxati
  * - GET /memberships/{membershipId}/roles — a'zolikka biriktirilgan rollar ro'yxati
@@ -80,7 +81,7 @@ public class TenantConfigController {
     private final TenantConfigWriteFacade writeFacade;
 
     public TenantConfigController(TenantConfigDetailsFacade detailsFacade,
-                                   TenantConfigWriteFacade writeFacade) {
+                                  TenantConfigWriteFacade writeFacade) {
         this.detailsFacade = detailsFacade;
         this.writeFacade = writeFacade;
     }
@@ -250,6 +251,47 @@ public class TenantConfigController {
                 detailsFacade.getChatBindings(tenantId, actorUserId);
 
         return ResponseEntity.ok(toChatBindingListResponse(view));
+    }
+
+    /**
+     * Berilgan chat binding uchun to'liq detail qaytaradi (nested topic bindings bilan).
+     *
+     * @param chatBindingId chat binding identifikatori
+     * @param tenantId tenant identifikatori
+     * @return chat binding header + nested topic bindings ro'yxati
+     */
+    @GetMapping("/chat-bindings/{chatBindingId}")
+    public ResponseEntity<TenantConfigChatBindingDetailResponse> getChatBindingDetails(
+            @PathVariable UUID chatBindingId,
+            @RequestParam UUID tenantId,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigDetailsFacade.ChatBindingDetailView view =
+                detailsFacade.getChatBindingDetails(tenantId, chatBindingId, actorUserId);
+
+        return ResponseEntity.ok(toChatBindingDetailResponse(view));
+    }
+
+    private TenantConfigChatBindingDetailResponse toChatBindingDetailResponse(
+            TenantConfigDetailsFacade.ChatBindingDetailView view) {
+        List<TenantConfigChatBindingDetailResponse.TopicItem> topics = view.topicBindings().stream()
+                .map(t -> new TenantConfigChatBindingDetailResponse.TopicItem(
+                        t.topicBindingId(),
+                        t.topicId(),
+                        t.topicName(),
+                        t.purpose(),
+                        t.active(),
+                        t.createdAt()))
+                .toList();
+        return new TenantConfigChatBindingDetailResponse(
+                view.tenantId(),
+                view.chatBindingId(),
+                view.chatId(),
+                view.chatTitle(),
+                view.bindingType(),
+                view.active(),
+                view.createdAt(),
+                topics);
     }
 
     /**

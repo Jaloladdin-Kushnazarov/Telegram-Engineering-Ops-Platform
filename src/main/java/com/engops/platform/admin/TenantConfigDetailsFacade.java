@@ -873,6 +873,95 @@ public class TenantConfigDetailsFacade {
     }
 
     /**
+     * Berilgan chat binding uchun to'liq detail ko'rinishini qaytaradi:
+     * header (id, chatId, chatTitle, bindingType, active, createdAt)
+     * + topicBindings[] (id, topicId, topicName, purpose, active, createdAt).
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId null bo'lmasligi kerak
+     * 2. chatBindingId null bo'lmasligi kerak
+     * 3. authorizeRead chaqiriladi
+     * 4. tenant mavjudligi tekshiriladi
+     * 5. chat binding shu tenantga tegishli bo'lishi tekshiriladi
+     *    (tenant-safe lookup — boshqa tenantga tegishli bo'lsa NOT FOUND)
+     * 6. shu chat binding uchun topic binding ro'yxati yig'iladi
+     *
+     * Topic bindings ordering: purpose ASC -> topicId ASC -> topicBindingId ASC
+     *
+     * Topic item shape parent context'siz qaytadi (chat header allaqachon outer
+     * level'da bor) — `TopicBindingItemView` flat list shape'idan farqli.
+     *
+     * @param tenantId tenant identifikatori
+     * @param chatBindingId chat binding identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @return chat binding header + nested topic bindings
+     * @throws IllegalArgumentException agar tenantId yoki chatBindingId null bo'lsa
+     * @throws ResourceNotFoundException agar tenant yoki chat binding topilmasa
+     */
+    public ChatBindingDetailView getChatBindingDetails(
+            UUID tenantId, UUID chatBindingId, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (chatBindingId == null) {
+            throw new IllegalArgumentException("chatBindingId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeRead(tenantId, actorUserId);
+
+        tenantConfigQueryService.findTenantById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        TelegramChatBinding chatBinding = tenantConfigQueryService
+                .findChatBindingById(tenantId, chatBindingId)
+                .orElseThrow(() -> new ResourceNotFoundException("ChatBinding", chatBindingId));
+
+        List<ChatBindingTopicItemView> topicItems = tenantConfigQueryService
+                .listAllTopicBindings(chatBinding.getId()).stream()
+                .sorted(Comparator.comparing(TelegramTopicBinding::getPurpose)
+                        .thenComparingLong(TelegramTopicBinding::getTopicId)
+                        .thenComparing(TelegramTopicBinding::getId))
+                .map(t -> new ChatBindingTopicItemView(
+                        t.getId(),
+                        t.getTopicId(),
+                        t.getTopicName(),
+                        t.getPurpose(),
+                        t.isActive(),
+                        t.getCreatedAt()))
+                .toList();
+
+        return new ChatBindingDetailView(
+                tenantId,
+                chatBinding.getId(),
+                chatBinding.getChatId(),
+                chatBinding.getChatTitle(),
+                chatBinding.getBindingType().name(),
+                chatBinding.isActive(),
+                chatBinding.getCreatedAt(),
+                topicItems);
+    }
+
+    /**
+     * Facade natija modeli — chat binding to'liq detail.
+     */
+    public record ChatBindingDetailView(
+            UUID tenantId,
+            UUID chatBindingId,
+            long chatId,
+            String chatTitle,
+            String bindingType,
+            boolean active,
+            Instant createdAt,
+            List<ChatBindingTopicItemView> topicBindings) {}
+
+    public record ChatBindingTopicItemView(
+            UUID topicBindingId,
+            long topicId,
+            String topicName,
+            String purpose,
+            boolean active,
+            Instant createdAt) {}
+
+    /**
      * Tenant uchun barcha Telegram topic bog'lanishlarining compact flat ro'yxatini qaytaradi.
      *
      * Barcha chat binding'lar bo'ylab iteratsiya qilib, har birining topic binding'larini

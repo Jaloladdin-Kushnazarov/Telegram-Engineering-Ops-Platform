@@ -133,6 +133,16 @@ public class TenantConfigQueryService {
     }
 
     /**
+     * Tenant-safe lookup: ID va tenant bo'yicha chat bog'lanishini topadi.
+     * Admin moduli chat binding detail read surface uchun ishlatadi —
+     * shu metod orqali ham mavjudlik, ham tenant ownership bir lookup'da
+     * tekshiriladi (cross-tenant himoya).
+     */
+    public Optional<TelegramChatBinding> findChatBindingById(UUID tenantId, UUID chatBindingId) {
+        return telegramChatBindingRepository.findByIdAndTenantId(chatBindingId, tenantId);
+    }
+
+    /**
      * Chat bog'lanishi uchun barcha topic bog'lanishlarini qaytaradi (barcha statuslar).
      */
     public List<TelegramTopicBinding> listAllTopicBindings(UUID chatBindingId) {
