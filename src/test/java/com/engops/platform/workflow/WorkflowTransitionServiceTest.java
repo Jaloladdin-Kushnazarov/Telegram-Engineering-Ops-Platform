@@ -191,4 +191,27 @@ class WorkflowTransitionServiceTest {
 
         assertThat(result.getCurrentStatusCode()).isEqualTo("BUGS");
     }
+
+    /**
+     * Frozen contract (Phase 112): inactive workflow definition NEW work item
+     * yaratishni bloklaydi (WorkItemCommandService.create da INACTIVE_WORKFLOW
+     * guard, WorkItemCommandServiceTest#inactiveWorkflowRadEtilishi tomonidan
+     * qoplangan). Ammo mavjud in-flight work item'larning transition'ini
+     * BLOKLAMAYDI — deactivation faqat creation lifecycle'ni to'xtatadi,
+     * existing items o'z transition'larini davom ettiradi. Shu test contract'ni
+     * ochiq fixate qiladi: agar kelgusi phase'da transition'ga inactive gate
+     * kiritilsa, shu test loud sinaydi.
+     */
+    @Test
+    void inactiveWorkflowdaTransitionRuxsatEtiladi() {
+        when(workflowDef.isActive()).thenReturn(false);
+        WorkItem workItem = createWorkItem("BUGS");
+        setupMocks(workItem);
+
+        WorkItem result = transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        assertThat(result.getCurrentStatusCode()).isEqualTo("PROCESSING");
+        verify(transitionRepository).save(any(WorkItemTransition.class));
+    }
 }
