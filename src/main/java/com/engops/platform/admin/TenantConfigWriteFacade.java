@@ -1,6 +1,7 @@
 package com.engops.platform.admin;
 
 import com.engops.platform.identity.IdentityCommandService;
+import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.Role;
@@ -150,6 +151,106 @@ public class TenantConfigWriteFacade {
             String name,
             String slug,
             String timezone,
+            String status,
+            java.time.Instant createdAt) {}
+
+    // ========== AppUser operations ==========
+
+    private static final int APP_USER_USERNAME_MAX_LENGTH = 255;
+    private static final int APP_USER_DISPLAY_NAME_MAX_LENGTH = 255;
+
+    /**
+     * Yangi AppUser yaratish uchun request boundary validatsiyasi, normalizatsiya
+     * va delegation.
+     *
+     * adminContextTenantId — bu YANGI yaratiladigan user emas va membership emas,
+     * balki actor TENANT_CONFIG_WRITE ruxsatiga ega bo'lgan mavjud tenant.
+     * AppUser global root identity resurs (role catalog write surface bilan
+     * bir xil pattern).
+     *
+     * Birinchi user uchun bootstrap muammosi qoladi — hech bo'lmaganda bitta
+     * actor tenant a'zosi sifatida TENANT_CONFIG_WRITE ruxsatiga ega bo'lishi
+     * kerak. Bu phase'da hal qilinmaydi (Phase 118 chicken-and-egg muammosi
+     * bilan bir xil — manual SQL/Flyway seed orqali yechiladi).
+     *
+     * Validation-before-authorization ordering:
+     * 1. adminContextTenantId null bo'lmasligi
+     * 2. request null bo'lmasligi
+     * 3. telegramUserId null bo'lmasligi
+     * 4. telegramUserId > 0 (positive)
+     * 5. username strip; blank → null; max 255
+     * 6. displayName strip; blank → null; max 255
+     * 7. authorizeWrite(adminContextTenantId, actorUserId)
+     * 8. IdentityCommandService.createAppUser delegate qilinadi
+     *
+     * @param adminContextTenantId actor admin kontekst tenant identifikatori
+     * @param request yaratish so'rovi
+     * @param actorUserId joriy actor
+     * @return yaratilgan user view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public AppUserCreatedView createAppUser(UUID adminContextTenantId,
+                                              CreateAppUserRequest request,
+                                              UUID actorUserId) {
+        if (adminContextTenantId == null) {
+            throw new IllegalArgumentException("adminContextTenantId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.telegramUserId() == null) {
+            throw new IllegalArgumentException("telegramUserId null bo'lishi mumkin emas");
+        }
+        if (request.telegramUserId() <= 0) {
+            throw new IllegalArgumentException(
+                    "telegramUserId musbat bo'lishi kerak: " + request.telegramUserId());
+        }
+        String normalizedUsername = normalizeOptionalString(
+                request.username(), APP_USER_USERNAME_MAX_LENGTH, "username");
+        String normalizedDisplayName = normalizeOptionalString(
+                request.displayName(), APP_USER_DISPLAY_NAME_MAX_LENGTH, "displayName");
+
+        authorizationService.authorizeWrite(adminContextTenantId, actorUserId);
+
+        AppUser user = identityCommandService.createAppUser(
+                request.telegramUserId(), normalizedUsername, normalizedDisplayName);
+
+        return new AppUserCreatedView(
+                user.getId(),
+                user.getTelegramUserId(),
+                user.getUsername(),
+                user.getDisplayName(),
+                user.getStatus() != null ? user.getStatus().name() : null,
+                user.getCreatedAt());
+    }
+
+    /**
+     * Optional string field uchun normalizatsiya:
+     * null/blank-after-strip → null; aks holda strip + length cap.
+     */
+    private static String normalizeOptionalString(String value, int maxLength, String fieldName) {
+        if (value == null) {
+            return null;
+        }
+        String stripped = value.strip();
+        if (stripped.isBlank()) {
+            return null;
+        }
+        if (stripped.length() > maxLength) {
+            throw new IllegalArgumentException(
+                    fieldName + " " + maxLength + " belgidan oshmasligi kerak: " + stripped.length());
+        }
+        return stripped;
+    }
+
+    /**
+     * Facade natija modeli — yaratilgan AppUser.
+     */
+    public record AppUserCreatedView(
+            UUID userId,
+            Long telegramUserId,
+            String username,
+            String displayName,
             String status,
             java.time.Instant createdAt) {}
 

@@ -1318,4 +1318,98 @@ class IdentityCommandServiceTest {
         verify(rolePermissionRepository, never()).delete(any(RolePermission.class));
         verifyNoInteractions(auditService);
     }
+
+    // ========== createAppUser tests ==========
+
+    @Test
+    void createAppUserSuccessAndAuditEvent() {
+        Long telegramUserId = 123456789L;
+        when(appUserRepository.existsByTelegramUserId(telegramUserId)).thenReturn(false);
+        when(appUserRepository.save(any(AppUser.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        AppUser result = service.createAppUser(telegramUserId, "alice", "Alice");
+
+        assertThat(result.getTelegramUserId()).isEqualTo(telegramUserId);
+        assertThat(result.getUsername()).isEqualTo("alice");
+        assertThat(result.getDisplayName()).isEqualTo("Alice");
+        assertThat(result.getStatus().name()).isEqualTo("ACTIVE");
+        assertThat(result.getId()).isNotNull();
+
+        // tenantId argumenti null — AppUser global root identity (ROLE/CREATED audit shape)
+        verify(auditService).recordEvent(
+                eq(null),
+                eq("APP_USER"),
+                eq(result.getId()),
+                eq("CREATED"),
+                eq(null),
+                eq("ADMIN_API"),
+                eq(null),
+                eq("123456789"));
+    }
+
+    @Test
+    void createAppUserAcceptsNullableUsernameAndDisplayName() {
+        Long telegramUserId = 999L;
+        when(appUserRepository.existsByTelegramUserId(telegramUserId)).thenReturn(false);
+        when(appUserRepository.save(any(AppUser.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        AppUser result = service.createAppUser(telegramUserId, null, null);
+
+        assertThat(result.getTelegramUserId()).isEqualTo(telegramUserId);
+        assertThat(result.getUsername()).isNull();
+        assertThat(result.getDisplayName()).isNull();
+        verify(auditService).recordEvent(
+                eq(null), eq("APP_USER"), eq(result.getId()),
+                eq("CREATED"), eq(null), eq("ADMIN_API"), eq(null), eq("999"));
+    }
+
+    @Test
+    void createAppUserRejectsDuplicateTelegramUserIdViaPreCheck() {
+        Long telegramUserId = 123456789L;
+        when(appUserRepository.existsByTelegramUserId(telegramUserId)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.createAppUser(telegramUserId, "alice", "Alice"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("123456789");
+
+        verify(appUserRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createAppUserTranslatesDbDuplicateConstraint() {
+        Long telegramUserId = 123456789L;
+        when(appUserRepository.existsByTelegramUserId(telegramUserId)).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "duplicate key", new SQLException(),
+                "app_user_telegram_user_id_key");
+        when(appUserRepository.save(any(AppUser.class)))
+                .thenThrow(new DataIntegrityViolationException("unique constraint", cause));
+
+        assertThatThrownBy(() -> service.createAppUser(telegramUserId, "alice", "Alice"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("123456789");
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createAppUserRethrowsUnrelatedIntegrityViolation() {
+        Long telegramUserId = 123456789L;
+        when(appUserRepository.existsByTelegramUserId(telegramUserId)).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "other", new SQLException(),
+                "some_other_constraint");
+        when(appUserRepository.save(any(AppUser.class)))
+                .thenThrow(new DataIntegrityViolationException("other violation", cause));
+
+        assertThatThrownBy(() -> service.createAppUser(telegramUserId, "alice", "Alice"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        verifyNoInteractions(auditService);
+    }
 }

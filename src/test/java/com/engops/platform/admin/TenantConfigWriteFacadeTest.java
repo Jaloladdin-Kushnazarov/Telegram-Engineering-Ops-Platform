@@ -2537,4 +2537,146 @@ class TenantConfigWriteFacadeTest {
 
         verify(commandService).createTenant("Acme", "acme", "UTC");
     }
+
+    // ========== createAppUser tests ==========
+
+    private static final UUID NEW_USER_ID =
+            UUID.fromString("99999999-9999-9999-9999-999999999991");
+    private static final long TELEGRAM_USER_ID = 123456789L;
+
+    @Test
+    void createAppUserThrowsWhenAdminContextTenantIdNull() {
+        var request = new CreateAppUserRequest(TELEGRAM_USER_ID, "alice", "Alice");
+
+        assertThatThrownBy(() -> facade.createAppUser(null, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("adminContextTenantId");
+
+        verifyNoInteractions(identityCommandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createAppUserThrowsWhenRequestNull() {
+        assertThatThrownBy(() -> facade.createAppUser(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(identityCommandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createAppUserThrowsWhenTelegramUserIdNull() {
+        var request = new CreateAppUserRequest(null, "alice", "Alice");
+
+        assertThatThrownBy(() -> facade.createAppUser(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("telegramUserId");
+
+        verifyNoInteractions(identityCommandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createAppUserThrowsWhenTelegramUserIdNotPositive() {
+        var request = new CreateAppUserRequest(0L, "alice", "Alice");
+
+        assertThatThrownBy(() -> facade.createAppUser(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("musbat");
+
+        verifyNoInteractions(identityCommandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createAppUserRejectsUsernameLongerThan255() {
+        String tooLong = "x".repeat(256);
+        var request = new CreateAppUserRequest(TELEGRAM_USER_ID, tooLong, "Alice");
+
+        assertThatThrownBy(() -> facade.createAppUser(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("username")
+                .hasMessageContaining("255");
+
+        verifyNoInteractions(identityCommandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createAppUserRejectsDisplayNameLongerThan255() {
+        String tooLong = "X".repeat(256);
+        var request = new CreateAppUserRequest(TELEGRAM_USER_ID, "alice", tooLong);
+
+        assertThatThrownBy(() -> facade.createAppUser(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("displayName")
+                .hasMessageContaining("255");
+
+        verifyNoInteractions(identityCommandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createAppUserDeniedWhenAuthorizationFails() {
+        var request = new CreateAppUserRequest(TELEGRAM_USER_ID, "alice", "Alice");
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.createAppUser(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(identityCommandService);
+    }
+
+    @Test
+    void createAppUserNormalizesAndDelegates() {
+        // Boshlang'ich kirish: username/displayName spaces bilan
+        var request = new CreateAppUserRequest(TELEGRAM_USER_ID, "  alice  ", "  Alice Smith  ");
+
+        var user = mock(com.engops.platform.identity.model.AppUser.class);
+        java.time.Instant createdAt = java.time.Instant.parse("2026-04-29T10:00:00Z");
+        when(user.getId()).thenReturn(NEW_USER_ID);
+        when(user.getTelegramUserId()).thenReturn(TELEGRAM_USER_ID);
+        when(user.getUsername()).thenReturn("alice");
+        when(user.getDisplayName()).thenReturn("Alice Smith");
+        when(user.getStatus())
+                .thenReturn(com.engops.platform.identity.model.UserStatus.ACTIVE);
+        when(user.getCreatedAt()).thenReturn(createdAt);
+        when(identityCommandService.createAppUser(TELEGRAM_USER_ID, "alice", "Alice Smith"))
+                .thenReturn(user);
+
+        var view = facade.createAppUser(TENANT_ID, request, ACTOR_USER_ID);
+
+        assertThat(view.userId()).isEqualTo(NEW_USER_ID);
+        assertThat(view.telegramUserId()).isEqualTo(TELEGRAM_USER_ID);
+        assertThat(view.username()).isEqualTo("alice");
+        assertThat(view.displayName()).isEqualTo("Alice Smith");
+        assertThat(view.status()).isEqualTo("ACTIVE");
+        assertThat(view.createdAt()).isEqualTo(createdAt);
+
+        verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+        verify(identityCommandService).createAppUser(TELEGRAM_USER_ID, "alice", "Alice Smith");
+    }
+
+    @Test
+    void createAppUserConvertsBlankUsernameAndDisplayNameToNull() {
+        var request = new CreateAppUserRequest(TELEGRAM_USER_ID, "   ", "  ");
+
+        var user = mock(com.engops.platform.identity.model.AppUser.class);
+        when(user.getId()).thenReturn(NEW_USER_ID);
+        when(user.getTelegramUserId()).thenReturn(TELEGRAM_USER_ID);
+        when(user.getUsername()).thenReturn(null);
+        when(user.getDisplayName()).thenReturn(null);
+        when(user.getStatus())
+                .thenReturn(com.engops.platform.identity.model.UserStatus.ACTIVE);
+        when(user.getCreatedAt()).thenReturn(java.time.Instant.now());
+        when(identityCommandService.createAppUser(TELEGRAM_USER_ID, null, null))
+                .thenReturn(user);
+
+        facade.createAppUser(TENANT_ID, request, ACTOR_USER_ID);
+
+        verify(identityCommandService).createAppUser(TELEGRAM_USER_ID, null, null);
+    }
 }

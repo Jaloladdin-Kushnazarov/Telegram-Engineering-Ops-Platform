@@ -654,6 +654,36 @@ public class TenantConfigController {
     }
 
     /**
+     * Yangi AppUser yaratadi (global identity resurs).
+     *
+     * adminContextTenantId — yaratiladigan user emas va membership emas, balki
+     * actor admin konteksti uchun ishlatiladigan mavjud tenant
+     * (TENANT_CONFIG_WRITE ruxsatini tekshirish uchun).
+     *
+     * @param adminContextTenantId actor admin kontekst tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan AppUser (201 Created)
+     */
+    @PostMapping("/users")
+    public ResponseEntity<TenantConfigAppUserCreatedResponse> createAppUser(
+            @RequestParam UUID adminContextTenantId,
+            @RequestBody CreateAppUserRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigWriteFacade.AppUserCreatedView view =
+                writeFacade.createAppUser(adminContextTenantId, request, actorUserId);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new TenantConfigAppUserCreatedResponse(
+                        view.userId(),
+                        view.telegramUserId(),
+                        view.username(),
+                        view.displayName(),
+                        view.status(),
+                        view.createdAt()));
+    }
+
+    /**
      * Yangi workflow definition yaratadi.
      *
      * @param tenantId tenant identifikatori

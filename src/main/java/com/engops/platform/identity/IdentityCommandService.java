@@ -70,6 +70,59 @@ public class IdentityCommandService {
         this.tenantConfigQueryService = tenantConfigQueryService;
     }
 
+    // ========== AppUser operations ==========
+
+    /**
+     * Yangi global app_user yaratadi.
+     *
+     * Caller (TenantConfigWriteFacade) input'larni allaqachon normallashtirgan
+     * deb taxmin qilinadi (Phase 115 mini-fix bilan o'rnatilgan pattern):
+     * facade boundary'da username/displayName strip + length cap + blank → null
+     * konversiyasi bajariladi. Bu service'da takroriy normalizatsiya qilinmaydi —
+     * yagona caller pattern'i bo'lsa, defensive in-service normalizatsiya
+     * ortiqcha bo'ladi va Phase 115/116/118 bilan zid bo'ladi.
+     *
+     * Telegram username asosiy identity emas — telegramUserId yagona ishonchli
+     * tashqi identifikator (loyiha xavfsizlik qoidasi). DB constraint:
+     * UNIQUE on app_user.telegram_user_id.
+     *
+     * Audit: tenantId argumenti `null` — AppUser global root identity resurs.
+     * Bu role catalog (ROLE/CREATED) audit shape bilan bir xil.
+     *
+     * @param telegramUserId Telegram identifikatori (positive long, unique)
+     * @param username normallashgan Telegram username (nullable; facade null/blank
+     *                  bo'lsa null qaytaradi, aks holda max 255 bilan strip)
+     * @param displayName normallashgan ko'rinish nomi (nullable, max 255)
+     * @return yaratilgan AppUser
+     * @throws BusinessRuleException agar telegramUserId allaqachon mavjud bo'lsa
+     */
+    public AppUser createAppUser(Long telegramUserId, String username, String displayName) {
+        if (appUserRepository.existsByTelegramUserId(telegramUserId)) {
+            throw new BusinessRuleException("DUPLICATE_TELEGRAM_USER_ID",
+                    "telegramUserId=" + telegramUserId + " bilan foydalanuvchi allaqachon mavjud");
+        }
+
+        AppUser user = new AppUser(telegramUserId, displayName);
+        if (username != null) {
+            user.setUsername(username);
+        }
+
+        try {
+            user = appUserRepository.save(user);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateTelegramUserIdConstraint(ex)) {
+                throw new BusinessRuleException("DUPLICATE_TELEGRAM_USER_ID",
+                        "telegramUserId=" + telegramUserId + " bilan foydalanuvchi allaqachon mavjud");
+            }
+            throw ex;
+        }
+
+        auditService.recordEvent(null, "APP_USER", user.getId(),
+                "CREATED", null, "ADMIN_API", null, telegramUserId.toString());
+
+        return user;
+    }
+
     /**
      * Mavjud foydalanuvchi uchun tenantda yangi a'zolik yaratadi.
      *
@@ -626,6 +679,24 @@ public class IdentityCommandService {
 
         auditService.recordEvent(null, "ROLE_PERMISSION", bindingId,
                 "DELETED", null, "ADMIN_API", permissionCode, null);
+    }
+
+    /**
+     * DataIntegrityViolationException app_user.telegram_user_id unique constraint
+     * violation ekanligini tekshiradi.
+     *
+     * PostgreSQL avtomatik nomi: app_user_telegram_user_id_key (qisqa, kesilmaydi).
+     * Pattern truncation'ga ham chidamli — faqat ikkita kalit bo'lakni tekshiradi.
+     */
+    private static boolean isDuplicateTelegramUserIdConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("app_user")
+                    && constraintName.contains("telegram_user_id");
+        }
+        return false;
     }
 
     /**

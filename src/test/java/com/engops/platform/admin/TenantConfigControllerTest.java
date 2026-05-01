@@ -5188,4 +5188,112 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
+
+    // ========== POST /users endpoint ==========
+
+    private static final UUID NEW_USER_ID =
+            UUID.fromString("99999999-9999-9999-9999-999999999991");
+
+    @Test
+    void createAppUserReturns201WithCreatedResource() throws Exception {
+        var view = new TenantConfigWriteFacade.AppUserCreatedView(
+                NEW_USER_ID,
+                123456789L,
+                "alice",
+                "Alice",
+                "ACTIVE",
+                Instant.parse("2026-04-29T10:00:00Z"));
+
+        when(writeFacade.createAppUser(eq(TENANT_ID),
+                any(CreateAppUserRequest.class), any())).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/users")
+                        .param("adminContextTenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"telegramUserId":123456789,"username":"alice","displayName":"Alice"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.userId").value(NEW_USER_ID.toString()))
+                .andExpect(jsonPath("$.telegramUserId").value(123456789))
+                .andExpect(jsonPath("$.username").value("alice"))
+                .andExpect(jsonPath("$.displayName").value("Alice"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.createdAt").value("2026-04-29T10:00:00Z"));
+    }
+
+    @Test
+    void createAppUserMissingAdminContextTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"telegramUserId":123456789}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createAppUserMalformedAdminContextTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/users")
+                        .param("adminContextTenantId", "not-a-uuid")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"telegramUserId":123456789}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createAppUserMissingTelegramUserIdReturns400() throws Exception {
+        when(writeFacade.createAppUser(eq(TENANT_ID),
+                any(CreateAppUserRequest.class), any()))
+                .thenThrow(new IllegalArgumentException("telegramUserId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/users")
+                        .param("adminContextTenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"alice"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createAppUserDuplicateTelegramUserIdReturns422() throws Exception {
+        when(writeFacade.createAppUser(eq(TENANT_ID),
+                any(CreateAppUserRequest.class), any()))
+                .thenThrow(new BusinessRuleException("DUPLICATE_TELEGRAM_USER_ID",
+                        "telegramUserId=123456789 bilan foydalanuvchi allaqachon mavjud"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/users")
+                        .param("adminContextTenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"telegramUserId":123456789,"username":"alice"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_TELEGRAM_USER_ID"));
+    }
+
+    @Test
+    void createAppUserForbiddenWhenAuthorizationFails() throws Exception {
+        doThrow(new AccessDeniedException("Bu operatsiya uchun TENANT_CONFIG_WRITE ruxsati talab qilinadi"))
+                .when(writeFacade).createAppUser(eq(TENANT_ID),
+                        any(CreateAppUserRequest.class), any());
+
+        mockMvc.perform(post("/api/admin/tenant-config/users")
+                        .param("adminContextTenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"telegramUserId":123456789}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
 }
