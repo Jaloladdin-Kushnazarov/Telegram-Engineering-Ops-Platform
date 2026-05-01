@@ -1,5 +1,6 @@
 package com.engops.platform.intake;
 
+import com.engops.platform.infrastructure.security.CurrentActor;
 import com.engops.platform.workitem.model.WorkItemType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -7,6 +8,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
 
 /**
  * Intake REST adapter — mavjud {@link IntakeApplicationService} use-case'ini
@@ -21,14 +24,17 @@ import org.springframework.web.bind.annotation.RestController;
  * mavjud kontraktni hurmat qiladi (BusinessRuleException("INTAKE_VALIDATION", ...)
  * → 422 GlobalExceptionHandler orqali; ResourceNotFoundException → 404; va h.k.).
  *
- * <strong>Xavfsizlik konteksti — Phase 121:</strong>
- * Bu endpoint hozircha INTERNAL/TRUSTED intake boundary sifatida ishlaydi —
- * application-level autentifikatsiya/avtorizatsiya YO'Q (TENANT_CONFIG_WRITE
- * tekshirilmaydi, Spring Security/JWT/API token mavjud emas). Production
- * deployment'da bu endpoint aniq deployment / tarmoq / API gateway nazoratlari
- * bilan himoyalanishi shart (masalan: ichki tarmoq, mTLS, API gateway). Mustaqil
- * intake autentifikatsiya phase'i implement qilinmaguncha bu yo'l ochiq qoladi.
- * Internet'ga ochiq endpoint EMAS.
+ * <strong>Xavfsizlik konteksti — Phase 134:</strong>
+ * Yaratuvchi/actor identifikatori endi {@link CurrentActor} resolver orqali
+ * SecurityContext'dagi {@code AuthenticatedActor}'dan olinadi. Request body'dagi
+ * eski {@code createdByUserId} maydoni wire compatibility uchun qabul qilinadi
+ * lekin jim e'tiborsiz qoldiriladi — spoofing yo'lga qo'yilmaydi. Authenticated
+ * actor mavjud bo'lmasa resolver controller body'gacha yetib bormay 403
+ * ACCESS_DENIED qaytaradi (Phase 128/129/131/132 pattern'i bilan bir xil).
+ * Permission tekshiruvi (TENANT_CONFIG_WRITE va h.k.) bu phase'da qo'shilmaydi —
+ * keyingi alohida phase'da hal qilinadi. SecurityConfig hali ham
+ * {@code permitAll()} holatida; production deployment'da deployment / tarmoq /
+ * API gateway nazoratlari bilan himoyalanishi shart.
  */
 @RestController
 @RequestMapping("/api/intake")
@@ -43,12 +49,19 @@ public class IntakeController {
     /**
      * Yangi work item yaratadi mavjud intake application service orqali.
      *
+     * <p>Yaratuvchi identifikatori {@link CurrentActor}'dan olinadi —
+     * request body'dagi {@code createdByUserId} (agar yuborilsa) e'tiborga
+     * olinmaydi.</p>
+     *
      * @param request intake so'rovi (required body)
+     * @param actorUserId authenticated actor (resolver SecurityContext'dan oladi;
+     *                    yo'q bo'lsa 403 ACCESS_DENIED service chaqirilishidan oldin)
      * @return yaratilgan work item + resolved routing target (201 Created)
      */
     @PostMapping("/work-items")
     public ResponseEntity<WorkItemIntakeResponse> submit(
-            @RequestBody(required = false) WorkItemIntakeRequest request) {
+            @RequestBody(required = false) WorkItemIntakeRequest request,
+            @CurrentActor UUID actorUserId) {
         if (request == null) {
             throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
         }
@@ -60,7 +73,7 @@ public class IntakeController {
                 .description(request.description())
                 .workflowDefinitionId(request.workflowDefinitionId())
                 .initialStatusCode(request.initialStatusCode())
-                .createdByUserId(request.createdByUserId())
+                .createdByUserId(actorUserId)
                 .actionSource(request.actionSource())
                 .build();
 
