@@ -2,13 +2,16 @@ package com.engops.platform.workflow;
 
 import com.engops.platform.audit.AuditService;
 import com.engops.platform.audit.model.AuditEvent;
+import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
+import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
 import com.engops.platform.tenantconfig.model.WorkflowTransitionRule;
 import com.engops.platform.workflow.model.WorkItemTransition;
 import com.engops.platform.workflow.repository.WorkItemTransitionRepository;
+import com.engops.platform.workitem.OperationalAuthorizationService;
 import com.engops.platform.workitem.WorkItemCommandService;
 import com.engops.platform.workitem.WorkItemQueryService;
 import com.engops.platform.workitem.model.WorkItem;
@@ -45,6 +48,7 @@ class WorkflowTransitionServiceTest {
     @Mock private TenantConfigQueryService tenantConfigQueryService;
     @Mock private WorkItemTransitionRepository transitionRepository;
     @Mock private AuditService auditService;
+    @Mock private OperationalAuthorizationService operationalAuthorizationService;
 
     @InjectMocks
     private WorkflowTransitionService transitionService;
@@ -213,5 +217,49 @@ class WorkflowTransitionServiceTest {
 
         assertThat(result.getCurrentStatusCode()).isEqualTo("PROCESSING");
         verify(transitionRepository).save(any(WorkItemTransition.class));
+    }
+
+    // --- Phase 139: authorization denial ---
+
+    @Test
+    void transitionDeniesActorWithoutWorkItemTransitionPermission() {
+        // Tenant-safe lookup birinchi navbatda bajariladi va work item topiladi —
+        // 404 emas. Keyin operationalAuthorizationService.authorizeTransition
+        // AccessDeniedException tashlaydi. transition shu exception'ni yuqoriga
+        // uzatadi va hech qanday workflow lookup, mutation, transition save yoki
+        // audit event chaqiruvi bo'lmaydi.
+        WorkItem workItem = createWorkItem("BUGS");
+        when(workItemQueryService.findByTenantAndId(tenantId, workItemId))
+                .thenReturn(Optional.of(workItem));
+        org.mockito.Mockito.doThrow(new AccessDeniedException(
+                        "Bu operatsiya uchun WORK_ITEM_TRANSITION ruxsati talab qilinadi"))
+                .when(operationalAuthorizationService).authorizeTransition(tenantId, actorUserId);
+
+        assertThatThrownBy(() -> transitionService.transition(
+                        tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("WORK_ITEM_TRANSITION");
+
+        verify(workItemQueryService).findByTenantAndId(tenantId, workItemId);
+        verify(operationalAuthorizationService).authorizeTransition(tenantId, actorUserId);
+        org.mockito.Mockito.verifyNoInteractions(tenantConfigQueryService, transitionRepository,
+                auditService, workItemCommandService);
+    }
+
+    @Test
+    void transitionWorkItemNotFoundReturns404BeforeAuthorization() {
+        // Phase 139 invariant: tenant-safe lookup AVVAL bajariladi.
+        // Cross-tenant yoki mavjud bo'lmagan work item uchun ResourceNotFoundException
+        // (404) qaytariladi va authorization service umuman chaqirilmaydi —
+        // 404 semantikasi 403 ga aylanmaydi.
+        when(workItemQueryService.findByTenantAndId(tenantId, workItemId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> transitionService.transition(
+                        tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        org.mockito.Mockito.verifyNoInteractions(operationalAuthorizationService,
+                tenantConfigQueryService, transitionRepository, auditService);
     }
 }

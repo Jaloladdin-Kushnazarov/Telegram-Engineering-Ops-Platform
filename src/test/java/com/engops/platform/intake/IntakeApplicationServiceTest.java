@@ -2,11 +2,13 @@ package com.engops.platform.intake;
 
 import com.engops.platform.routing.RoutingDecision;
 import com.engops.platform.routing.RoutingDecisionService;
+import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
+import com.engops.platform.workitem.OperationalAuthorizationService;
 import com.engops.platform.workitem.WorkItemCommandService;
 import com.engops.platform.workitem.model.WorkItem;
 import com.engops.platform.workitem.model.WorkItemType;
@@ -41,6 +43,7 @@ class IntakeApplicationServiceTest {
     @Mock private WorkItemCommandService workItemCommandService;
     @Mock private TenantConfigQueryService tenantConfigQueryService;
     @Mock private RoutingDecisionService routingDecisionService;
+    @Mock private OperationalAuthorizationService operationalAuthorizationService;
 
     @InjectMocks
     private IntakeApplicationService intakeService;
@@ -557,6 +560,36 @@ class IntakeApplicationServiceTest {
         assertThat(target.isDeliveryReady()).isFalse();
         assertThat(target.getTargetChatBindingId()).isNull();
         assertThat(target.getTargetTopicId()).isNull();
+    }
+
+    // --- Phase 139: authorization denial ---
+
+    @Test
+    void submitDeniesActorWithoutWorkItemCreatePermission() {
+        // validateCommand muvaffaqiyatli o'tadi (barcha field'lar to'ldirilgan).
+        // Keyin operationalAuthorizationService.authorizeIntake AccessDeniedException
+        // tashlaydi — submit shu exception'ni yuqoriga uzatishi va hech qanday
+        // workflow lookup, routing decision yoki work item create chaqiruvi
+        // bo'lmasligi shart.
+        org.mockito.Mockito.doThrow(new AccessDeniedException(
+                        "Bu operatsiya uchun WORK_ITEM_CREATE ruxsati talab qilinadi"))
+                .when(operationalAuthorizationService).authorizeIntake(tenantId, userId);
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("Test")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .build();
+
+        assertThatThrownBy(() -> intakeService.submit(command))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("WORK_ITEM_CREATE");
+
+        verify(operationalAuthorizationService).authorizeIntake(tenantId, userId);
+        verifyNoInteractions(workItemCommandService, routingDecisionService,
+                tenantConfigQueryService);
     }
 
     // --- Helper ---

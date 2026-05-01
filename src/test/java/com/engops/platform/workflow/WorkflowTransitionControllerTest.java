@@ -3,6 +3,7 @@ package com.engops.platform.workflow;
 import com.engops.platform.infrastructure.security.AuthenticatedActor;
 import com.engops.platform.infrastructure.security.SecurityConfig;
 import com.engops.platform.infrastructure.security.SecurityWebMvcConfig;
+import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.workitem.model.WorkItem;
@@ -401,5 +402,34 @@ class WorkflowTransitionControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
 
         verifyNoInteractions(workflowTransitionService);
+    }
+
+    /**
+     * Phase 139: authenticated actor mavjud, lekin tenant'da WORK_ITEM_TRANSITION
+     * ruxsati yo'q — WorkflowTransitionService AccessDeniedException tashlaydi
+     * va GlobalExceptionHandler 403 ACCESS_DENIED ga aylantiradi. Controller
+     * surface'i shu envelope'ni saqlaydi.
+     */
+    @Test
+    void transitionReturns403WhenServiceThrowsAccessDenied() throws Exception {
+        when(workflowTransitionService.transition(
+                eq(TENANT_ID), eq(WORK_ITEM_ID), eq("PROCESSING"),
+                eq(ACTOR_USER_ID), eq("MANUAL"), any()))
+                .thenThrow(new AccessDeniedException(
+                        "Bu operatsiya uchun WORK_ITEM_TRANSITION ruxsati talab qilinadi"));
+
+        mockMvc.perform(post("/api/work-items/{workItemId}/transitions", WORK_ITEM_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"%s",
+                                  "targetStatusCode":"PROCESSING",
+                                  "actorUserId":"%s",
+                                  "actionSource":"MANUAL"
+                                }
+                                """.formatted(TENANT_ID, ACTOR_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 }

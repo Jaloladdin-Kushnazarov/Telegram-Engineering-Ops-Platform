@@ -7,6 +7,7 @@ import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
+import com.engops.platform.workitem.OperationalAuthorizationService;
 import com.engops.platform.workitem.WorkItemCommandService;
 import com.engops.platform.workitem.model.WorkItem;
 import org.springframework.stereotype.Service;
@@ -42,13 +43,16 @@ public class IntakeApplicationService {
     private final WorkItemCommandService workItemCommandService;
     private final TenantConfigQueryService tenantConfigQueryService;
     private final RoutingDecisionService routingDecisionService;
+    private final OperationalAuthorizationService operationalAuthorizationService;
 
     public IntakeApplicationService(WorkItemCommandService workItemCommandService,
                                      TenantConfigQueryService tenantConfigQueryService,
-                                     RoutingDecisionService routingDecisionService) {
+                                     RoutingDecisionService routingDecisionService,
+                                     OperationalAuthorizationService operationalAuthorizationService) {
         this.workItemCommandService = workItemCommandService;
         this.tenantConfigQueryService = tenantConfigQueryService;
         this.routingDecisionService = routingDecisionService;
+        this.operationalAuthorizationService = operationalAuthorizationService;
     }
 
     /**
@@ -59,6 +63,13 @@ public class IntakeApplicationService {
      */
     public IntakeResult submit(IntakeCommand command) {
         validateCommand(command);
+
+        // Phase 139: actor WORK_ITEM_CREATE ruxsatiga ega bo'lishi shart.
+        // validateCommand'dan keyin (validation-before-authorization), lekin
+        // workflow/routing/audit/mutation'dan OLDIN — ruxsatsiz actor hech qanday
+        // downstream chaqiruvni amalga oshira olmaydi.
+        operationalAuthorizationService.authorizeIntake(
+                command.getTenantId(), command.getCreatedByUserId());
 
         // 1. Workflow definition aniqlash
         WorkflowDefinition definition = resolveWorkflowDefinition(command);

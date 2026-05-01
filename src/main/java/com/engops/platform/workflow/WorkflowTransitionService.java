@@ -8,6 +8,7 @@ import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowTransitionRule;
 import com.engops.platform.workflow.model.WorkItemTransition;
 import com.engops.platform.workflow.repository.WorkItemTransitionRepository;
+import com.engops.platform.workitem.OperationalAuthorizationService;
 import com.engops.platform.workitem.WorkItemCommandService;
 import com.engops.platform.workitem.WorkItemQueryService;
 import com.engops.platform.workitem.model.WorkItem;
@@ -37,17 +38,20 @@ public class WorkflowTransitionService {
     private final TenantConfigQueryService tenantConfigQueryService;
     private final WorkItemTransitionRepository transitionRepository;
     private final AuditService auditService;
+    private final OperationalAuthorizationService operationalAuthorizationService;
 
     public WorkflowTransitionService(WorkItemQueryService workItemQueryService,
                                       WorkItemCommandService workItemCommandService,
                                       TenantConfigQueryService tenantConfigQueryService,
                                       WorkItemTransitionRepository transitionRepository,
-                                      AuditService auditService) {
+                                      AuditService auditService,
+                                      OperationalAuthorizationService operationalAuthorizationService) {
         this.workItemQueryService = workItemQueryService;
         this.workItemCommandService = workItemCommandService;
         this.tenantConfigQueryService = tenantConfigQueryService;
         this.transitionRepository = transitionRepository;
         this.auditService = auditService;
+        this.operationalAuthorizationService = operationalAuthorizationService;
     }
 
     /**
@@ -66,6 +70,11 @@ public class WorkflowTransitionService {
                                 UUID actorUserId, String actionSource, String reason) {
         WorkItem workItem = workItemQueryService.findByTenantAndId(tenantId, workItemId)
                 .orElseThrow(() -> new ResourceNotFoundException("WorkItem", workItemId));
+
+        // Phase 139: tenant-safe lookup'dan keyin (404 noto'g'ri tenant-workItem
+        // juftligi uchun saqlanadi), lekin transition validatsiya/mutation/audit'dan
+        // OLDIN — actor WORK_ITEM_TRANSITION ruxsatiga ega bo'lishi shart.
+        operationalAuthorizationService.authorizeTransition(tenantId, actorUserId);
 
         String fromStatus = workItem.getCurrentStatusCode();
         UUID definitionId = workItem.getWorkflowDefinitionId();

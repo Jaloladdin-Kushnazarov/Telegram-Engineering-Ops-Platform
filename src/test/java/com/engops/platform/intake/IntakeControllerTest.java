@@ -3,6 +3,7 @@ package com.engops.platform.intake;
 import com.engops.platform.infrastructure.security.AuthenticatedActor;
 import com.engops.platform.infrastructure.security.SecurityConfig;
 import com.engops.platform.infrastructure.security.SecurityWebMvcConfig;
+import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.workitem.model.WorkItemType;
@@ -355,5 +356,33 @@ class IntakeControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
 
         verifyNoInteractions(intakeApplicationService);
+    }
+
+    /**
+     * Phase 139: authenticated actor mavjud, lekin tenant'da WORK_ITEM_CREATE
+     * ruxsati yo'q — IntakeApplicationService AccessDeniedException tashlaydi
+     * va GlobalExceptionHandler 403 ACCESS_DENIED ga aylantiradi. Controller
+     * surface'i shu envelope'ni saqlaydi.
+     */
+    @Test
+    void submitReturns403WhenServiceThrowsAccessDenied() throws Exception {
+        when(intakeApplicationService.submit(any(IntakeCommand.class)))
+                .thenThrow(new AccessDeniedException(
+                        "Bu operatsiya uchun WORK_ITEM_CREATE ruxsati talab qilinadi"));
+
+        mockMvc.perform(post("/api/intake/work-items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"%s",
+                                  "typeCode":"BUG",
+                                  "title":"Login broken",
+                                  "createdByUserId":"%s",
+                                  "actionSource":"MANUAL"
+                                }
+                                """.formatted(TENANT_ID, CREATED_BY_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 }
