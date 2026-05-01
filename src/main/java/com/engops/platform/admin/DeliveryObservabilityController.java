@@ -1,11 +1,11 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.infrastructure.security.CurrentActor;
 import com.engops.platform.telegram.TelegramDeliveryAttempt;
 import com.engops.platform.telegram.TelegramDeliveryMetricsSnapshot;
 import com.engops.platform.telegram.TelegramDeliveryObservabilityDetailsView;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,8 +25,13 @@ import java.util.UUID;
  * - GET /details/by-owner — owner bo'yicha filtrlangan delivery details ro'yxat
  *
  * Faqat GET — write operatsiya yo'q.
- * Barcha endpoint'lar X-Actor-User-Id header orqali actor identifikatsiyasini oladi.
- * Authorization facade boundary'da amalga oshiriladi — controller thin adapter bo'lib qoladi.
+ * Barcha endpoint'lar joriy actor'ni Spring SecurityContext'dan {@link CurrentActor}
+ * argument resolver orqali oladi (Phase 128). Avvalgi {@code X-Actor-User-Id}
+ * header endi ishlatilmaydi — JWT'dan kelgan {@code AuthenticatedActor} yagona
+ * actor manbai. Authentication SecurityContext'da bo'lmasa resolver
+ * AccessDeniedException tashlaydi va GlobalExceptionHandler 403 qaytaradi.
+ * Authorization facade boundary'da amalga oshiriladi — controller thin adapter
+ * bo'lib qoladi.
  *
  * Bu controller thin adapter:
  * - HTTP request parametrlarini facade'larga uzatadi
@@ -74,7 +79,7 @@ public class DeliveryObservabilityController {
     public ResponseEntity<DeliveryObservabilitySummaryResponse> getSummary(
             @RequestParam UUID tenantId,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = summaryReadFacade.getSummaryList(tenantId, limit, actorUserId);
 
@@ -99,7 +104,7 @@ public class DeliveryObservabilityController {
             @RequestParam UUID tenantId,
             @RequestParam String statusCode,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = summaryByStatusFacade.getSummaryList(tenantId, statusCode, limit, actorUserId);
 
@@ -124,7 +129,7 @@ public class DeliveryObservabilityController {
             @RequestParam UUID tenantId,
             @RequestParam UUID ownerUserId,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = summaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit, actorUserId);
 
@@ -149,7 +154,7 @@ public class DeliveryObservabilityController {
             @RequestParam UUID tenantId,
             @RequestParam String workItemCode,
             @RequestParam(defaultValue = "10") int historyLimit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TelegramDeliveryObservabilityDetailsView details =
                 detailsByCodeFacade.getDetails(tenantId, workItemCode, historyLimit, actorUserId);
@@ -171,7 +176,7 @@ public class DeliveryObservabilityController {
             @RequestParam UUID tenantId,
             @RequestParam UUID workItemId,
             @RequestParam(defaultValue = "10") int historyLimit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TelegramDeliveryObservabilityDetailsView details =
                 detailsByIdFacade.getDetails(tenantId, workItemId, historyLimit, actorUserId);
@@ -193,7 +198,7 @@ public class DeliveryObservabilityController {
             @RequestParam UUID tenantId,
             @RequestParam String statusCode,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = detailsByStatusFacade.getDetailsList(tenantId, statusCode, limit, actorUserId);
 
@@ -218,7 +223,7 @@ public class DeliveryObservabilityController {
             @RequestParam UUID tenantId,
             @RequestParam UUID ownerUserId,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = detailsByOwnerFacade.getDetailsList(tenantId, ownerUserId, limit, actorUserId);
 

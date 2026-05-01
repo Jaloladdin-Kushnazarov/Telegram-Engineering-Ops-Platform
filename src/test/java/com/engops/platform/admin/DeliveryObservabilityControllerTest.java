@@ -1,5 +1,8 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.infrastructure.security.AuthenticatedActor;
+import com.engops.platform.infrastructure.security.SecurityConfig;
+import com.engops.platform.infrastructure.security.SecurityWebMvcConfig;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.telegram.TelegramDeliveryAttempt;
@@ -11,18 +14,25 @@ import com.engops.platform.workitem.model.WorkItemType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import com.engops.platform.infrastructure.security.SecurityConfig;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -38,10 +48,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - invalid historyLimit: 400 qaytariladi
  * - missing required parameter: 400 qaytariladi
  * - unauthorized access: 403 qaytariladi
- * - missing actor header: 403 qaytariladi
+ * - missing authenticated actor: 403 (resolver-level, facade chaqirilmaydi)
+ *
+ * Phase 128 migratsiyasi: avvalgi {@code X-Actor-User-Id} header endi
+ * ishlatilmaydi. Test'lar SecurityContext'ga {@link AuthenticatedActor}
+ * principal'ini {@link #withActor(UUID)} {@link RequestPostProcessor} orqali
+ * o'rnatadi. {@link SecurityWebMvcConfig} {@code @Import} qilinadi —
+ * {@code @WebMvcTest} slice {@code @CurrentActor} resolver'ni faqat shu
+ * konfiguratsiya yuklanganida ro'yxatga oladi.
  */
 @WebMvcTest(DeliveryObservabilityController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, SecurityWebMvcConfig.class})
 class DeliveryObservabilityControllerTest {
 
     private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -49,7 +66,38 @@ class DeliveryObservabilityControllerTest {
     private static final UUID ACTOR_USER_ID = UUID.fromString("77777777-7777-7777-7777-777777777777");
     private static final String WORK_ITEM_CODE = "BUG-1";
     private static final Instant FIXED_TIME = Instant.parse("2026-03-18T10:00:00Z");
-    private static final String ACTOR_HEADER = "X-Actor-User-Id";
+
+    /**
+     * Test helper: request attribute orqali SecurityContext'ga
+     * {@link AuthenticatedActor} principal'ini o'rnatadi. Spring Security'ning
+     * {@code SecurityContextHolderFilter} {@link RequestAttributeSecurityContextRepository}
+     * orqali shu attribute'ni o'qiydi va {@link SecurityContextHolder}'ga
+     * yuklaydi. Keyin {@code @CurrentActor} resolver principal'ni o'qib
+     * controller method'iga {@code actorUserId} sifatida uzatadi.
+     *
+     * <p>JWT round-trip o'rniga to'g'ridan-to'g'ri Authentication o'rnatish
+     * @WebMvcTest slice'ida deterministik — JwtDecoder bean talab qilinmaydi
+     * va resolver semantikasi to'liq tekshiriladi.</p>
+     *
+     * <p>{@code SecurityMockMvcRequestPostProcessors.authentication(...)} ham
+     * bir xil natijaga olib keladi, lekin u {@code spring-security-test}
+     * dependency'sini talab qiladi — bu phase'da pom.xml o'zgartirilmaydi,
+     * shuning uchun bu helper Spring Security ichidagi public API'lardan
+     * foydalanib o'sha effektni qo'lda yaratadi.</p>
+     */
+    private static RequestPostProcessor withActor(UUID actorUserId) {
+        return request -> {
+            Authentication auth = new UsernamePasswordAuthenticationToken(
+                    new AuthenticatedActor(actorUserId, null), null, Collections.emptyList());
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(auth);
+            request.setAttribute(
+                    RequestAttributeSecurityContextRepository.class.getName()
+                            + ".SPRING_SECURITY_CONTEXT",
+                    context);
+            return request;
+        };
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -108,7 +156,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
                         .param("historyLimit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItemId").value(WORK_ITEM_ID.toString()))
                 .andExpect(jsonPath("$.workItemCode").value(WORK_ITEM_CODE))
@@ -155,7 +203,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
                         .param("historyLimit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItemId").value(WORK_ITEM_ID.toString()))
                 .andExpect(jsonPath("$.latestMetrics.empty").value(true))
@@ -178,7 +226,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk());
     }
 
@@ -191,7 +239,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", "NONEXISTENT-99")
                         .param("historyLimit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -206,7 +254,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
                         .param("historyLimit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -216,7 +264,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details")
                         .param("workItemCode", WORK_ITEM_CODE)
                         .param("historyLimit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -225,7 +273,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("historyLimit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -250,7 +298,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/summary")
                         .param("tenantId", TENANT_ID.toString())
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -270,7 +318,7 @@ class DeliveryObservabilityControllerTest {
 
         mockMvc.perform(get("/api/admin/delivery-observability/summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -281,7 +329,7 @@ class DeliveryObservabilityControllerTest {
 
         mockMvc.perform(get("/api/admin/delivery-observability/summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk());
     }
 
@@ -293,7 +341,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/summary")
                         .param("tenantId", TENANT_ID.toString())
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -301,7 +349,7 @@ class DeliveryObservabilityControllerTest {
     @Test
     void summaryMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/summary")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -336,7 +384,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", WORK_ITEM_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItemId").value(WORK_ITEM_ID.toString()))
                 .andExpect(jsonPath("$.workItemCode").value(WORK_ITEM_CODE))
@@ -365,7 +413,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", WORK_ITEM_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItemId").value(WORK_ITEM_ID.toString()))
                 .andExpect(jsonPath("$.latestMetrics.empty").value(true));
@@ -384,7 +432,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", unknownId.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -399,7 +447,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", WORK_ITEM_ID.toString())
                         .param("historyLimit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -408,7 +456,7 @@ class DeliveryObservabilityControllerTest {
     void detailsByIdMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
                         .param("workItemId", WORK_ITEM_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -416,7 +464,7 @@ class DeliveryObservabilityControllerTest {
     void detailsByIdMissingWorkItemIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -442,7 +490,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -463,7 +511,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/summary/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -477,7 +525,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "PROCESSING")
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -492,7 +540,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -501,7 +549,7 @@ class DeliveryObservabilityControllerTest {
     void summaryByStatusMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/summary/by-status")
                         .param("statusCode", "BUGS")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -509,7 +557,7 @@ class DeliveryObservabilityControllerTest {
     void summaryByStatusMissingStatusCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/summary/by-status")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -537,7 +585,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -558,7 +606,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/summary/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -572,7 +620,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -587,7 +635,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -596,7 +644,7 @@ class DeliveryObservabilityControllerTest {
     void summaryByOwnerMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/summary/by-owner")
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -604,7 +652,7 @@ class DeliveryObservabilityControllerTest {
     void summaryByOwnerMissingOwnerUserIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/summary/by-owner")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -640,7 +688,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -665,7 +713,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -679,7 +727,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "PROCESSING")
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -694,7 +742,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -703,7 +751,7 @@ class DeliveryObservabilityControllerTest {
     void detailsByStatusMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-status")
                         .param("statusCode", "BUGS")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -711,7 +759,7 @@ class DeliveryObservabilityControllerTest {
     void detailsByStatusMissingStatusCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-status")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -747,7 +795,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -772,7 +820,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -786,7 +834,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -801,7 +849,7 @@ class DeliveryObservabilityControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -810,7 +858,7 @@ class DeliveryObservabilityControllerTest {
     void detailsByOwnerMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-owner")
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -818,7 +866,7 @@ class DeliveryObservabilityControllerTest {
     void detailsByOwnerMissingOwnerUserIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-owner")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -832,7 +880,7 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -844,7 +892,7 @@ class DeliveryObservabilityControllerTest {
 
         mockMvc.perform(get("/api/admin/delivery-observability/summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -857,19 +905,28 @@ class DeliveryObservabilityControllerTest {
         mockMvc.perform(get("/api/admin/delivery-observability/details/by-id")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", WORK_ITEM_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 
     @Test
-    void missingActorHeaderStillReachesEndpoint() throws Exception {
-        when(summaryReadFacade.getSummaryList(eq(TENANT_ID), eq(20), any()))
-                .thenThrow(new AccessDeniedException("Actor identifikatsiyasi talab qilinadi"));
-
+    void missingAuthenticatedActorReturns403WithoutReachingFacade() throws Exception {
+        // Phase 128: @CurrentActor resolver SecurityContext'da AuthenticatedActor
+        // bo'lmaganida AccessDeniedException tashlaydi va GlobalExceptionHandler
+        // 403 ACCESS_DENIED qaytaradi. Bu facade chaqirilishidan OLDIN bo'ladi —
+        // shuning uchun facade'lar mock'lanmaydi va verifyNoInteractions tasdiqlaydi.
         mockMvc.perform(get("/api/admin/delivery-observability/summary")
                         .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(summaryReadFacade);
+        verifyNoInteractions(detailsByCodeFacade);
+        verifyNoInteractions(detailsByIdFacade);
+        verifyNoInteractions(summaryByStatusFacade);
+        verifyNoInteractions(summaryByOwnerFacade);
+        verifyNoInteractions(detailsByStatusFacade);
+        verifyNoInteractions(detailsByOwnerFacade);
     }
 }
