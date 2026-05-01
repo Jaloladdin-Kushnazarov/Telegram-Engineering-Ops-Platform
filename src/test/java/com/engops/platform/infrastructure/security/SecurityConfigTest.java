@@ -18,22 +18,37 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Phase 124 — SecurityConfig skeleton testlari.
+ * SecurityConfig integratsiya testlari (Phase 124 baseline + Phase 146 posture).
  *
- * Tasdiqlanadi:
- * - Application context SecurityConfig bilan muvaffaqiyatli yuklanadi
- * - SecurityFilterChain bean mavjud (default Spring Boot secure chain'i emas)
- * - Existing endpoint'larga unauthenticated so'rovlar 401/403 olmaydi —
- *   permitAll xulqi ishlamoqda
- * - Form login redirect / HTTP Basic challenge bartaraf etilgan
+ * <p>Bu test class'i {@code @SpringBootTest} bilan to'liq application context'ni
+ * yuklaydi va <em>JwtDecoder bean YOQ</em> sharoitida ishlaydi
+ * (test profilida {@code app.security.jwt.*} property'lari o'rnatilmagan).
+ * Demak {@code SecurityConfig} {@code oauth2ResourceServer} chain'ini wire
+ * qilmaydi va Spring Security default fallback ({@code Http403ForbiddenEntryPoint})
+ * himoyalangan endpoint'lar uchun 403 qaytaradi.</p>
  *
- * Bu test {@code @SpringBootTest} ishlatadi (kichik ham bo'lsa) chunki
- * SecurityConfig integratsiyasi to'liq application context'ni talab qiladi —
- * @WebMvcTest slice'i Spring Security default'ini boshqacha yuklaydi.
+ * <p>JwtDecoder MAVJUD bo'lgan sharoit ({@code app.security.jwt.hmac-secret}
+ * @TestPropertySource bilan o'rnatilgan) {@link JwtResourceServerWiringTest}
+ * tomonidan sinab ko'riladi: u missing/invalid Bearer uchun 401
+ * ({@code BearerTokenAuthenticationEntryPoint}) qaytarilishini tasdiqlaydi.</p>
  *
- * Mock'lar Spring Boot test profile'ining DataSource majburiyatlarini
- * minimallashtirish uchun joriy emas — embedded H2 + Flyway prod baseline'ni
- * to'liq ko'taradi va test holati boshqa SpringBootTest test'lari bilan bir xil.
+ * <p>Tasdiqlanadi (Phase 146 posture):</p>
+ * <ul>
+ *   <li>Application context SecurityConfig bilan muvaffaqiyatli yuklanadi.</li>
+ *   <li>{@code SecurityFilterChain} bean mavjud.</li>
+ *   <li>{@code /api/**} no JWT decoder fallback'da 403 qaytaradi
+ *       (filter-chain reject; intentional fail-closed posture — operatorlar
+ *       JwtDecoder'ni Phase 137 mexanizmi orqali sozlashlari shart).</li>
+ *   <li>{@code /actuator/health/**} no JWT — 401/403 emas (k8s liveness/readiness
+ *       probelar uchun ochiq).</li>
+ *   <li>{@code /actuator/metrics} no JWT — 403 (Phase 146 actuator gate).</li>
+ *   <li>{@code /actuator/flyway} no JWT — 403 (Phase 146 actuator gate).</li>
+ *   <li>{@code /api/**} bo'lmagan path (masalan {@code /__phase124_probe__})
+ *       hamon {@code permitAll} (anyRequest) bilan ishlaydi va auth challenge
+ *       qaytarmaydi.</li>
+ *   <li>{@code formLogin} disabled — {@code /login} GET 302 redirect emas.</li>
+ *   <li>POST CSRF disabled — non-{@code /api/**} path uchun 401/403 qaytarmaydi.</li>
+ * </ul>
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -55,32 +70,84 @@ class SecurityConfigTest {
     }
 
     @Test
-    void permitAllChainAllowsUnauthenticatedGetWithoutBasicChallenge() throws Exception {
+    void noJwtDecoderFallbackForApiWithoutAuthentication_isDocumentedByTest() throws Exception {
+        // Phase 146 + no JwtDecoder bean: Spring Security
+        // Http403ForbiddenEntryPoint default fallback ishlaydi va himoyalangan
+        // /api/** so'rovlari 403 qaytaradi (custom JSON envelope'siz).
+        // Production deployment'lar JwtDecoder'ni Phase 137 issuer-uri/jwk-set-uri
+        // orqali sozlashlari shart — aks holda barcha /api/** endpoint'lar
+        // 403 bo'lib qoladi (Phase 144 runbook'da hujjatlangan).
         MockMvc mockMvc = mvc();
 
-        // Mavjud bo'lmagan endpoint — Spring Security uni 401/403 qilmasligi kerak
-        // (permitAll). 404 esa MVC dispatcher'idan keladi — bu kutilgan natija va
-        // hech qanday auth challenge response'da bo'lmaydi.
-        mockMvc.perform(get("/api/__phase124_probe__"))
+        mockMvc.perform(get("/api/__phase146_probe__"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void actuatorHealthWithoutAuthenticationIsPublic() throws Exception {
+        // Kubernetes liveness/readiness probelar uchun ochiq qoldirildi.
+        // Status 401/403 bo'lmasligi shart (200 yoki health'ga qarab boshqa
+        // health-state status'lar bo'lishi mumkin).
+        MockMvc mockMvc = mvc();
+
+        mockMvc.perform(get("/actuator/health"))
                 .andExpect(result -> {
                     int statusCode = result.getResponse().getStatus();
                     assertThat(statusCode)
-                            .as("permitAll: 401/403 bo'lmasligi kerak")
+                            .as("/actuator/health public bo'lishi shart")
                             .isNotIn(401, 403);
                 });
     }
 
     @Test
-    void permitAllChainAllowsUnauthenticatedPostWithoutCsrfBlock() throws Exception {
+    void actuatorMetricsWithoutAuthenticationRequiresAuthentication() throws Exception {
+        // Phase 146 actuator gate: /actuator/health'dan tashqari hammasi
+        // authenticated. JwtDecoder yo'q bo'lganligi uchun 403 (filter-chain
+        // default). Production deployment'da JwtDecoder sozlanganda 401 bo'ladi.
         MockMvc mockMvc = mvc();
 
-        // Mavjud bo'lmagan POST endpoint — CSRF disabled, shuning uchun 403
-        // (CSRF reject) qaytarilmasligi kerak.
-        mockMvc.perform(post("/api/__phase124_probe__"))
+        mockMvc.perform(get("/actuator/metrics"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void actuatorFlywayWithoutAuthenticationRequiresAuthentication() throws Exception {
+        // Phase 146: /actuator/flyway production'da DB schema migration history
+        // leak qilmasligi uchun authenticated qilingan.
+        MockMvc mockMvc = mvc();
+
+        mockMvc.perform(get("/actuator/flyway"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anyRequestPermitAllAllowsNonApiPathWithoutChallenge() throws Exception {
+        // Phase 146 dan keyin ham /api/**, /actuator/** dan tashqari path'lar
+        // anyRequest().permitAll() ostida qoladi. MVC dispatcher 404 qaytaradi
+        // va Spring Security auth challenge yuklamaydi.
+        MockMvc mockMvc = mvc();
+
+        mockMvc.perform(get("/__phase124_probe__"))
                 .andExpect(result -> {
                     int statusCode = result.getResponse().getStatus();
                     assertThat(statusCode)
-                            .as("CSRF disabled + permitAll: 401/403 bo'lmasligi kerak")
+                            .as("Non-/api/** path: permitAll, 401/403 bo'lmasligi shart")
+                            .isNotIn(401, 403);
+                });
+    }
+
+    @Test
+    void csrfDisabledForNonApiPostWithoutAuthChallenge() throws Exception {
+        // Non-/api/** POST — CSRF disabled bo'lgani uchun 403 qaytarilmaydi.
+        // Test invariant: yo'q endpoint uchun 404/405 bo'ladi (filter chain
+        // anyRequest permitAll'dan o'tkazadi va MVC handle qiladi).
+        MockMvc mockMvc = mvc();
+
+        mockMvc.perform(post("/__phase124_probe__"))
+                .andExpect(result -> {
+                    int statusCode = result.getResponse().getStatus();
+                    assertThat(statusCode)
+                            .as("CSRF disabled + non-/api/** POST: 401/403 bo'lmasligi shart")
                             .isNotIn(401, 403);
                 });
     }
@@ -90,8 +157,8 @@ class SecurityConfigTest {
         MockMvc mockMvc = mvc();
 
         // Spring Security default formLogin /login redirect'ni o'rnatadi.
-        // SecurityConfig formLogin disable qilgani sabab — /login GET 404 yoki
-        // hech bo'lmaganda redirect emas. Asosiy maqsad: 302 redirect'siz xulq.
+        // SecurityConfig formLogin disable qilgani sabab — /login GET 302
+        // redirect emas. Asosiy maqsad: 302 redirect'siz xulq.
         mockMvc.perform(get("/login"))
                 .andExpect(result -> {
                     int statusCode = result.getResponse().getStatus();

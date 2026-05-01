@@ -334,10 +334,19 @@ class IntakeControllerTest {
 
     /**
      * Phase 134 yangi qoplama: SecurityContext'da {@code AuthenticatedActor}
-     * yo'q bo'lganda {@code @CurrentActor} resolver controller body'ga ham,
-     * IntakeApplicationService'ga ham yetib bormay 403 ACCESS_DENIED qaytarishi
-     * kerak. Bu Phase 128/129/131/132 missing-actor qoplamasi bilan bir xil
-     * pattern.
+     * yo'q bo'lganda himoyalangan {@code /api/**} so'rovi 403 qaytarishi va
+     * IntakeApplicationService'ga umuman yetmasligi kerak.
+     *
+     * <p>Phase 146'dan keyin reject layer Spring Security filter chain'iga
+     * ko'chdi: {@code SecurityConfig} {@code /api/**} ni {@code authenticated()}
+     * deb belgilaydi va @WebMvcTest slice'da JwtDecoder bean yo'q, shuning uchun
+     * resource-server entry point wire qilinmaydi va Spring Security default
+     * fallback {@code Http403ForbiddenEntryPoint} 403 qaytaradi (custom JSON
+     * envelope'siz). 403 status va facade-ga yetmaslik invariantlari saqlanadi;
+     * {@code GlobalExceptionHandler}'ning {@code errorCode=ACCESS_DENIED}
+     * envelope'i endi bu yo'lda emit qilinmaydi (filter-chain reject controller
+     * advice'gacha yetmaydi) — bu kelajakdagi mumkin bo'lgan custom
+     * AuthenticationEntryPoint phase'ida hal qilinishi mumkin.</p>
      */
     @Test
     void missingAuthenticatedActorOnSubmitReturns403WithoutReachingService() throws Exception {
@@ -352,8 +361,7 @@ class IntakeControllerTest {
                                   "actionSource":"MANUAL"
                                 }
                                 """.formatted(TENANT_ID, CREATED_BY_USER_ID)))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(intakeApplicationService);
     }

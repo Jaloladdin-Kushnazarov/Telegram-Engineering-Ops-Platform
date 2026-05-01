@@ -187,7 +187,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void detailsMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(get("/api/admin/tenant-config/details"))
+        mockMvc.perform(get("/api/admin/tenant-config/details").with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -276,7 +276,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void workflowDefinitionsMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions"))
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions").with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -369,7 +369,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void routingRulesMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(get("/api/admin/tenant-config/routing-rules"))
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules").with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -462,7 +462,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void chatBindingsMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings"))
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings").with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -560,7 +560,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void topicBindingsMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings"))
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings").with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -655,7 +655,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void membershipsMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(get("/api/admin/tenant-config/memberships"))
+        mockMvc.perform(get("/api/admin/tenant-config/memberships").with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -744,7 +744,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void rolesMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(get("/api/admin/tenant-config/roles"))
+        mockMvc.perform(get("/api/admin/tenant-config/roles").with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -813,14 +813,15 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void permissionsMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(get("/api/admin/tenant-config/permissions"))
+        mockMvc.perform(get("/api/admin/tenant-config/permissions").with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void permissionsInvalidTenantIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/permissions")
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -924,7 +925,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void rolePermissionsMissingTenantIdReturns400() throws Exception {
         UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
-        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}/permissions", roleId))
+        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}/permissions", roleId).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -932,7 +933,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void rolePermissionsInvalidTenantIdFormatReturns400() throws Exception {
         UUID roleId = UUID.fromString("cc111111-1111-1111-1111-111111111111");
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}/permissions", roleId)
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1073,7 +1075,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void permissionRolesMissingTenantIdReturns400() throws Exception {
         UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
-        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId))
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1081,7 +1083,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void permissionRolesInvalidTenantIdFormatReturns400() throws Exception {
         UUID permissionId = UUID.fromString("dd111111-1111-1111-1111-111111111111");
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1228,7 +1231,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void membershipRolesMissingTenantIdReturns400() throws Exception {
         UUID membershipId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
-        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId))
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1236,7 +1239,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void membershipRolesInvalidTenantIdFormatReturns400() throws Exception {
         UUID membershipId = UUID.fromString("ee111111-1111-1111-1111-111111111111");
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1393,7 +1397,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void workflowDetailsMissingTenantIdReturns400() throws Exception {
         UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
-        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId))
+        mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1401,7 +1405,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void workflowDetailsInvalidTenantIdFormatReturns400() throws Exception {
         UUID definitionId = UUID.fromString("aa111111-1111-1111-1111-111111111111");
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1559,7 +1564,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void routingRuleDetailsMissingTenantIdReturns400() throws Exception {
         UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
-        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId))
+        mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1567,7 +1572,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void routingRuleDetailsInvalidTenantIdFormatReturns400() throws Exception {
         UUID ruleId = UUID.fromString("aa999999-9999-9999-9999-999999999991");
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1734,7 +1740,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void chatBindingDetailsMissingTenantIdReturns400() throws Exception {
         UUID chatBindingId = UUID.fromString("88991111-1111-1111-1111-111111111111");
-        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId))
+        mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1742,7 +1748,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void chatBindingDetailsInvalidTenantIdFormatReturns400() throws Exception {
         UUID chatBindingId = UUID.fromString("88991111-1111-1111-1111-111111111111");
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1901,7 +1908,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void topicBindingDetailsMissingTenantIdReturns400() throws Exception {
         UUID topicBindingId = UUID.fromString("aabb1111-1111-1111-1111-111111111111");
-        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId))
+        mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1909,7 +1916,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void topicBindingDetailsInvalidTenantIdFormatReturns400() throws Exception {
         UUID topicBindingId = UUID.fromString("aabb1111-1111-1111-1111-111111111111");
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2031,7 +2039,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void membershipDetailsMissingTenantIdReturns400() throws Exception {
         UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
-        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId))
+        mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2039,7 +2047,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void membershipDetailsInvalidTenantIdFormatReturns400() throws Exception {
         UUID membershipId = UUID.fromString("ee881111-1111-1111-1111-111111111111");
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2137,7 +2146,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void roleDetailsMissingTenantIdReturns400() throws Exception {
         UUID roleId = UUID.fromString("cc991111-1111-1111-1111-111111111111");
-        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId))
+        mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2145,7 +2154,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void roleDetailsInvalidTenantIdFormatReturns400() throws Exception {
         UUID roleId = UUID.fromString("cc991111-1111-1111-1111-111111111111");
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2238,7 +2248,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void permissionDetailsMissingTenantIdReturns400() throws Exception {
         UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
-        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId))
+        mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2246,7 +2256,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void permissionDetailsInvalidTenantIdFormatReturns400() throws Exception {
         UUID permissionId = UUID.fromString("dd991111-1111-1111-1111-111111111111");
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
-                        .param("tenantId", "not-a-uuid"))
+                        .param("tenantId", "not-a-uuid")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2335,7 +2346,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2540,7 +2552,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Flow"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2633,7 +2646,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void activateWorkflowDefinitionMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2681,7 +2694,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void deactivateWorkflowDefinitionMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2722,7 +2735,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void deleteWorkflowDefinitionMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID))
+        mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2814,7 +2827,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567890,"bindingType":"MAIN_GROUP"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2965,7 +2979,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatTitle":"Title"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3061,7 +3076,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void activateChatBindingMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3114,7 +3129,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void deactivateChatBindingMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3155,7 +3170,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void deleteChatBindingMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID))
+        mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3224,7 +3239,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .content("""
                                 {"chatBindingId":"55555555-5555-5555-5555-555555555551",
                                  "topicId":42,"purpose":"BUG_TRIAGE"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3306,7 +3322,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"topicName":"x"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3344,7 +3361,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void activateTopicBindingMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/activate", TB_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/activate", TB_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3377,7 +3394,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void deactivateTopicBindingMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/deactivate", TB_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/deactivate", TB_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3404,7 +3421,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void deleteTopicBindingMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(delete("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID))
+        mockMvc.perform(delete("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3454,7 +3471,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"99999999-9999-9999-9999-999999999991"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3541,7 +3559,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void activateMembershipMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3599,7 +3617,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void suspendMembershipMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3662,7 +3680,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void removeMembershipMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3726,7 +3744,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3830,7 +3849,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void unassignRoleFromMembershipMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
-                        MEMBERSHIP_ID, ROLE_ID))
+                        MEMBERSHIP_ID, ROLE_ID)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -3942,7 +3962,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Rule","workItemType":"BUG","priority":10}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -4146,7 +4167,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Rule"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -4274,7 +4296,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void activateRoutingRuleMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -4325,7 +4347,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void deactivateRoutingRuleMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID))
+        mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -4366,7 +4388,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void deleteRoutingRuleMissingTenantIdReturns400() throws Exception {
-        mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID))
+        mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID).with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -4687,16 +4709,15 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
     @Test
     void missingAuthenticatedActorOnReadReturns403WithoutReachingFacade() throws Exception {
-        // Phase 131: read endpoint @CurrentActor ga ko'chgani uchun
-        // SecurityContext'da AuthenticatedActor bo'lmaganida resolver
-        // AccessDeniedException tashlaydi va GlobalExceptionHandler 403
-        // ACCESS_DENIED qaytaradi. Bu detailsFacade chaqirilishidan OLDIN
-        // bo'ladi — verifyNoInteractions(detailsFacade) shu kontraktni
-        // tasdiqlaydi.
+        // Phase 131: missing actor 403 + facade chaqirilmaydi.
+        // Phase 146'dan keyin reject layer Spring Security filter chain'iga
+        // ko'chdi: @WebMvcTest slice'da JwtDecoder bean yo'q, shuning uchun
+        // Spring Security default fallback Http403ForbiddenEntryPoint 403
+        // qaytaradi (custom JSON envelope'siz). 403 status va facade'ga
+        // yetmaslik invariantlari saqlanadi.
         mockMvc.perform(get("/api/admin/tenant-config/details")
                         .param("tenantId", TENANT_ID.toString()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(detailsFacade);
     }
@@ -4757,7 +4778,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"permissionId":"%s"}
-                                """.formatted(PERMISSION_ID)))
+                                """.formatted(PERMISSION_ID))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -4845,7 +4867,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void unassignPermissionFromRoleMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
-                        ROLE_ID, PERMISSION_ID))
+                        ROLE_ID, PERMISSION_ID)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -4949,7 +4972,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"BUGS","statusOrder":0,"initial":true,"terminal":false}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -5110,7 +5134,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         TR_DEFINITION_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
-                                + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
+                                + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -5270,7 +5295,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Acme","slug":"acme"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -5378,7 +5404,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"telegramUserId":123456789}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -5462,6 +5489,14 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     //   6) membership lifecycle
     // Har bir test verifyNoInteractions(writeFacade) bilan write facade
     // chaqirilmaganini tasdiqlaydi.
+    //
+    // Phase 146 yangilanishi: reject layer Spring Security filter chain'iga
+    // ko'chdi (SecurityConfig /api/** authenticated qoidasi). @WebMvcTest
+    // slice'da JwtDecoder bean yo'q, shuning uchun resource-server entry point
+    // wire qilinmaydi va Spring Security default fallback Http403ForbiddenEntryPoint
+    // 403 qaytaradi (custom JSON envelope'siz). 403 status va writeFacade'ga
+    // yetmaslik invariantlari saqlanadi; GlobalExceptionHandler errorCode
+    // envelope'i bu yo'lda emit qilinmaydi.
 
     @Test
     void missingAuthenticatedActorOnCreateWorkflowDefinitionReturns403WithoutReachingFacade()
@@ -5472,8 +5507,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG"}
                                 """))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(writeFacade);
     }
@@ -5487,8 +5521,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .content("""
                                 {"name":"Updated"}
                                 """))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(writeFacade);
     }
@@ -5498,8 +5531,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
             throws Exception {
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
                         .param("tenantId", TENANT_ID.toString()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(writeFacade);
     }
@@ -5509,8 +5541,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
             throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(writeFacade);
     }
@@ -5524,8 +5555,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .content("""
                                 {"permissionId":"cccccccc-cccc-cccc-cccc-ccccccccccc1"}
                                 """))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(writeFacade);
     }
@@ -5535,8 +5565,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
             throws Exception {
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
                         .param("tenantId", TENANT_ID.toString()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(writeFacade);
     }

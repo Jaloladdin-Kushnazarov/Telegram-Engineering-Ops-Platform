@@ -912,14 +912,16 @@ class DeliveryObservabilityControllerTest {
 
     @Test
     void missingAuthenticatedActorReturns403WithoutReachingFacade() throws Exception {
-        // Phase 128: @CurrentActor resolver SecurityContext'da AuthenticatedActor
-        // bo'lmaganida AccessDeniedException tashlaydi va GlobalExceptionHandler
-        // 403 ACCESS_DENIED qaytaradi. Bu facade chaqirilishidan OLDIN bo'ladi —
-        // shuning uchun facade'lar mock'lanmaydi va verifyNoInteractions tasdiqlaydi.
+        // Phase 128: missing actor bo'lganda himoyalangan endpoint 403 qaytaradi
+        // va facade chaqirilmaydi. Phase 146'dan keyin reject layer Spring Security
+        // filter chain'iga ko'chdi: @WebMvcTest slice'da JwtDecoder bean yo'q,
+        // shuning uchun resource-server entry point wire qilinmaydi va Spring
+        // Security default fallback Http403ForbiddenEntryPoint 403 qaytaradi
+        // (custom JSON envelope'siz). 403 status va facade'ga yetmaslik
+        // invariantlari saqlanadi.
         mockMvc.perform(get("/api/admin/delivery-observability/summary")
                         .param("tenantId", TENANT_ID.toString()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(summaryReadFacade);
         verifyNoInteractions(detailsByCodeFacade);

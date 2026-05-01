@@ -11,7 +11,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Spring Security konfiguratsiyasi (Phase 124 + Phase 125 + Phase 126).
+ * Spring Security konfiguratsiyasi (Phase 124 + Phase 125 + Phase 126 + Phase 146).
  *
  * <p>Phase 124'da skeleton: CSRF/formLogin/httpBasic disabled, STATELESS session,
  * hamma endpoint'lar {@code permitAll}.</p>
@@ -21,34 +21,58 @@ import org.springframework.security.web.SecurityFilterChain;
  * {@code JwtDecoder} bean ({@code app.security.jwt.hmac-secret} property
  * mavjud bo'lganda).</p>
  *
- * <p><strong>Phase 126:</strong> {@code oauth2ResourceServer} chain
- * <em>conditional ravishda</em> wire qilinadi — faqat {@link JwtDecoder} bean
- * mavjud bo'lsa. {@link ObjectProvider#getIfAvailable()} orqali decoder
- * tekshiriladi: yo'q bo'lsa, oauth2ResourceServer chaqirilmaydi va startup
- * mavjud sharoitlarda avvalgi singari ishlaydi (HMAC secret yo'q profillarda
- * JWT chain umuman qo'shilmaydi).</p>
+ * <p>Phase 126'da {@code oauth2ResourceServer} chain conditional ravishda
+ * wire qilindi — faqat {@link JwtDecoder} bean mavjud bo'lsa.</p>
  *
- * <p>Decoder mavjud bo'lganda:</p>
+ * <p><strong>Phase 146 — endpoint authentication enforcement:</strong>
+ * Avvalgi yagona {@code anyRequest().permitAll()} qoidasi explicit rule
+ * tartibi bilan almashtirildi:</p>
+ * <ol>
+ *   <li>{@code /actuator/health/**} — {@code permitAll}: Kubernetes
+ *       liveness/readiness probelar uchun ochiq qoldiriladi.</li>
+ *   <li>{@code /actuator/**} — {@code authenticated}: metrics, info, flyway
+ *       kabi sezgir endpoint'lar production information leak'ini oldini
+ *       olish uchun avtorizatsiya talab qiladi.</li>
+ *   <li>{@code /api/**} — {@code authenticated}: barcha business REST
+ *       endpoint'lar filter chain'da default-deny posture'iga ega bo'ladi.
+ *       Yangi controller {@code @CurrentActor}'ni unutsa ham accidentally
+ *       public bo'lib qolmaydi.</li>
+ *   <li>{@code anyRequest()} — {@code permitAll}: tegishli bo'lmagan yo'llar
+ *       (masalan, mavjud bo'lmagan path'lar Spring MVC tomonidan 404 sifatida
+ *       qaytariladi va auth challenge qaytarilmaydi).</li>
+ * </ol>
+ *
+ * <p><strong>JWT decoder posture'ga ta'siri:</strong></p>
  * <ul>
- *   <li>{@code Authorization: Bearer ...} header'i bo'lgan so'rovlar uchun
- *       JWT decode qilinadi</li>
- *   <li>{@link JwtActorConverter} {@code AuthenticatedActor} principal'ini
- *       o'rnatadi</li>
- *   <li>Hech qanday Bearer berilmagan so'rovlar avvalgi xulqi bilan o'tadi
- *       ({@code permitAll})</li>
- *   <li>Yaroqsiz Bearer (imzo, expiry, format) — Spring Security default
- *       resource-server reject xulqi (401)</li>
+ *   <li>Decoder mavjud (production: {@code issuer-uri}/{@code jwk-set-uri}
+ *       sozlangan; test: HMAC secret @TestPropertySource bilan): missing yoki
+ *       invalid Bearer token uchun {@code BearerTokenAuthenticationEntryPoint}
+ *       <strong>401</strong> qaytaradi ({@code WWW-Authenticate: Bearer}).
+ *       Valid Bearer + DB permission yo'q: facade/service-level
+ *       <strong>403 ACCESS_DENIED</strong> ({@code GlobalExceptionHandler}).</li>
+ *   <li>Decoder mavjud emas ({@code app.security.jwt.*} sozlanmagan,
+ *       shu jumladan {@code @WebMvcTest} slice'lari): hech qanday
+ *       resource-server entry point wire qilinmaydi va Spring Security
+ *       default fallback {@code Http403ForbiddenEntryPoint} ishlatiladi —
+ *       {@code /api/**} va himoyalangan {@code /actuator/**} so'rovlari uchun
+ *       <strong>403</strong> qaytariladi (custom envelope'siz). Bu
+ *       intentional fail-closed posture: production deployment'lar
+ *       JwtDecoder'ni Phase 137 mexanizmi orqali sozlashi shart, aks holda
+ *       barcha himoyalangan endpoint'lar 403 bo'lib qoladi.</li>
  * </ul>
  *
- * <p>Endpoint enforcement Phase 126'da hali ham YO'Q — {@code anyRequest().permitAll()}
- * saqlanadi. JWT mavjud bo'lsa SecurityContext to'ladi, mavjud bo'lmasa request
- * davom etaveradi.</p>
+ * <p><strong>Out of scope for Phase 146:</strong> custom
+ * {@code AuthenticationEntryPoint} JSON envelope (Phase 147 nomzodi);
+ * {@code management.endpoints.web.exposure.include} cheklash (Phase 147);
+ * {@code @PreAuthorize} yoki method security; controller/facade/service
+ * o'zgarishlari.</p>
  *
  * <p><strong>Test slice integratsiyasi:</strong> Production'da
  * {@code @SpringBootApplication} component-scan orqali yuklanadi.
  * {@code @WebMvcTest} slice'larida {@code @Import(SecurityConfig.class)} orqali
- * explicit yuklanadi — shu yondashuv mavjud controller test'larini
- * 403/401'siz saqlashda davom etadi.</p>
+ * explicit yuklanadi. {@code @WebMvcTest} slice'lari {@code JwtDecoder} bean
+ * yuklamaydi, shuning uchun missing-actor controller testlari Phase 146'dan
+ * keyin ham 403 kutadi (resource-server entry point yo'q).</p>
  */
 @Configuration
 @EnableWebSecurity
@@ -63,12 +87,28 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(authz -> authz.anyRequest().permitAll());
+                .authorizeHttpRequests(authz -> authz
+                        // Phase 146: Kubernetes/load-balancer health probelari
+                        // uchun ochiq qoldiriladi.
+                        .requestMatchers("/actuator/health/**").permitAll()
+                        // Phase 146: qolgan actuator endpoint'lari (info, metrics,
+                        // flyway, va h.k.) production information leak'ini oldini
+                        // olish uchun authenticated.
+                        .requestMatchers("/actuator/**").authenticated()
+                        // Phase 146: barcha business API endpoint'lari default-deny.
+                        .requestMatchers("/api/**").authenticated()
+                        // Boshqa yo'llar (masalan mavjud bo'lmagan endpoint'lar va
+                        // SecurityConfigTest probe path'lari) uchun avvalgi
+                        // permitAll posture saqlanadi — auth challenge qaytarilmaydi
+                        // va MVC dispatcher 404 qaytaradi.
+                        .anyRequest().permitAll());
 
         // Phase 126: JwtDecoder bean mavjud bo'lganda oauth2ResourceServer'ni
         // explicit decoder + JwtActorConverter bilan wire qilamiz. Decoder
-        // mavjud bo'lmagan profillarda (HMAC secret property o'rnatilmagan)
-        // chain umuman qo'shilmaydi va startup avvalgi sharoitda davom etadi.
+        // mavjud bo'lmagan profillarda (HMAC secret/issuer-uri/jwk-set-uri
+        // property o'rnatilmagan) chain umuman qo'shilmaydi va Spring Security
+        // default fallback (Http403ForbiddenEntryPoint) himoyalangan
+        // endpoint'lar uchun 403 qaytaradi.
         JwtDecoder decoder = jwtDecoderProvider.getIfAvailable();
         if (decoder != null) {
             http.oauth2ResourceServer(oauth2 -> oauth2

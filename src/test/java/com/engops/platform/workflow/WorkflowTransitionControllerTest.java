@@ -388,6 +388,11 @@ class WorkflowTransitionControllerTest {
      */
     @Test
     void missingAuthenticatedActorOnTransitionReturns403WithoutReachingService() throws Exception {
+        // Phase 146: filter-chain reject ({@code SecurityConfig} {@code /api/**}
+        // authenticated qoidasi) controller advice'gacha yetmaydi, shuning uchun
+        // {@code GlobalExceptionHandler}'ning {@code errorCode=ACCESS_DENIED}
+        // envelope'i emit qilinmaydi. 403 status va service'ga yetmaslik
+        // invariantlari saqlanadi.
         mockMvc.perform(post("/api/work-items/{workItemId}/transitions", WORK_ITEM_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -398,8 +403,7 @@ class WorkflowTransitionControllerTest {
                                   "actionSource":"MANUAL"
                                 }
                                 """.formatted(TENANT_ID, SPOOFED_BODY_ACTOR_USER_ID)))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+                .andExpect(status().isForbidden());
 
         verifyNoInteractions(workflowTransitionService);
     }
