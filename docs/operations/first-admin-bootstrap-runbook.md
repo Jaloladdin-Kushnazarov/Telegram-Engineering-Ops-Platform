@@ -1,0 +1,407 @@
+# First-Admin Bootstrap Runbook
+
+Operator-facing runbook for safely bringing up the first production admin on the
+Telegram Engineering Operations Platform after Phases 137 / 139 / 141 / 143.
+
+> Audience: deployment / SRE operators. Not a developer guide.
+
+---
+
+## 1. Purpose
+
+This runbook explains how to take a freshly-deployed instance of the platform
+(empty `tenant`, `app_user`, `membership`, `membership_role_binding` tables) and
+provision the first usable admin so that admin and operational HTTP endpoints
+become reachable.
+
+**Why a runbook is needed:**
+
+- All HTTP endpoints are protected by `@CurrentActor` + DB-backed permissions.
+- After Flyway migrations V1–V6, the role catalog and `role_permission` grants
+  are seeded, but **no `tenant`, `app_user`, `membership`, or
+  `membership_role_binding` rows exist**.
+- Result: every protected admin / operational request returns
+  `403 ACCESS_DENIED` until at least one admin has been provisioned.
+- The platform exposes **no HTTP setup endpoint**; the first admin is
+  provisioned via a property-driven startup component
+  (`BootstrapAdminInitializer`, Phase 143).
+
+This runbook walks an operator through that bootstrap safely and documents
+recovery from common misconfigurations.
+
+---
+
+## 2. Security model summary
+
+- **JWT is identity-only.** Authority claims are intentionally ignored.
+- **JWT `sub` must be a UUID string.** It becomes
+  `AuthenticatedActor.appUserId` directly — there is no DB lookup that maps a
+  human username to an internal id.
+- **`AppUser.id` must equal the operator's JWT `sub`.** The bootstrap property
+  `app.bootstrap.admin.app-user-id` must be set to that exact UUID.
+- **Permissions are resolved at the DB layer**, not from the token:
+  `Membership(ACTIVE) → MembershipRoleBinding → Role(ACTIVE) →
+  RolePermission → Permission.code`.
+- `telegram_user_id` is informational / audit attribution. It identifies the
+  Telegram side of the same person but **does not drive authorization**.
+  Authorization is always keyed on the UUID `appUserId`.
+
+### Identity flow
+
+```
+JWT token
+  sub = <uuid>
+  telegram_user_id = <long>
+     |
+JwtActorConverter
+     |
+AuthenticatedActor(appUserId=<uuid>, telegramUserId=<long>)
+     |
+@CurrentActor UUID actorUserId
+     |
+IdentityQueryService.resolvePermissionCodes(tenantId, actorUserId)
+     |
+Membership -> Role -> RolePermission -> Permission
+```
+
+If any step fails (no JWT, missing membership, missing role binding, missing
+permission), the request fail-closes with `403 ACCESS_DENIED`.
+
+---
+
+## 3. JWT decoder configuration
+
+The platform supports **three mutually-exclusive** JWT decoder modes. Setting
+more than one fails startup with a clear `IllegalStateException`.
+
+| Property | Mode | Use when |
+|---|---|---|
+| `app.security.jwt.issuer-uri` | OIDC discovery | Production with an OIDC IdP (Keycloak, Auth0, Okta, Azure AD, …). **Preferred.** |
+| `app.security.jwt.jwk-set-uri` | Direct JWKS URL | Production where OIDC discovery is not available but a JWKS endpoint is. |
+| `app.security.jwt.hmac-secret` | HMAC HS256 | **Dev / test only.** Must NOT be used in production. |
+
+Spring Boot relaxed binding maps these to environment variables:
+
+```bash
+# Preferred — OIDC discovery
+APP_SECURITY_JWT_ISSUER_URI=https://idp.example.com/realms/engops
+
+# Acceptable alternative — direct JWKS
+APP_SECURITY_JWT_JWK_SET_URI=https://idp.example.com/realms/engops/protocol/openid-connect/certs
+```
+
+> **Never set `APP_SECURITY_JWT_HMAC_SECRET` in production.** HMAC requires the
+> verifier and the issuer to share a symmetric secret, which means anyone who
+> reads the secret can forge tokens. Use OIDC public-key verification.
+
+> **Never set more than one decoder mode at the same time.** The application
+> will fail to start with a configuration error.
+
+If none of the three modes is set, no `JwtDecoder` bean is created, the
+filter chain accepts unauthenticated requests at the network layer (`permitAll`
+posture), and every protected controller still returns `403` because
+`@CurrentActor` cannot resolve an actor. This is the expected fail-closed
+posture, not a runtime feature.
+
+---
+
+## 4. Bootstrap properties
+
+All properties live under prefix `app.bootstrap.admin`. Default values are
+shown in parentheses where applicable.
+
+| Property | Env var | Required when `enabled=true` | Notes |
+|---|---|---|---|
+| `app.bootstrap.admin.enabled` | `APP_BOOTSTRAP_ADMIN_ENABLED` | — | Default `false`. Must be `true` to provision. |
+| `app.bootstrap.admin.tenant-name` | `APP_BOOTSTRAP_ADMIN_TENANT_NAME` | YES | Human-readable tenant name. |
+| `app.bootstrap.admin.tenant-slug` | `APP_BOOTSTRAP_ADMIN_TENANT_SLUG` | YES | Idempotency key. UNIQUE in DB. Pick a final value. |
+| `app.bootstrap.admin.tenant-timezone` | `APP_BOOTSTRAP_ADMIN_TENANT_TIMEZONE` | no (default `UTC`) | IANA timezone string. |
+| `app.bootstrap.admin.app-user-id` | `APP_BOOTSTRAP_ADMIN_APP_USER_ID` | YES | UUID. **Must equal the operator's JWT `sub` exactly.** |
+| `app.bootstrap.admin.telegram-user-id` | `APP_BOOTSTRAP_ADMIN_TELEGRAM_USER_ID` | YES | Long. UNIQUE in DB. |
+| `app.bootstrap.admin.username` | `APP_BOOTSTRAP_ADMIN_USERNAME` | no | Telegram username (without `@`). |
+| `app.bootstrap.admin.display-name` | `APP_BOOTSTRAP_ADMIN_DISPLAY_NAME` | YES | Human-readable name. |
+
+When `enabled=true` and any required property is missing or blank, the app
+fails to start with `IllegalStateException: Bootstrap admin enabled but
+missing required property: ...` — this is intentional fail-fast.
+
+---
+
+## 5. First-run sequence
+
+Follow these steps in order. Do not skip steps.
+
+**Step 1 — IdP user.** Create or pick the operator account in the production
+IdP. Note the JWT `sub` claim — it must be a UUID. If the IdP issues a
+non-UUID `sub`, configure it to issue UUID `sub` values for this application
+(many IdPs allow per-client subject mapping).
+
+**Step 2 — Capture the UUID.** Copy the IdP `sub` UUID into
+`APP_BOOTSTRAP_ADMIN_APP_USER_ID`. This step is the load-bearing one — if the
+two values diverge by even one character, the operator's JWT will not match
+the bootstrapped `AppUser` and authorization will return `403`.
+
+**Step 3 — Configure JWT verification.** Set exactly one of:
+- `APP_SECURITY_JWT_ISSUER_URI=https://...`, or
+- `APP_SECURITY_JWT_JWK_SET_URI=https://.../jwks`.
+
+Do not set `APP_SECURITY_JWT_HMAC_SECRET`.
+
+**Step 4 — Set bootstrap env vars.** Set `APP_BOOTSTRAP_ADMIN_ENABLED=true`
+and all required properties from Section 4.
+
+**Step 5 — Start the app once.** Deploy and start with the bootstrap env vars
+loaded.
+
+**Step 6 — Check logs.** Look for:
+```
+Bootstrap admin initialization started: tenantSlug=..., appUserId=...
+Bootstrap admin initialization completed: tenantId=..., appUserId=..., slug=...
+```
+
+**Step 7 — Verify the audit event.** Query `audit_event` for the row with
+`action = 'BOOTSTRAP_COMPLETED'` and `action_source = 'BOOTSTRAP'`. The
+`actor_user_id` should equal the operator's `app-user-id` and the
+`aggregate_id` should equal the new `tenant.id`.
+
+**Step 8 — Smoke test the admin path.** Call an admin read endpoint with the
+operator's JWT, e.g. `GET /api/admin/tenant-config/details?tenantId=<tenantId>`.
+Expect HTTP 200 and a non-empty response. If you get `403 ACCESS_DENIED`,
+the most likely cause is `app-user-id` ≠ JWT `sub`.
+
+**Step 9 — Disable bootstrap.** Either set
+`APP_BOOTSTRAP_ADMIN_ENABLED=false` or remove all bootstrap env vars.
+Leaving them in place is not unsafe (the run is idempotent) but it is noisy
+in audit and obscures intent.
+
+**Step 10 — Restart normally.** Restart the app without the bootstrap
+properties. Verify steps 7 and 8 still hold.
+
+---
+
+## 6. Example environment block (FAKE values)
+
+```bash
+# JWT verification (production — OIDC discovery)
+APP_SECURITY_JWT_ISSUER_URI=https://idp.example.com/realms/engops
+
+# First-admin bootstrap — first run only
+APP_BOOTSTRAP_ADMIN_ENABLED=true
+APP_BOOTSTRAP_ADMIN_TENANT_NAME=Acme Engineering
+APP_BOOTSTRAP_ADMIN_TENANT_SLUG=acme
+APP_BOOTSTRAP_ADMIN_TENANT_TIMEZONE=UTC
+APP_BOOTSTRAP_ADMIN_APP_USER_ID=11111111-1111-1111-1111-111111111111
+APP_BOOTSTRAP_ADMIN_TELEGRAM_USER_ID=123456789
+APP_BOOTSTRAP_ADMIN_USERNAME=admin_operator
+APP_BOOTSTRAP_ADMIN_DISPLAY_NAME=Admin Operator
+```
+
+> **Do not commit real production values to git.** Use environment variables,
+> a secret manager (Vault, AWS Secrets Manager, GCP Secret Manager, K8s
+> Secret), or your deployment platform's config layer. The example above
+> uses placeholder hosts and a placeholder UUID.
+
+---
+
+## 7. Idempotency behavior
+
+Bootstrap is safe to re-run with the same configuration:
+
+- **Tenant** is reused by `tenant-slug` (DB UNIQUE).
+- **AppUser** is reused by `app-user-id` (UUID primary key).
+- **Membership** is reused by `(tenantId, userId)` (DB UNIQUE composite).
+- **MembershipRoleBinding to ADMIN** is reused if the binding already exists
+  (explicit existence check; no `DUPLICATE_MEMBERSHIP_ROLE` exception).
+- The whole bootstrap runs in a single `@Transactional` block — partial
+  failure rolls back all four rows.
+
+A second run with the same configuration writes **no new tenant / app_user /
+membership / role-binding rows** but still emits one `BOOTSTRAP_COMPLETED`
+audit event (see Section 8 for why).
+
+---
+
+## 8. Audit expectations
+
+| Run | Per-row events emitted by command services | Bootstrap event |
+|---|---|---|
+| First successful run, all four rows new | `TENANT/CREATED`, `APP_USER/CREATED`, `MEMBERSHIP/CREATED`, `MEMBERSHIP_ROLE_BINDING/CREATED` (each with `action_source = 'ADMIN_API'`) | `TENANT/BOOTSTRAP_COMPLETED` (`action_source = 'BOOTSTRAP'`) |
+| Idempotent re-run, no new rows | none | `TENANT/BOOTSTRAP_COMPLETED` |
+| Partial-state re-run (e.g. tenant exists, user does not) | only the events for newly-created rows | `TENANT/BOOTSTRAP_COMPLETED` |
+| Failure mid-flight | rolled back; no audit row persisted (transaction rollback) | none |
+
+**Why `BOOTSTRAP_COMPLETED` always fires on a successful enabled run** (even
+when nothing was created): operators must be able to see in the audit trail
+that a bootstrap attempt was made. A run that silently did nothing would be
+indistinguishable from a deployment that never had bootstrap enabled.
+
+`BOOTSTRAP_COMPLETED` shape:
+
+| Column | Value |
+|---|---|
+| `tenant_id` | provisioned tenant UUID |
+| `aggregate_type` | `TENANT` |
+| `aggregate_id` | tenant UUID |
+| `action` | `BOOTSTRAP_COMPLETED` |
+| `actor_user_id` | bootstrap admin `app-user-id` (self-attribution) |
+| `action_source` | `BOOTSTRAP` (distinct from `ADMIN_API`) |
+| `previous_value` | `null` |
+| `new_value` | `tenant-slug` |
+
+---
+
+## 9. Rollback / recovery
+
+### Scenario A — Wrong `app-user-id` was used
+
+The bootstrapped `AppUser.id` does not match the operator's real JWT `sub`.
+Symptom: admin JWT requests return `403`.
+
+Recovery:
+1. Disable bootstrap (`APP_BOOTSTRAP_ADMIN_ENABLED=false`).
+2. Either:
+   - via DB: mark the wrong `app_user.status` as inactive, mark its
+     `membership.status` as `REMOVED`, then re-run bootstrap with the
+     correct `app-user-id` (which will create a new `AppUser`,
+     `Membership`, and ADMIN binding); or
+   - via DB: directly update `app_user.id` is **not safe** (FK references in
+     membership / audit). Prefer creating a new admin row.
+3. Verify IdP `sub` matches the new `AppUser.id` exactly.
+
+### Scenario B — Wrong `telegram-user-id` was used
+
+The `app_user` exists with the wrong Telegram identifier. Authorization is
+unaffected (it keys on `app_user.id`), but Telegram-side attribution is wrong.
+
+Recovery:
+- Update `app_user.telegram_user_id` directly via SQL, respecting the UNIQUE
+  constraint (no other user may already hold the desired value).
+
+### Scenario C — Wrong `tenant-slug` was used
+
+`tenant-slug` is the idempotency key. A re-run with a different slug creates
+a separate tenant rather than fixing the first one.
+
+Recovery:
+- If the wrong tenant has no production data, mark it inactive via the admin
+  API or DB.
+- Avoid hard-deleting the row — `audit_event`, `workflow_definition`,
+  `routing_rule`, and `membership` may already reference its `tenant_id`.
+- Re-run bootstrap with the correct slug to create the right tenant.
+
+### Scenario D — Bootstrap enabled but a required property is missing
+
+Symptom: app startup fails with
+`IllegalStateException: Bootstrap admin enabled but missing required property: ...`.
+
+Recovery:
+- Add the missing env var and restart, **or**
+- Set `APP_BOOTSTRAP_ADMIN_ENABLED=false` and restart, then provision admin
+  via SQL or via a separately-bootstrapped environment.
+
+### Scenario E — `ADMIN` role missing from catalog
+
+Symptom: app startup fails with
+`IllegalStateException: Bootstrap fail: ADMIN role not found in role catalog`.
+
+Recovery:
+- This indicates corrupted Flyway state (V2 was modified or rolled back).
+- Verify the V2 migration ran and seeded role rows
+  (`SELECT id, code FROM role WHERE code = 'ADMIN'`).
+- Do **not** insert a random ADMIN role — re-create from the V2 deterministic
+  UUID `b0000000-0000-0000-0000-000000000001`.
+- Investigate why the migration history diverged before re-running bootstrap.
+
+---
+
+## 10. Validation checklist
+
+### Before first run
+
+- [ ] Production deployment uses `APP_SECURITY_JWT_ISSUER_URI` or
+  `APP_SECURITY_JWT_JWK_SET_URI`.
+- [ ] `APP_SECURITY_JWT_HMAC_SECRET` is **absent** in production.
+- [ ] `APP_BOOTSTRAP_ADMIN_APP_USER_ID` equals the operator's JWT `sub`.
+- [ ] `APP_BOOTSTRAP_ADMIN_TELEGRAM_USER_ID` is the operator's real Telegram
+  user id and is unique system-wide.
+- [ ] `APP_BOOTSTRAP_ADMIN_TENANT_SLUG` is the final, intended slug.
+- [ ] `APP_BOOTSTRAP_ADMIN_ENABLED=true` is set **only for this first run**.
+
+### After first run
+
+- [ ] App started successfully (no startup exception).
+- [ ] Logs show `Bootstrap admin initialization completed: ...`.
+- [ ] `audit_event` contains a row with `action = 'BOOTSTRAP_COMPLETED'`
+  and `action_source = 'BOOTSTRAP'`.
+- [ ] Admin JWT can call `GET /api/admin/tenant-config/details?tenantId=...`
+  and gets HTTP 200.
+- [ ] `POST /api/intake/work-items` and
+  `POST /api/work-items/{id}/transitions` honor `WORK_ITEM_CREATE` /
+  `WORK_ITEM_TRANSITION` per the seeded ADMIN role permissions
+  (Phase 141).
+- [ ] `APP_BOOTSTRAP_ADMIN_ENABLED` is unset or set to `false` for
+  subsequent normal runs.
+
+---
+
+## 11. Common mistakes
+
+- ❌ **Using the Telegram user id as `app-user-id`.** `app-user-id` is a UUID
+  (the JWT `sub`); `telegram-user-id` is a Long (the Telegram identifier).
+  These are independent fields.
+- ❌ **Using a non-UUID JWT `sub` value.** `JwtActorConverter` rejects non-UUID
+  `sub` claims at decode time.
+- ❌ **Setting both `issuer-uri` and `jwk-set-uri` together.** Or any two of the
+  three decoder modes. Application startup fails fast.
+- ❌ **Leaving `hmac-secret` set in production.** The dev-only HMAC mode allows
+  anyone with the secret to forge tokens.
+- ❌ **Leaving bootstrap enabled permanently.** Not unsafe (idempotent), but
+  every restart writes a `BOOTSTRAP_COMPLETED` audit event, which clutters
+  the audit trail and obscures real bootstrap incidents.
+- ❌ **Changing `tenant-slug` after the first run.** A new slug creates a new
+  tenant, not a renamed one.
+- ❌ **Expecting JWT scopes / authorities to grant permissions.** They don't.
+  Authorities are intentionally empty; permissions come from the DB chain.
+- ❌ **Skipping or rolling back the V6 (Phase 141) migration.** Without the
+  default `role_permission` bindings, the ADMIN role grants no permissions
+  and bootstrap is functionally useless.
+
+---
+
+## 12. Out of scope / not implemented
+
+The following are deliberately not part of the bootstrap mechanism and must
+not be assumed:
+
+- ❌ No HTTP setup endpoint exists. Bootstrap is startup-only.
+- ❌ No automatic IdP user provisioning. The operator account must already
+  exist in the IdP.
+- ❌ No password / credential generation in this app. Authentication is
+  delegated to the IdP via JWT.
+- ❌ No JWT signing in this app. The app is a JWT *consumer* (resource
+  server), not an issuer.
+- ❌ No default production admin hard-coded in any Flyway migration.
+  `app-user-id` is operator-supplied per environment.
+- ❌ No automatic disabling of `APP_BOOTSTRAP_ADMIN_ENABLED` after first run.
+  The operator must unset it.
+- ❌ No change to `SecurityConfig`'s `permitAll()` posture in this phase.
+  Endpoints fail-close at the resolver / facade layer, not the filter chain.
+- ❌ No multi-admin or multi-tenant bootstrap from one config block. To
+  provision a second admin, use the admin API after the first admin works,
+  or re-run bootstrap with a different `app-user-id` and `tenant-slug`.
+
+---
+
+## 13. Local / dev notes
+
+- For local development and unit tests, `APP_SECURITY_JWT_HMAC_SECRET` is
+  acceptable — see `JwtAuthenticationConfigTest` and
+  `JwtResourceServerWiringTest` for examples.
+- For production-like local testing, prefer running a local Keycloak / Auth0
+  emulator / similar OIDC IdP and using `APP_SECURITY_JWT_ISSUER_URI` so the
+  test environment matches production semantics.
+- Do not mix decoder modes even in dev — the same fail-fast validation
+  applies in every profile.
+- When testing bootstrap locally, drop the DB between runs to exercise the
+  fresh-start path; or re-run with the same config to exercise the
+  idempotent path.
