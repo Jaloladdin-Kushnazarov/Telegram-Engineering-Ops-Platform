@@ -1412,4 +1412,44 @@ class IdentityCommandServiceTest {
 
         verifyNoInteractions(auditService);
     }
+
+    // ========== Phase 143: createAppUserWithId tests ==========
+
+    @Test
+    void createAppUserWithIdUsesProvidedId() {
+        // Bootstrap caller'da JWT 'sub' UUID'i deterministic AppUser.id sifatida
+        // ishlatilishi uchun yangi overload qo'shildi.
+        UUID providedId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        Long telegramUserId = 555L;
+        when(appUserRepository.existsByTelegramUserId(telegramUserId)).thenReturn(false);
+        when(appUserRepository.save(any(AppUser.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        AppUser result = service.createAppUserWithId(providedId, telegramUserId, "alice", "Alice");
+
+        assertThat(result.getId()).isEqualTo(providedId);
+        assertThat(result.getTelegramUserId()).isEqualTo(telegramUserId);
+        assertThat(result.getUsername()).isEqualTo("alice");
+        assertThat(result.getDisplayName()).isEqualTo("Alice");
+        assertThat(result.getStatus().name()).isEqualTo("ACTIVE");
+
+        verify(auditService).recordEvent(
+                eq(null), eq("APP_USER"), eq(providedId),
+                eq("CREATED"), eq(null), eq("ADMIN_API"), eq(null), eq("555"));
+    }
+
+    @Test
+    void createAppUserWithIdRejectsDuplicateTelegramUserIdViaPreCheck() {
+        UUID providedId = UUID.fromString("55555555-5555-5555-5555-555555555555");
+        Long telegramUserId = 777L;
+        when(appUserRepository.existsByTelegramUserId(telegramUserId)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.createAppUserWithId(
+                providedId, telegramUserId, "bob", "Bob"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("777");
+
+        verify(appUserRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
 }

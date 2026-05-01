@@ -97,12 +97,42 @@ public class IdentityCommandService {
      * @throws BusinessRuleException agar telegramUserId allaqachon mavjud bo'lsa
      */
     public AppUser createAppUser(Long telegramUserId, String username, String displayName) {
+        return createAppUserWithId(UUID.randomUUID(), telegramUserId, username, displayName);
+    }
+
+    /**
+     * Yangi global app_user'ni berilgan deterministik UUID bilan yaratadi.
+     *
+     * Bu overload Phase 143 bootstrap initializer'i uchun qo'shildi —
+     * {@link com.engops.platform.infrastructure.security.JwtActorConverter}
+     * JWT {@code sub} claim'ini to'g'ridan-to'g'ri {@code AuthenticatedActor.appUserId}
+     * UUID'ga aylantiradi (DB lookup yo'q). Bootstrap'da yaratilayotgan birinchi
+     * admin AppUser'ning UUID'i operator IdP'sidagi {@code sub} claim qiymatiga
+     * aniq mos kelishi shart, aks holda admin JWT bilan kelsa ham 403 oladi.
+     *
+     * Mavjud {@link #createAppUser(Long, String, String)} method'i shu method'ga
+     * delegate qiladi (UUID.randomUUID() bilan) — public surface o'zgarmaydi.
+     *
+     * Validatsiya kontrakti mavjud method bilan bir xil:
+     * - telegramUserId UNIQUE bo'lishi shart (pre-check + DB constraint fallback)
+     * - audit event tenantId=null (global identity resurs)
+     *
+     * @param id deterministic UUID (bootstrap caller'da JWT sub bilan moslashtiriladi)
+     * @param telegramUserId Telegram identifikatori (positive long, unique)
+     * @param username normallashgan Telegram username (nullable; facade null/blank
+     *                  bo'lsa null qaytaradi, aks holda max 255 bilan strip)
+     * @param displayName normallashgan ko'rinish nomi (nullable, max 255)
+     * @return yaratilgan AppUser
+     * @throws BusinessRuleException agar telegramUserId allaqachon mavjud bo'lsa
+     */
+    public AppUser createAppUserWithId(UUID id, Long telegramUserId, String username,
+                                        String displayName) {
         if (appUserRepository.existsByTelegramUserId(telegramUserId)) {
             throw new BusinessRuleException("DUPLICATE_TELEGRAM_USER_ID",
                     "telegramUserId=" + telegramUserId + " bilan foydalanuvchi allaqachon mavjud");
         }
 
-        AppUser user = new AppUser(telegramUserId, displayName);
+        AppUser user = new AppUser(id, telegramUserId, displayName);
         if (username != null) {
             user.setUsername(username);
         }
