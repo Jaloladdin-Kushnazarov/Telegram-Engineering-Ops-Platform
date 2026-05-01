@@ -1,6 +1,8 @@
 package com.engops.platform.workflow;
 
+import com.engops.platform.infrastructure.security.AuthenticatedActor;
 import com.engops.platform.infrastructure.security.SecurityConfig;
+import com.engops.platform.infrastructure.security.SecurityWebMvcConfig;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.workitem.model.WorkItem;
@@ -11,9 +13,16 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -38,23 +47,69 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - Controller WorkflowTransitionService'ga aynan bir marta delegate qiladi va
  *   barcha argumentlar to'g'ri uzatiladi (tenantId, workItemId, targetStatusCode,
  *   actorUserId, actionSource, reason)
- * - Phase 122 xavfsizlik konteksti: hech qanday authorization service chaqirilmaydi
- *   (faqat WorkflowTransitionService mock qilingan; agar boshqa security bean kerak
- *   bo'lganida @WebMvcTest context yuklab bo'lmas edi).
+ * - Phase 135 migratsiyasi: actor identifikatori @CurrentActor orqali
+ *   SecurityContext'dan olinadi; request body'dagi {@code actorUserId}
+ *   e'tiborga olinmaydi (spoofing bekor qilingan). Authenticated actor
+ *   bo'lmaganida resolver WorkflowTransitionService'ni chaqirmaydan 403
+ *   qaytaradi. {@link SecurityWebMvcConfig} {@code @Import} qilinadi —
+ *   {@code @CurrentActor} resolver shu konfiguratsiya orqali ro'yxatga olinadi.
  */
 @WebMvcTest(WorkflowTransitionController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, SecurityWebMvcConfig.class})
 class WorkflowTransitionControllerTest {
 
     private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID WORK_ITEM_ID =
             UUID.fromString("77777777-7777-7777-7777-777777777771");
+    /**
+     * Phase 135: SecurityContext'dagi authenticated actor — controller
+     * WorkflowTransitionService.transition(...)'ga shu qiymatni uzatishi kerak.
+     * {@link #SPOOFED_BODY_ACTOR_USER_ID}'dan ataylab farqli — request body'dagi
+     * actorUserId field'i e'tiborga olinmasligini tasdiqlash uchun.
+     */
     private static final UUID ACTOR_USER_ID =
             UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    /**
+     * Phase 135: bu UUID faqat request JSON body'ga "spoof attempt" sifatida
+     * yuboriladi. Controller uni jim e'tiborsiz qoldirishi kerak; service'ga
+     * {@link #ACTOR_USER_ID} uzatiladi. Happy-path delegation test'i bu farqni
+     * isbotlaydi.
+     */
+    private static final UUID SPOOFED_BODY_ACTOR_USER_ID =
+            UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd");
     private static final UUID WORKFLOW_DEFINITION_ID =
             UUID.fromString("22222222-2222-2222-2222-222222222221");
     private static final UUID OWNER_USER_ID =
             UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaab");
+
+    /**
+     * Phase 135 helper: request attribute orqali SecurityContext'ga
+     * {@link AuthenticatedActor} principal'ini o'rnatadi. Spring Security'ning
+     * {@code SecurityContextHolderFilter} {@link RequestAttributeSecurityContextRepository}
+     * orqali shu attribute'ni o'qiydi va {@link SecurityContextHolder}'ga
+     * yuklaydi. Keyin {@code @CurrentActor} resolver principal'ni o'qib
+     * controller method'iga {@code actorUserId} sifatida uzatadi.
+     *
+     * <p>{@code SecurityMockMvcRequestPostProcessors.authentication(...)} ham
+     * shu effektni beradi, lekin {@code spring-security-test} dependency'sini
+     * talab qiladi — bu phase'da {@code pom.xml} o'zgartirilmaydi, shuning
+     * uchun Spring Security ichidagi public {@link RequestAttributeSecurityContextRepository}
+     * API'sidan foydalanib effekt qo'lda yaratiladi (Phase 128/129/131/132/134
+     * pattern'i bilan bir xil).</p>
+     */
+    private static RequestPostProcessor withActor(UUID actorUserId) {
+        return request -> {
+            Authentication auth = new UsernamePasswordAuthenticationToken(
+                    new AuthenticatedActor(actorUserId, null), null, Collections.emptyList());
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(auth);
+            request.setAttribute(
+                    RequestAttributeSecurityContextRepository.class.getName()
+                            + ".SPRING_SECURITY_CONTEXT",
+                    context);
+            return request;
+        };
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -97,7 +152,8 @@ class WorkflowTransitionControllerTest {
                                   "actionSource":"MANUAL",
                                   "reason":"started investigation"
                                 }
-                                """.formatted(TENANT_ID, ACTOR_USER_ID)))
+                                """.formatted(TENANT_ID, ACTOR_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.workItemId").value(WORK_ITEM_ID.toString()))
@@ -115,7 +171,12 @@ class WorkflowTransitionControllerTest {
     }
 
     @Test
-    void transitionDelegatesExactlyOnceWithMappedArguments() throws Exception {
+    void transitionDelegatesExactlyOnceWithAuthenticatedActorIgnoringSpoofedBody() throws Exception {
+        // Phase 135: body'dagi actorUserId (SPOOFED_BODY_ACTOR_USER_ID) ataylab
+        // ACTOR_USER_ID'dan farqli yuborilgan. Controller body field'ni
+        // e'tiborga olmasligi va WorkflowTransitionService.transition(...)'ga
+        // SecurityContext'dagi ACTOR_USER_ID'ni uzatishi kerak. Bu spoofing
+        // hujumi to'sib qo'yilganini tasdiqlovchi asosiy assertion.
         WorkItem wi = successWorkItem("PROCESSING");
         when(workflowTransitionService.transition(
                 eq(TENANT_ID), eq(WORK_ITEM_ID), eq("PROCESSING"),
@@ -132,21 +193,30 @@ class WorkflowTransitionControllerTest {
                                   "actionSource":"TELEGRAM",
                                   "reason":"started investigation"
                                 }
-                                """.formatted(TENANT_ID, ACTOR_USER_ID)))
+                                """.formatted(TENANT_ID, SPOOFED_BODY_ACTOR_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk());
 
+        // Service ACTOR_USER_ID bilan chaqirilishi shart, SPOOFED_BODY_ACTOR_USER_ID bilan emas.
         verify(workflowTransitionService, times(1)).transition(
                 eq(TENANT_ID), eq(WORK_ITEM_ID), eq("PROCESSING"),
                 eq(ACTOR_USER_ID), eq("TELEGRAM"), eq("started investigation"));
+        // Negative assertion: spoofed body UUID hech qachon service'ga uzatilmasligi shart.
+        verify(workflowTransitionService, times(0)).transition(
+                any(), any(), any(),
+                eq(SPOOFED_BODY_ACTOR_USER_ID), any(), any());
     }
 
     @Test
     void transitionEmptyBodyReturns400WithoutDelegating() throws Exception {
         // Empty {} → barcha field'lar null. REST boundary tenantId null'da
         // 400 BAD_REQUEST qaytaradi va service hech qachon chaqirilmaydi.
+        // Phase 135: authenticated actor mavjud bo'lishi shart, aks holda
+        // resolver controller validation'idan oldin 403 qaytaradi.
         mockMvc.perform(post("/api/work-items/{workItemId}/transitions", WORK_ITEM_ID)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{}")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
 
@@ -163,7 +233,8 @@ class WorkflowTransitionControllerTest {
                                   "actorUserId":"%s",
                                   "actionSource":"MANUAL"
                                 }
-                                """.formatted(ACTOR_USER_ID)))
+                                """.formatted(ACTOR_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
 
@@ -181,24 +252,8 @@ class WorkflowTransitionControllerTest {
                                   "actorUserId":"%s",
                                   "actionSource":"MANUAL"
                                 }
-                                """.formatted(TENANT_ID, ACTOR_USER_ID)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
-
-        verifyNoInteractions(workflowTransitionService);
-    }
-
-    @Test
-    void transitionMissingActorUserIdReturns400WithoutDelegating() throws Exception {
-        mockMvc.perform(post("/api/work-items/{workItemId}/transitions", WORK_ITEM_ID)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "tenantId":"%s",
-                                  "targetStatusCode":"PROCESSING",
-                                  "actionSource":"MANUAL"
-                                }
-                                """.formatted(TENANT_ID)))
+                                """.formatted(TENANT_ID, ACTOR_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
 
@@ -216,7 +271,8 @@ class WorkflowTransitionControllerTest {
                                   "actorUserId":"%s",
                                   "actionSource":"  "
                                 }
-                                """.formatted(TENANT_ID, ACTOR_USER_ID)))
+                                """.formatted(TENANT_ID, ACTOR_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
 
@@ -225,6 +281,10 @@ class WorkflowTransitionControllerTest {
 
     @Test
     void transitionMalformedWorkItemIdReturns400() throws Exception {
+        // @PathVariable UUID conversion fails before @CurrentActor resolves —
+        // withActor mavjudligidan qat'i nazar 400 qaytariladi. Lekin Phase 135
+        // pattern bilan moslashtirib withActor qo'shamiz: ham authenticated
+        // request, ham malformed path tekshiruvi bir testda namoyish qilinsin.
         mockMvc.perform(post("/api/work-items/{workItemId}/transitions", "not-a-uuid")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -234,7 +294,8 @@ class WorkflowTransitionControllerTest {
                                   "actorUserId":"%s",
                                   "actionSource":"MANUAL"
                                 }
-                                """.formatted(TENANT_ID, ACTOR_USER_ID)))
+                                """.formatted(TENANT_ID, ACTOR_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(workflowTransitionService);
@@ -257,7 +318,8 @@ class WorkflowTransitionControllerTest {
                                   "actorUserId":"%s",
                                   "actionSource":"MANUAL"
                                 }
-                                """.formatted(TENANT_ID, ACTOR_USER_ID)))
+                                """.formatted(TENANT_ID, ACTOR_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("SAME_STATUS"));
     }
@@ -279,7 +341,8 @@ class WorkflowTransitionControllerTest {
                                   "actorUserId":"%s",
                                   "actionSource":"MANUAL"
                                 }
-                                """.formatted(TENANT_ID, ACTOR_USER_ID)))
+                                """.formatted(TENANT_ID, ACTOR_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("INVALID_TRANSITION"));
     }
@@ -300,8 +363,43 @@ class WorkflowTransitionControllerTest {
                                   "actorUserId":"%s",
                                   "actionSource":"MANUAL"
                                 }
-                                """.formatted(TENANT_ID, ACTOR_USER_ID)))
+                                """.formatted(TENANT_ID, ACTOR_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    // ========== Phase 135: missing-actor 403 coverage ==========
+
+    /**
+     * Phase 135 yangi qoplama: SecurityContext'da {@code AuthenticatedActor}
+     * yo'q bo'lganda {@code @CurrentActor} resolver controller body'ga ham,
+     * WorkflowTransitionService'ga ham yetib bormay 403 ACCESS_DENIED
+     * qaytarishi kerak. Bu eski {@code transitionMissingActorUserIdReturns400}
+     * test'ining o'rnini bosadi — endi body'dagi {@code actorUserId} jim
+     * e'tiborga olinmaydi va REST darajasidagi 400 kontrakti yo'q. Pattern
+     * Phase 128/129/131/132/134 missing-actor qoplamasi bilan bir xil.
+     *
+     * <p>Body'da {@code actorUserId} ataylab ko'rsatilgan — uning mavjudligi
+     * 403 javobga ta'sir qilmasligini ko'rsatish uchun (spoofing yo'lga
+     * qo'yilmaydi, autentifikatsiya yetishmasligi har doim eng birinchi
+     * to'siq bo'lib qoladi).</p>
+     */
+    @Test
+    void missingAuthenticatedActorOnTransitionReturns403WithoutReachingService() throws Exception {
+        mockMvc.perform(post("/api/work-items/{workItemId}/transitions", WORK_ITEM_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"%s",
+                                  "targetStatusCode":"PROCESSING",
+                                  "actorUserId":"%s",
+                                  "actionSource":"MANUAL"
+                                }
+                                """.formatted(TENANT_ID, SPOOFED_BODY_ACTOR_USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(workflowTransitionService);
     }
 }

@@ -1,5 +1,6 @@
 package com.engops.platform.workflow;
 
+import com.engops.platform.infrastructure.security.CurrentActor;
 import com.engops.platform.workitem.model.WorkItem;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,15 +27,17 @@ import java.util.UUID;
  * {@code ResourceNotFoundException} GlobalExceptionHandler orqali 422/404
  * ga aylantiriladi.
  *
- * <strong>Xavfsizlik konteksti — Phase 122:</strong>
- * Bu endpoint hozircha INTERNAL/TRUSTED operational boundary sifatida ishlaydi —
- * application-level autentifikatsiya/avtorizatsiya YO'Q (TENANT_CONFIG_WRITE
- * tekshirilmaydi, WORK_ITEM_TRANSITION/UPDATE permission'lar tekshirilmaydi,
- * Spring Security/JWT/API token mavjud emas). Request body'dagi {@code actorUserId}
- * faqat audit/attribution input — ishonchli authentication EMAS. Production
- * deployment'da bu endpoint deployment / tarmoq / API gateway nazoratlari
- * bilan himoyalanishi shart. Mustaqil operational autentifikatsiya phase'i
- * implement qilinmaguncha bu yo'l ochiq qoladi. Internet'ga ochiq endpoint EMAS.
+ * <strong>Xavfsizlik konteksti — Phase 135:</strong>
+ * Transition'ni bajaruvchi actor identifikatori endi {@link CurrentActor}
+ * resolver orqali SecurityContext'dagi {@code AuthenticatedActor}'dan olinadi.
+ * Request body'dagi eski {@code actorUserId} maydoni wire compatibility uchun
+ * qabul qilinadi lekin jim e'tiborsiz qoldiriladi — spoofing yo'lga qo'yilmaydi.
+ * Authenticated actor mavjud bo'lmasa resolver controller body'gacha yetib
+ * bormay 403 ACCESS_DENIED qaytaradi (Phase 128/129/131/132/134 pattern'i bilan
+ * bir xil). Permission tekshiruvi (WORK_ITEM_TRANSITION va h.k.) bu phase'da
+ * qo'shilmaydi — keyingi alohida phase'da hal qilinadi. SecurityConfig hali ham
+ * {@code permitAll()} holatida; production deployment'da deployment / tarmoq /
+ * API gateway nazoratlari bilan himoyalanishi shart.
  */
 @RestController
 @RequestMapping("/api/work-items")
@@ -49,14 +52,21 @@ public class WorkflowTransitionController {
     /**
      * Mavjud work item'ni yangi status'ga o'tkazadi.
      *
+     * <p>Actor identifikatori {@link CurrentActor}'dan olinadi —
+     * request body'dagi {@code actorUserId} (agar yuborilsa) e'tiborga
+     * olinmaydi.</p>
+     *
      * @param workItemId work item identifikatori (path)
      * @param request transition so'rovi (required body)
+     * @param actorUserId authenticated actor (resolver SecurityContext'dan oladi;
+     *                    yo'q bo'lsa 403 ACCESS_DENIED service chaqirilishidan oldin)
      * @return yangilangan work item state (200 OK)
      */
     @PostMapping("/{workItemId}/transitions")
     public ResponseEntity<WorkflowTransitionResponse> transition(
             @PathVariable UUID workItemId,
-            @RequestBody(required = false) WorkflowTransitionRequest request) {
+            @RequestBody(required = false) WorkflowTransitionRequest request,
+            @CurrentActor UUID actorUserId) {
         if (request == null) {
             throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
         }
@@ -69,9 +79,6 @@ public class WorkflowTransitionController {
         if (request.targetStatusCode() == null || request.targetStatusCode().isBlank()) {
             throw new IllegalArgumentException("targetStatusCode null yoki bo'sh bo'lishi mumkin emas");
         }
-        if (request.actorUserId() == null) {
-            throw new IllegalArgumentException("actorUserId null bo'lishi mumkin emas");
-        }
         if (request.actionSource() == null || request.actionSource().isBlank()) {
             throw new IllegalArgumentException("actionSource null yoki bo'sh bo'lishi mumkin emas");
         }
@@ -80,7 +87,7 @@ public class WorkflowTransitionController {
                 request.tenantId(),
                 workItemId,
                 request.targetStatusCode(),
-                request.actorUserId(),
+                actorUserId,
                 request.actionSource(),
                 request.reason());
 
