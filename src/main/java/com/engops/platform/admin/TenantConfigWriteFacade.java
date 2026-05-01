@@ -10,6 +10,7 @@ import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
+import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
 import com.engops.platform.tenantconfig.model.WorkflowTransitionRule;
@@ -47,6 +48,110 @@ public class TenantConfigWriteFacade {
         this.identityCommandService = identityCommandService;
         this.authorizationService = authorizationService;
     }
+
+    // ========== Tenant operations ==========
+
+    private static final String DEFAULT_TIMEZONE = "UTC";
+    private static final int TENANT_NAME_MAX_LENGTH = 255;
+    private static final int TENANT_SLUG_MAX_LENGTH = 100;
+    private static final int TENANT_TIMEZONE_MAX_LENGTH = 50;
+
+    /**
+     * Yangi tenant yaratish uchun request boundary validatsiyasi, normalizatsiya
+     * va delegation.
+     *
+     * adminContextTenantId — bu YANGI yaratiladigan tenant emas, balki actor
+     * uning a'zosi sifatida TENANT_CONFIG_WRITE ruxsatiga ega bo'lgan mavjud
+     * tenant. Yangi tenant root resurs bo'lganligi sababli, mavjud admin context
+     * tenant orqali ruxsat tekshiriladi (role catalog write surface bilan
+     * bir xil pattern).
+     *
+     * Birinchi tenant uchun chicken-and-egg muammosi qoladi — u faqat manual
+     * SQL/Flyway seed orqali yechiladi va bu phase'da ko'rib chiqilmaydi.
+     *
+     * Validation-before-authorization ordering:
+     * 1. adminContextTenantId null bo'lmasligi
+     * 2. request null bo'lmasligi
+     * 3. name strip + non-blank + max 255
+     * 4. slug strip + lowercase(Locale.ROOT) + non-blank + max 100
+     * 5. timezone null/blank bo'lsa "UTC" default; aks holda strip + max 50
+     * 6. authorizeWrite(adminContextTenantId, actorUserId) chaqiriladi
+     * 7. CommandService.createTenant normallashgan input bilan delegate qilinadi
+     *
+     * @param adminContextTenantId actor admin kontekst tenant identifikatori
+     * @param request yaratish so'rovi
+     * @param actorUserId joriy actor
+     * @return yaratilgan tenant view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public TenantCreatedView createTenant(UUID adminContextTenantId,
+                                            CreateTenantRequest request,
+                                            UUID actorUserId) {
+        if (adminContextTenantId == null) {
+            throw new IllegalArgumentException("adminContextTenantId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.name() == null) {
+            throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
+        }
+        String normalizedName = request.name().strip();
+        if (normalizedName.isBlank()) {
+            throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
+        }
+        if (normalizedName.length() > TENANT_NAME_MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                    "name " + TENANT_NAME_MAX_LENGTH + " belgidan oshmasligi kerak: "
+                            + normalizedName.length());
+        }
+        if (request.slug() == null) {
+            throw new IllegalArgumentException("slug null yoki bo'sh bo'lishi mumkin emas");
+        }
+        String normalizedSlug = request.slug().strip().toLowerCase(java.util.Locale.ROOT);
+        if (normalizedSlug.isBlank()) {
+            throw new IllegalArgumentException("slug null yoki bo'sh bo'lishi mumkin emas");
+        }
+        if (normalizedSlug.length() > TENANT_SLUG_MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                    "slug " + TENANT_SLUG_MAX_LENGTH + " belgidan oshmasligi kerak: "
+                            + normalizedSlug.length());
+        }
+        String normalizedTimezone;
+        if (request.timezone() == null || request.timezone().isBlank()) {
+            normalizedTimezone = DEFAULT_TIMEZONE;
+        } else {
+            normalizedTimezone = request.timezone().strip();
+            if (normalizedTimezone.length() > TENANT_TIMEZONE_MAX_LENGTH) {
+                throw new IllegalArgumentException(
+                        "timezone " + TENANT_TIMEZONE_MAX_LENGTH + " belgidan oshmasligi kerak: "
+                                + normalizedTimezone.length());
+            }
+        }
+        authorizationService.authorizeWrite(adminContextTenantId, actorUserId);
+
+        Tenant tenant = commandService.createTenant(
+                normalizedName, normalizedSlug, normalizedTimezone);
+
+        return new TenantCreatedView(
+                tenant.getId(),
+                tenant.getName(),
+                tenant.getSlug(),
+                tenant.getTimezone(),
+                tenant.getStatus() != null ? tenant.getStatus().name() : null,
+                tenant.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — yaratilgan tenant.
+     */
+    public record TenantCreatedView(
+            UUID tenantId,
+            String name,
+            String slug,
+            String timezone,
+            String status,
+            java.time.Instant createdAt) {}
 
     /**
      * Yangi workflow definition yaratish uchun request boundary validatsiyasi va delegation.

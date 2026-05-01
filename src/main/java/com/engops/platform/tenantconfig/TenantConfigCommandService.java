@@ -5,6 +5,7 @@ import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.tenantconfig.model.ChatBindingType;
 import com.engops.platform.tenantconfig.model.RoutingRule;
+import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
@@ -63,6 +64,64 @@ public class TenantConfigCommandService {
         this.telegramChatBindingRepository = telegramChatBindingRepository;
         this.telegramTopicBindingRepository = telegramTopicBindingRepository;
         this.auditService = auditService;
+    }
+
+    // ========== Tenant operations ==========
+
+    /**
+     * Yangi tenant yaratadi.
+     *
+     * Caller (TenantConfigWriteFacade) input'larni allaqachon normallashtirgan
+     * deb taxmin qilinadi (Phase 115 mini-fix bilan o'rnatilgan pattern):
+     * facade boundary'da strip + lowercase(slug) + length cap + default
+     * timezone bajariladi. Bu service'da takroriy normalizatsiya qilinmaydi —
+     * yagona caller pattern'i bo'lsa, defensive in-service normalizatsiya
+     * ortiqcha bo'ladi va Phase 115 createWorkflowStatus + Phase 116
+     * createWorkflowTransitionRule sxemasiga zid bo'ladi.
+     *
+     * Validatsiyalar:
+     * 1. Tenant slug global ravishda unikal bo'lishi kerak
+     *    (DB constraint: UNIQUE on tenant.slug — pre-check + DB fallback)
+     *
+     * Authorization: TenantConfigWriteFacade'da admin-context tenantId orqali
+     * TENANT_CONFIG_WRITE tekshiriladi (yangi yaratiladigan tenant emas).
+     * Bu yangi tenant root resurs bo'lib, mavjud admin context tenantning
+     * a'zosiga ruxsat beradi (role catalog write surface bilan bir xil
+     * pattern). Birinchi tenant uchun chicken-and-egg muammosi qoladi —
+     * u faqat manual SQL/Flyway seed orqali yechiladi.
+     *
+     * Audit: tenantId argumenti `null` — yaratilgan tenant o'zi root resurs.
+     * Bu role catalog audit shape bilan bir xil (ROLE/CREATED ham tenantId=null).
+     *
+     * @param name normallashgan tenant nomi (non-blank, max 255)
+     * @param slug normallashgan slug (lowercase, non-blank, max 100, unikal)
+     * @param timezone normallashgan timezone (non-blank, max 50; facade'da "UTC" default)
+     * @return yaratilgan Tenant
+     * @throws BusinessRuleException agar slug allaqachon mavjud bo'lsa
+     */
+    public Tenant createTenant(String name, String slug, String timezone) {
+        if (tenantRepository.existsBySlug(slug)) {
+            throw new BusinessRuleException("DUPLICATE_TENANT_SLUG",
+                    "'" + slug + "' slug bilan tenant allaqachon mavjud");
+        }
+
+        Tenant tenant = new Tenant(name, slug);
+        tenant.setTimezone(timezone);
+
+        try {
+            tenant = tenantRepository.save(tenant);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateTenantSlugConstraint(ex)) {
+                throw new BusinessRuleException("DUPLICATE_TENANT_SLUG",
+                        "'" + slug + "' slug bilan tenant allaqachon mavjud");
+            }
+            throw ex;
+        }
+
+        auditService.recordEvent(null, "TENANT", tenant.getId(),
+                "CREATED", null, "ADMIN_API", null, slug);
+
+        return tenant;
     }
 
     /**
@@ -1099,6 +1158,24 @@ public class TenantConfigCommandService {
                     && constraintName.contains("telegram_chat_binding")
                     && constraintName.contains("tenant_id")
                     && constraintName.contains("chat_id");
+        }
+        return false;
+    }
+
+    /**
+     * DataIntegrityViolationException tenant.slug unique constraint violation
+     * ekanligini tekshiradi.
+     *
+     * PostgreSQL avtomatik nomi: tenant_slug_key (qisqa, kesilmaydi).
+     * Pattern truncation'ga ham chidamli — faqat ikkita kalit bo'lakni tekshiradi.
+     */
+    private static boolean isDuplicateTenantSlugConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("tenant")
+                    && constraintName.contains("slug");
         }
         return false;
     }

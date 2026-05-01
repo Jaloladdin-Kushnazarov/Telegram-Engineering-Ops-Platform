@@ -5080,4 +5080,112 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
+
+    // ========== POST /tenants endpoint ==========
+
+    private static final UUID NEW_TENANT_ID =
+            UUID.fromString("88888888-8888-8888-8888-888888888881");
+
+    @Test
+    void createTenantReturns201WithCreatedResource() throws Exception {
+        var view = new TenantConfigWriteFacade.TenantCreatedView(
+                NEW_TENANT_ID,
+                "Acme Corp",
+                "acme",
+                "Asia/Tashkent",
+                "ACTIVE",
+                Instant.parse("2026-04-29T10:00:00Z"));
+
+        when(writeFacade.createTenant(eq(TENANT_ID),
+                any(CreateTenantRequest.class), any())).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/tenants")
+                        .param("adminContextTenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Acme Corp","slug":"acme","timezone":"Asia/Tashkent"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tenantId").value(NEW_TENANT_ID.toString()))
+                .andExpect(jsonPath("$.name").value("Acme Corp"))
+                .andExpect(jsonPath("$.slug").value("acme"))
+                .andExpect(jsonPath("$.timezone").value("Asia/Tashkent"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.createdAt").value("2026-04-29T10:00:00Z"));
+    }
+
+    @Test
+    void createTenantMissingAdminContextTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/tenants")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Acme","slug":"acme"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createTenantMalformedAdminContextTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/tenants")
+                        .param("adminContextTenantId", "not-a-uuid")
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Acme","slug":"acme"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createTenantBlankNameReturns400() throws Exception {
+        when(writeFacade.createTenant(eq(TENANT_ID),
+                any(CreateTenantRequest.class), any()))
+                .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/tenants")
+                        .param("adminContextTenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"","slug":"acme"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createTenantDuplicateSlugReturns422() throws Exception {
+        when(writeFacade.createTenant(eq(TENANT_ID),
+                any(CreateTenantRequest.class), any()))
+                .thenThrow(new BusinessRuleException("DUPLICATE_TENANT_SLUG",
+                        "'acme' slug bilan tenant allaqachon mavjud"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/tenants")
+                        .param("adminContextTenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Acme","slug":"acme"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_TENANT_SLUG"));
+    }
+
+    @Test
+    void createTenantForbiddenWhenAuthorizationFails() throws Exception {
+        doThrow(new AccessDeniedException("Bu operatsiya uchun TENANT_CONFIG_WRITE ruxsati talab qilinadi"))
+                .when(writeFacade).createTenant(eq(TENANT_ID),
+                        any(CreateTenantRequest.class), any());
+
+        mockMvc.perform(post("/api/admin/tenant-config/tenants")
+                        .param("adminContextTenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Acme","slug":"acme"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
 }

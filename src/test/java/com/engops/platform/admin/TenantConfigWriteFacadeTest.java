@@ -2388,4 +2388,153 @@ class TenantConfigWriteFacadeTest {
         verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
         verify(commandService).createWorkflowTransitionRule(TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID);
     }
+
+    // ========== createTenant tests ==========
+
+    private static final UUID NEW_TENANT_ID =
+            UUID.fromString("88888888-8888-8888-8888-888888888881");
+
+    @Test
+    void createTenantThrowsWhenAdminContextTenantIdNull() {
+        var request = new CreateTenantRequest("Acme", "acme", "UTC");
+
+        assertThatThrownBy(() -> facade.createTenant(null, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("adminContextTenantId");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createTenantThrowsWhenRequestNull() {
+        assertThatThrownBy(() -> facade.createTenant(TENANT_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createTenantThrowsWhenNameBlank() {
+        var request = new CreateTenantRequest("   ", "acme", "UTC");
+
+        assertThatThrownBy(() -> facade.createTenant(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createTenantThrowsWhenSlugBlank() {
+        var request = new CreateTenantRequest("Acme", "  ", "UTC");
+
+        assertThatThrownBy(() -> facade.createTenant(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("slug");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createTenantRejectsNameLongerThan255() {
+        String tooLong = "X".repeat(256);
+        var request = new CreateTenantRequest(tooLong, "acme", "UTC");
+
+        assertThatThrownBy(() -> facade.createTenant(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("255");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createTenantRejectsSlugLongerThan100() {
+        String tooLong = "x".repeat(101);
+        var request = new CreateTenantRequest("Acme", tooLong, "UTC");
+
+        assertThatThrownBy(() -> facade.createTenant(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("100");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createTenantRejectsTimezoneLongerThan50() {
+        String tooLong = "Z".repeat(51);
+        var request = new CreateTenantRequest("Acme", "acme", tooLong);
+
+        assertThatThrownBy(() -> facade.createTenant(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("50");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createTenantDeniedWhenAuthorizationFails() {
+        var request = new CreateTenantRequest("Acme", "acme", "UTC");
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.createTenant(TENANT_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createTenantNormalizesAndDelegates() {
+        // Boshlang'ich kirish: name spaces bilan, slug uppercase + spaces, timezone null
+        var request = new CreateTenantRequest("  Acme Corp  ", "  ACME-CORP  ", null);
+
+        var tenant = mock(com.engops.platform.tenantconfig.model.Tenant.class);
+        java.time.Instant createdAt = java.time.Instant.parse("2026-04-29T10:00:00Z");
+        when(tenant.getId()).thenReturn(NEW_TENANT_ID);
+        when(tenant.getName()).thenReturn("Acme Corp");
+        when(tenant.getSlug()).thenReturn("acme-corp");
+        when(tenant.getTimezone()).thenReturn("UTC");
+        when(tenant.getStatus())
+                .thenReturn(com.engops.platform.tenantconfig.model.TenantStatus.ACTIVE);
+        when(tenant.getCreatedAt()).thenReturn(createdAt);
+        when(commandService.createTenant("Acme Corp", "acme-corp", "UTC")).thenReturn(tenant);
+
+        var view = facade.createTenant(TENANT_ID, request, ACTOR_USER_ID);
+
+        assertThat(view.tenantId()).isEqualTo(NEW_TENANT_ID);
+        assertThat(view.name()).isEqualTo("Acme Corp");
+        assertThat(view.slug()).isEqualTo("acme-corp");
+        assertThat(view.timezone()).isEqualTo("UTC");
+        assertThat(view.status()).isEqualTo("ACTIVE");
+        assertThat(view.createdAt()).isEqualTo(createdAt);
+
+        verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+        verify(commandService).createTenant("Acme Corp", "acme-corp", "UTC");
+    }
+
+    @Test
+    void createTenantDefaultsTimezoneWhenBlank() {
+        var request = new CreateTenantRequest("Acme", "acme", "   ");
+        var tenant = mock(com.engops.platform.tenantconfig.model.Tenant.class);
+        when(tenant.getId()).thenReturn(NEW_TENANT_ID);
+        when(tenant.getName()).thenReturn("Acme");
+        when(tenant.getSlug()).thenReturn("acme");
+        when(tenant.getTimezone()).thenReturn("UTC");
+        when(tenant.getStatus())
+                .thenReturn(com.engops.platform.tenantconfig.model.TenantStatus.ACTIVE);
+        when(tenant.getCreatedAt()).thenReturn(java.time.Instant.now());
+        when(commandService.createTenant("Acme", "acme", "UTC")).thenReturn(tenant);
+
+        facade.createTenant(TENANT_ID, request, ACTOR_USER_ID);
+
+        verify(commandService).createTenant("Acme", "acme", "UTC");
+    }
 }

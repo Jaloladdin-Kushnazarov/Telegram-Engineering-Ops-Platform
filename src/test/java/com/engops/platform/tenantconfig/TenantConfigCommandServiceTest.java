@@ -2274,4 +2274,77 @@ class TenantConfigCommandServiceTest {
 
         verifyNoInteractions(auditService);
     }
+
+    // ========== createTenant tests ==========
+
+    @Test
+    void createTenantSuccessAndAuditEvent() {
+        when(tenantRepository.existsBySlug("acme")).thenReturn(false);
+        when(tenantRepository.save(any(Tenant.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        Tenant result = service.createTenant("Acme Corp", "acme", "Asia/Tashkent");
+
+        assertThat(result.getName()).isEqualTo("Acme Corp");
+        assertThat(result.getSlug()).isEqualTo("acme");
+        assertThat(result.getTimezone()).isEqualTo("Asia/Tashkent");
+        assertThat(result.getStatus().name()).isEqualTo("ACTIVE");
+        assertThat(result.getId()).isNotNull();
+
+        // tenantId argumenti null — yaratilgan tenant root resurs (ROLE/CREATED audit shape)
+        verify(auditService).recordEvent(
+                eq(null),
+                eq("TENANT"),
+                eq(result.getId()),
+                eq("CREATED"),
+                eq(null),
+                eq("ADMIN_API"),
+                eq(null),
+                eq("acme"));
+    }
+
+    @Test
+    void createTenantRejectsDuplicateSlugViaPreCheck() {
+        when(tenantRepository.existsBySlug("acme")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.createTenant("Acme Corp", "acme", "UTC"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("acme");
+
+        verify(tenantRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createTenantTranslatesDbDuplicateSlugConstraint() {
+        when(tenantRepository.existsBySlug("acme")).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "duplicate key", new SQLException(),
+                "tenant_slug_key");
+        when(tenantRepository.save(any(Tenant.class)))
+                .thenThrow(new DataIntegrityViolationException("unique constraint", cause));
+
+        assertThatThrownBy(() -> service.createTenant("Acme Corp", "acme", "UTC"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("acme");
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createTenantRethrowsUnrelatedIntegrityViolation() {
+        when(tenantRepository.existsBySlug("acme")).thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "other", new SQLException(),
+                "some_other_constraint");
+        when(tenantRepository.save(any(Tenant.class)))
+                .thenThrow(new DataIntegrityViolationException("other violation", cause));
+
+        assertThatThrownBy(() -> service.createTenant("Acme Corp", "acme", "UTC"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        verifyNoInteractions(auditService);
+    }
 }

@@ -624,6 +624,36 @@ public class TenantConfigController {
     // ========== Write endpoint'lar ==========
 
     /**
+     * Yangi tenant yaratadi.
+     *
+     * adminContextTenantId — yaratiladigan tenant emas, balki actor admin
+     * konteksti uchun ishlatiladigan mavjud tenant (TENANT_CONFIG_WRITE
+     * ruxsatini tekshirish uchun). Yangi tenant root resurs sifatida saqlanadi.
+     *
+     * @param adminContextTenantId actor admin kontekst tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan tenant (201 Created)
+     */
+    @PostMapping("/tenants")
+    public ResponseEntity<TenantConfigTenantCreatedResponse> createTenant(
+            @RequestParam UUID adminContextTenantId,
+            @RequestBody CreateTenantRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigWriteFacade.TenantCreatedView view =
+                writeFacade.createTenant(adminContextTenantId, request, actorUserId);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new TenantConfigTenantCreatedResponse(
+                        view.tenantId(),
+                        view.name(),
+                        view.slug(),
+                        view.timezone(),
+                        view.status(),
+                        view.createdAt()));
+    }
+
+    /**
      * Yangi workflow definition yaratadi.
      *
      * @param tenantId tenant identifikatori
