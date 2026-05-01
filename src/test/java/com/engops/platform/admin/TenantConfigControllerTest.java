@@ -52,13 +52,6 @@ class TenantConfigControllerTest {
 
 private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID ACTOR_USER_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-    /**
-     * Phase 131: read endpoint testlari {@link #withActor(UUID)} helper'idan
-     * foydalanadi. {@code ACTOR_HEADER} konstanta saqlanadi — 37 ta write
-     * endpoint testi hali shu header'ni ishlatadi (Phase 132'da migratsiya
-     * qilinadi).
-     */
-    private static final String ACTOR_HEADER = "X-Actor-User-Id";
 
     /**
      * Phase 131 helper: SecurityContext'ga {@link AuthenticatedActor} principal'ini
@@ -2296,7 +2289,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG","description":"Bug workflow"}
@@ -2327,7 +2320,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Incident Flow","workItemType":"INCIDENT"}
@@ -2354,7 +2347,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"","workItemType":"BUG"}
@@ -2372,7 +2365,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"FEATURE"}
@@ -2389,7 +2382,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG"}
@@ -2406,7 +2399,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
@@ -2421,7 +2414,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG"}
@@ -2453,7 +2446,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Updated Flow","description":"New description"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.definitionId").value(DEF_ID.toString()))
@@ -2478,7 +2472,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Flow"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.description").doesNotExist());
     }
@@ -2497,7 +2492,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"description":"Updated desc"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Kept Name"))
                 .andExpect(jsonPath("$.description").value("Updated desc"));
@@ -2512,7 +2508,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{}")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -2531,7 +2528,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"description":null}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.description").doesNotExist());
     }
@@ -2557,7 +2555,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"  "}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -2573,7 +2572,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Flow"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2589,7 +2589,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Flow"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2606,7 +2607,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Taken"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("DUPLICATE_WORKFLOW_NAME"));
     }
@@ -2622,7 +2624,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.activateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.definitionId").value(DEF_ID.toString()))
                 .andExpect(jsonPath("$.active").value(true));
@@ -2640,7 +2643,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2651,7 +2655,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("WorkflowDefinition", DEF_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2667,7 +2672,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.deactivateWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.definitionId").value(DEF_ID.toString()))
                 .andExpect(jsonPath("$.active").value(false));
@@ -2685,7 +2691,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2696,7 +2703,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("WorkflowDefinition", DEF_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/deactivate", DEF_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2706,7 +2714,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void deleteWorkflowDefinitionReturns204() throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
     }
@@ -2723,7 +2732,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .when(writeFacade).deleteWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2734,7 +2744,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .when(writeFacade).deleteWorkflowDefinition(eq(TENANT_ID), eq(DEF_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2757,7 +2768,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567890,"chatTitle":"Dev Team Chat","bindingType":"MAIN_GROUP"}
@@ -2788,7 +2799,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567891,"bindingType":"NOTIFICATION_GROUP"}
@@ -2816,7 +2827,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567890,"bindingType":"PRIVATE_CHAT"}
@@ -2833,7 +2844,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567890,"bindingType":"MAIN_GROUP"}
@@ -2851,7 +2862,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatId":-1001234567890,"bindingType":"MAIN_GROUP"}
@@ -2878,7 +2889,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatTitle":"New Title"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.chatBindingId").value(CB_ID.toString()))
@@ -2900,7 +2912,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"bindingType":"NOTIFICATION_GROUP"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.bindingType").value("NOTIFICATION_GROUP"));
     }
@@ -2919,7 +2932,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatTitle":"Updated","bindingType":"NOTIFICATION_GROUP"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.chatTitle").value("Updated"))
                 .andExpect(jsonPath("$.bindingType").value("NOTIFICATION_GROUP"));
@@ -2939,7 +2953,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatTitle":null}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.chatTitle").doesNotExist());
     }
@@ -2966,7 +2981,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"bindingType":"PRIVATE"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -2982,7 +2998,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatTitle":"Title"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2998,7 +3015,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatTitle":"Title"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3012,7 +3030,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(patch("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
                         .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{}")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -3028,7 +3047,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.activateChatBinding(eq(TENANT_ID), eq(CB_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.chatBindingId").value(CB_ID.toString()))
@@ -3051,7 +3071,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3062,7 +3083,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("ChatBinding", CB_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/activate", CB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3078,7 +3100,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.deactivateChatBinding(eq(TENANT_ID), eq(CB_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.chatBindingId").value(CB_ID.toString()))
@@ -3101,7 +3124,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3112,7 +3136,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("ChatBinding", CB_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/chat-bindings/{chatBindingId}/deactivate", CB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3122,7 +3147,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void deleteChatBindingReturns204() throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
     }
@@ -3139,7 +3165,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .when(writeFacade).deleteChatBinding(eq(TENANT_ID), eq(CB_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3150,7 +3177,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .when(writeFacade).deleteChatBinding(eq(TENANT_ID), eq(CB_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/chat-bindings/{chatBindingId}", CB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3171,7 +3199,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatBindingId":"55555555-5555-5555-5555-555555555551",
@@ -3207,7 +3235,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatBindingId":"55555555-5555-5555-5555-555555555551",
@@ -3224,7 +3252,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatBindingId":"55555555-5555-5555-5555-555555555551",
@@ -3242,7 +3270,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"chatBindingId":"55555555-5555-5555-5555-555555555551",
@@ -3266,7 +3294,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"topicName":"new-name"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.topicName").value("new-name"));
     }
@@ -3291,7 +3320,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"topicName":"x"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3305,7 +3335,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.activateTopicBinding(eq(TENANT_ID), eq(TB_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/activate", TB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.topicBindingId").value(TB_ID.toString()))
                 .andExpect(jsonPath("$.active").value(true));
@@ -3323,7 +3354,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("TopicBinding", TB_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/activate", TB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3337,7 +3369,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.deactivateTopicBinding(eq(TENANT_ID), eq(TB_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/deactivate", TB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.active").value(false));
     }
@@ -3354,7 +3387,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/topic-bindings/{topicBindingId}/deactivate", TB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3362,7 +3396,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void deleteTopicBindingReturns204() throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
     }
@@ -3379,7 +3414,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .when(writeFacade).deleteTopicBinding(eq(TENANT_ID), eq(TB_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/topic-bindings/{topicBindingId}", TB_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3400,7 +3436,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"99999999-9999-9999-9999-999999999991"}
@@ -3429,7 +3465,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest())
@@ -3443,7 +3479,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"99999999-9999-9999-9999-999999999991"}
@@ -3459,7 +3495,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"99999999-9999-9999-9999-999999999991"}
@@ -3476,7 +3512,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"99999999-9999-9999-9999-999999999991"}
@@ -3494,7 +3530,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.activateMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.membershipId").value(MEMBERSHIP_ID.toString()))
@@ -3514,7 +3551,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3525,7 +3563,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3537,7 +3576,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         "REMOVED holatdagi membership aktivlashtirilmaydi"));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/activate", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("INVALID_STATUS_TRANSITION"));
     }
@@ -3551,7 +3591,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.suspendMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUSPENDED"));
     }
@@ -3568,7 +3609,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3579,7 +3621,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3591,7 +3634,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         "REMOVED holatdagi membership to'xtatilmaydi"));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("INVALID_STATUS_TRANSITION"));
     }
@@ -3607,7 +3651,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.removeMembership(eq(TENANT_ID), eq(MEMBERSHIP_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.membershipId").value(MEMBERSHIP_ID.toString()))
@@ -3627,7 +3672,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3638,7 +3684,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Membership", MEMBERSHIP_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/remove", MEMBERSHIP_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3663,7 +3710,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.membershipId").value(MEMBERSHIP_ID.toString()))
@@ -3693,7 +3741,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3709,7 +3758,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3725,7 +3775,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3742,7 +3793,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("DUPLICATE_MEMBERSHIP_ROLE"));
     }
@@ -3759,7 +3811,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"roleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("INVALID_MEMBERSHIP_STATUS"));
     }
@@ -3768,7 +3821,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void unassignRoleFromMembershipReturns204() throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
                         MEMBERSHIP_ID, ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
     }
@@ -3787,7 +3841,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
                         MEMBERSHIP_ID, ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3799,7 +3854,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
                         MEMBERSHIP_ID, ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3811,7 +3867,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(delete("/api/admin/tenant-config/memberships/{membershipId}/roles/{roleId}",
                         MEMBERSHIP_ID, ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -3836,7 +3893,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Route Bugs","workItemType":"BUG","priority":10,
@@ -3870,7 +3927,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Catch All","workItemType":"INCIDENT","priority":5}
@@ -3897,7 +3954,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"","workItemType":"BUG","priority":10}
@@ -3915,7 +3972,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Rule","workItemType":"FEATURE","priority":10}
@@ -3932,7 +3989,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Rule","workItemType":"BUG","priority":10}
@@ -3950,7 +4007,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Rule","workItemType":"BUG","priority":10,
@@ -3987,7 +4044,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                                 {"name":"Updated Rule","priority":20,
                                  "targetTopicBindingId":"44444444-4444-4444-4444-444444444444",
                                  "conditionExpression":"severity == HIGH"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.ruleId").value(RULE_ID.toString()))
@@ -4013,7 +4071,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"priority":50}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.priority").value(50))
                 .andExpect(jsonPath("$.targetTopicBindingId").doesNotExist())
@@ -4035,7 +4094,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"targetTopicBindingId":"44444444-4444-4444-4444-444444444444"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.targetTopicBindingId").value(topicId.toString()));
     }
@@ -4054,7 +4114,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"targetTopicBindingId":null}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.targetTopicBindingId").doesNotExist());
     }
@@ -4073,7 +4134,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"conditionExpression":"type == CRITICAL"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.conditionExpression").value("type == CRITICAL"));
     }
@@ -4099,7 +4161,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"  "}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -4115,7 +4178,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Rule"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4131,7 +4195,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Rule"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4148,7 +4213,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"targetTopicBindingId":"44444444-4444-4444-4444-444444444499"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("INVALID_TOPIC_BINDING"));
     }
@@ -4164,7 +4230,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"priority":null}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -4178,7 +4245,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(patch("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
                         .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{}")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -4194,7 +4262,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.activateRoutingRule(eq(TENANT_ID), eq(RULE_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.ruleId").value(RULE_ID.toString()))
@@ -4215,7 +4284,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4226,7 +4296,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("RoutingRule", RULE_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/activate", RULE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4242,7 +4313,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.deactivateRoutingRule(eq(TENANT_ID), eq(RULE_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.ruleId").value(RULE_ID.toString()))
@@ -4263,7 +4335,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Tenant", TENANT_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4274,7 +4347,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("RoutingRule", RULE_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/routing-rules/{ruleId}/deactivate", RULE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4284,7 +4358,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void deleteRoutingRuleReturns204() throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
     }
@@ -4301,7 +4376,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .when(writeFacade).deleteRoutingRule(eq(TENANT_ID), eq(RULE_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4312,7 +4388,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .when(writeFacade).deleteRoutingRule(eq(TENANT_ID), eq(RULE_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/routing-rules/{ruleId}", RULE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4332,7 +4409,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"code":"BUG_REVIEWER","name":"Bug Reviewer","description":"Reviews bugs"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
                 .andExpect(jsonPath("$.code").value("BUG_REVIEWER"))
@@ -4353,7 +4431,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"code":"ADMIN","name":"Admin"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("DUPLICATE_ROLE_CODE"));
     }
@@ -4368,7 +4447,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"code":null,"name":null}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -4387,7 +4467,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Updated Name"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
                 .andExpect(jsonPath("$.name").value("Updated Name"));
@@ -4403,7 +4484,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Updated"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4416,7 +4498,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(patch("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
                         .param("tenantId", TENANT_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{}")
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -4431,7 +4514,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"New Name"}
-                                """))
+                                """)
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("SYSTEM_ROLE_UPDATE_FORBIDDEN"));
     }
@@ -4447,7 +4531,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.activateRole(any(), eq(ROLE_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/activate", ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
                 .andExpect(jsonPath("$.active").value(true));
@@ -4459,7 +4544,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/activate", ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4475,7 +4561,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         when(writeFacade.deactivateRole(any(), eq(ROLE_ID), any())).thenReturn(view);
 
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.roleId").value(ROLE_ID.toString()))
                 .andExpect(jsonPath("$.active").value(false));
@@ -4487,7 +4574,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .thenThrow(new ResourceNotFoundException("Role", ROLE_ID));
 
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4499,7 +4587,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         "Tizim roli deaktivlashtirilmaydi"));
 
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/deactivate", ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("SYSTEM_ROLE_DEACTIVATE_FORBIDDEN"));
     }
@@ -4509,7 +4598,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     @Test
     void deleteRoleReturns204() throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
     }
@@ -4520,7 +4610,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .when(writeFacade).deleteRole(any(), eq(ROLE_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4532,7 +4623,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .when(writeFacade).deleteRole(any(), eq(ROLE_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("SYSTEM_ROLE_DELETE_FORBIDDEN"));
     }
@@ -4544,7 +4636,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .when(writeFacade).deleteRole(any(), eq(ROLE_ID), any());
 
         mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}", ROLE_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errorCode").value("ROLE_IN_USE"));
     }
@@ -4558,7 +4651,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -4571,7 +4664,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG"}
@@ -4587,7 +4680,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -4645,7 +4738,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"permissionId":"%s"}
@@ -4676,7 +4769,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"permissionId":"%s"}
@@ -4693,7 +4786,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"permissionId":"%s"}
@@ -4711,7 +4804,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"permissionId":"%s"}
@@ -4728,7 +4821,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"permissionId":"%s"}
@@ -4743,7 +4836,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void unassignPermissionFromRoleReturns204() throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
                         ROLE_ID, PERMISSION_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
     }
@@ -4762,7 +4856,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
                         ROLE_ID, PERMISSION_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4774,7 +4869,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
                         ROLE_ID, PERMISSION_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4786,7 +4882,8 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
                         ROLE_ID, PERMISSION_ID)
-                        .param("tenantId", TENANT_ID.toString()))
+                        .param("tenantId", TENANT_ID.toString())
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4799,7 +4896,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(delete("/api/admin/tenant-config/roles/{roleId}/permissions/{permissionId}",
                         ROLE_ID, PERMISSION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -4829,7 +4926,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
                         WS_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"BUGS","statusOrder":0,"initial":true,"terminal":false}
@@ -4865,7 +4962,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
                         WS_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"","statusOrder":0,"initial":false,"terminal":false}
@@ -4883,7 +4980,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
                         WS_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"BUGS","statusOrder":0,"initial":true,"terminal":false}
@@ -4902,7 +4999,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
                         WS_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"BUGS","statusOrder":0,"initial":false,"terminal":false}
@@ -4922,7 +5019,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
                         WS_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"PROCESSING","statusOrder":1,"initial":true,"terminal":false}
@@ -4941,7 +5038,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
                         WS_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"" + tooLong + "\",\"statusOrder\":0,"
                                 + "\"initial\":true,\"terminal\":false}"))
@@ -4958,7 +5055,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
                         WS_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"BUGS","statusOrder":0,"initial":true,"terminal":false}
@@ -4994,7 +5091,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
                         TR_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
                                 + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
@@ -5022,7 +5119,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
                         "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
                                 + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
@@ -5038,7 +5135,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
                         TR_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
                 .andExpect(status().isBadRequest())
@@ -5054,7 +5151,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
                         TR_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
                                 + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
@@ -5071,7 +5168,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
                         TR_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
                                 + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
@@ -5090,7 +5187,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
                         TR_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
                                 + "\"toStatusId\":\"" + TR_FROM_STATUS_ID + "\"}"))
@@ -5108,7 +5205,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
                         TR_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
                                 + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
@@ -5125,7 +5222,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
                         TR_DEFINITION_ID)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
                                 + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
@@ -5153,7 +5250,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/tenants")
                         .param("adminContextTenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Acme Corp","slug":"acme","timezone":"Asia/Tashkent"}
@@ -5181,7 +5278,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void createTenantMalformedAdminContextTenantIdReturns400() throws Exception {
         mockMvc.perform(post("/api/admin/tenant-config/tenants")
                         .param("adminContextTenantId", "not-a-uuid")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Acme","slug":"acme"}
@@ -5197,7 +5294,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/tenants")
                         .param("adminContextTenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"","slug":"acme"}
@@ -5215,7 +5312,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/tenants")
                         .param("adminContextTenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Acme","slug":"acme"}
@@ -5232,7 +5329,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/tenants")
                         .param("adminContextTenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Acme","slug":"acme"}
@@ -5261,7 +5358,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/users")
                         .param("adminContextTenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"telegramUserId":123456789,"username":"alice","displayName":"Alice"}
@@ -5289,7 +5386,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void createAppUserMalformedAdminContextTenantIdReturns400() throws Exception {
         mockMvc.perform(post("/api/admin/tenant-config/users")
                         .param("adminContextTenantId", "not-a-uuid")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"telegramUserId":123456789}
@@ -5305,7 +5402,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/users")
                         .param("adminContextTenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"username":"alice"}
@@ -5323,7 +5420,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/users")
                         .param("adminContextTenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"telegramUserId":123456789,"username":"alice"}
@@ -5340,12 +5437,107 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(post("/api/admin/tenant-config/users")
                         .param("adminContextTenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .with(withActor(ACTOR_USER_ID))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"telegramUserId":123456789}
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    // ========== Phase 132: missing-actor 403 coverage for write endpoints ==========
+    //
+    // Phase 132'da TenantConfigController barcha write endpoint'lar @CurrentActor
+    // resolver'iga ko'chirildi. SecurityContext'da AuthenticatedActor bo'lmaganida
+    // resolver controller method ham, write facade ham chaqirilishidan OLDIN
+    // AccessDeniedException tashlaydi va GlobalExceptionHandler 403 ACCESS_DENIED
+    // qaytaradi. Quyidagi 6 ta test write endpoint kategoriyasi bo'yicha
+    // representative qoplama beradi (har bir endpointga emas):
+    //   1) POST body bilan create
+    //   2) PATCH update
+    //   3) POST activate (no body)
+    //   4) DELETE
+    //   5) role-permission assignment
+    //   6) membership lifecycle
+    // Har bir test verifyNoInteractions(writeFacade) bilan write facade
+    // chaqirilmaganini tasdiqlaydi.
+
+    @Test
+    void missingAuthenticatedActorOnCreateWorkflowDefinitionReturns403WithoutReachingFacade()
+            throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Bug Flow","workItemType":"BUG"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(writeFacade);
+    }
+
+    @Test
+    void missingAuthenticatedActorOnUpdateWorkflowDefinitionReturns403WithoutReachingFacade()
+            throws Exception {
+        mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Updated"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(writeFacade);
+    }
+
+    @Test
+    void missingAuthenticatedActorOnActivateWorkflowDefinitionReturns403WithoutReachingFacade()
+            throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(writeFacade);
+    }
+
+    @Test
+    void missingAuthenticatedActorOnDeleteWorkflowDefinitionReturns403WithoutReachingFacade()
+            throws Exception {
+        mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(writeFacade);
+    }
+
+    @Test
+    void missingAuthenticatedActorOnAssignPermissionToRoleReturns403WithoutReachingFacade()
+            throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"permissionId":"cccccccc-cccc-cccc-cccc-ccccccccccc1"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(writeFacade);
+    }
+
+    @Test
+    void missingAuthenticatedActorOnSuspendMembershipReturns403WithoutReachingFacade()
+            throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
+                        .param("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(writeFacade);
     }
 }
