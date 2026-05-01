@@ -1,5 +1,8 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.infrastructure.security.AuthenticatedActor;
+import com.engops.platform.infrastructure.security.SecurityConfig;
+import com.engops.platform.infrastructure.security.SecurityWebMvcConfig;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.telegram.TelegramDeliveryAttempt;
@@ -11,22 +14,29 @@ import com.engops.platform.workitem.model.UpdateType;
 import com.engops.platform.workitem.model.Visibility;
 import com.engops.platform.workitem.model.WorkItem;
 import com.engops.platform.workitem.model.WorkItemType;
-import com.engops.platform.infrastructure.security.SecurityConfig;
 import com.engops.platform.workitem.model.WorkItemUpdate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -74,7 +84,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - by-status missing statusCode: 400 qaytariladi
  */
 @WebMvcTest(WorkItemDetailsController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, SecurityWebMvcConfig.class})
 class WorkItemDetailsControllerTest {
 
     private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -84,7 +94,33 @@ class WorkItemDetailsControllerTest {
     private static final UUID AUTHOR_USER_ID = UUID.fromString("55555555-5555-5555-5555-555555555555");
     private static final String WORK_ITEM_CODE = "BUG-1";
     private static final UUID ACTOR_USER_ID = UUID.fromString("77777777-7777-7777-7777-777777777777");
-    private static final String ACTOR_HEADER = "X-Actor-User-Id";
+
+    /**
+     * Phase 129 helper: SecurityContext'ga {@link AuthenticatedActor} principal'ini
+     * request attribute orqali o'rnatadi. Spring Security'ning
+     * {@code SecurityContextHolderFilter} {@link RequestAttributeSecurityContextRepository}
+     * orqali shu attribute'ni o'qiydi va keyin {@code @CurrentActor} resolver
+     * principal'ni controller {@code actorUserId} parametriga uzatadi.
+     *
+     * <p>{@code SecurityMockMvcRequestPostProcessors.authentication(...)} ham
+     * shu effektni beradi, lekin {@code spring-security-test} dependency'sini
+     * talab qiladi — bu phase'da {@code pom.xml} o'zgartirilmaydi, shuning uchun
+     * Spring Security ichidagi public {@code RequestAttributeSecurityContextRepository}
+     * API'sidan foydalanib effekt qo'lda yaratiladi.</p>
+     */
+    private static RequestPostProcessor withActor(UUID actorUserId) {
+        return request -> {
+            Authentication auth = new UsernamePasswordAuthenticationToken(
+                    new AuthenticatedActor(actorUserId, null), null, Collections.emptyList());
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(auth);
+            request.setAttribute(
+                    RequestAttributeSecurityContextRepository.class.getName()
+                            + ".SPRING_SECURITY_CONTEXT",
+                    context);
+            return request;
+        };
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -147,7 +183,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItemId").value(workItem.getId().toString()))
                 .andExpect(jsonPath("$.workItemCode").value(WORK_ITEM_CODE))
@@ -184,7 +220,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItemId").value(workItem.getId().toString()))
                 .andExpect(jsonPath("$.updates", hasSize(0)));
@@ -210,7 +246,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.updates", hasSize(2)))
                 .andExpect(jsonPath("$.updates[0].updateTypeCode").value("COMMENT"))
@@ -227,7 +263,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", "NONEXISTENT-99")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -241,7 +277,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", "")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -249,7 +285,7 @@ class WorkItemDetailsControllerTest {
     void missingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -257,7 +293,7 @@ class WorkItemDetailsControllerTest {
     void missingWorkItemCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -278,7 +314,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/summary")
                         .param("tenantId", TENANT_ID.toString())
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -301,7 +337,7 @@ class WorkItemDetailsControllerTest {
 
         mockMvc.perform(get("/api/admin/work-items/summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -313,7 +349,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/summary")
                         .param("tenantId", TENANT_ID.toString())
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -327,7 +363,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/summary")
                         .param("tenantId", TENANT_ID.toString())
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -335,7 +371,7 @@ class WorkItemDetailsControllerTest {
     @Test
     void summaryMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/summary")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -387,7 +423,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 // workItem section
                 .andExpect(jsonPath("$.workItem.workItemId").value(workItem.getId().toString()))
@@ -437,7 +473,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItem.workItemId").value(workItem.getId().toString()))
                 .andExpect(jsonPath("$.deliveryObservability.latestMetrics.empty").value(true));
@@ -451,7 +487,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", "NONEXISTENT-99")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -466,7 +502,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
                         .param("historyLimit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -475,7 +511,7 @@ class WorkItemDetailsControllerTest {
     void supportDetailsMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -483,7 +519,7 @@ class WorkItemDetailsControllerTest {
     void supportDetailsMissingWorkItemCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -518,7 +554,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-summary")
                         .param("tenantId", TENANT_ID.toString())
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 // workItem section
@@ -547,7 +583,7 @@ class WorkItemDetailsControllerTest {
 
         mockMvc.perform(get("/api/admin/work-items/support-summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -560,7 +596,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-summary")
                         .param("tenantId", TENANT_ID.toString())
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -574,7 +610,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-summary")
                         .param("tenantId", TENANT_ID.toString())
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -582,7 +618,7 @@ class WorkItemDetailsControllerTest {
     @Test
     void supportSummaryMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -626,7 +662,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", consistentWorkItemId.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 // workItem section
                 .andExpect(jsonPath("$.workItem.workItemId").value(consistentWorkItemId.toString()))
@@ -670,7 +706,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", consistentWorkItemId.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 // Ikkala section bir xil workItemId ishlatishini isbotlash
                 .andExpect(jsonPath("$.workItem.workItemId").value(consistentWorkItemId.toString()))
@@ -687,7 +723,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", unknownId.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -702,7 +738,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", WORK_ITEM_ID.toString())
                         .param("historyLimit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -711,7 +747,7 @@ class WorkItemDetailsControllerTest {
     void supportDetailsByIdMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("workItemId", WORK_ITEM_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -719,7 +755,7 @@ class WorkItemDetailsControllerTest {
     void supportDetailsByIdMissingWorkItemIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-id")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -748,7 +784,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/details/by-id")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", consistentId.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workItemId").value(consistentId.toString()))
                 .andExpect(jsonPath("$.workItemCode").value(WORK_ITEM_CODE))
@@ -774,7 +810,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/details/by-id")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemId", unknownId.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -783,7 +819,7 @@ class WorkItemDetailsControllerTest {
     void detailsByIdMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/details/by-id")
                         .param("workItemId", WORK_ITEM_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -791,7 +827,7 @@ class WorkItemDetailsControllerTest {
     void detailsByIdMissingWorkItemIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/details/by-id")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -814,7 +850,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -835,7 +871,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -849,7 +885,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "PROCESSING")
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -864,7 +900,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -873,7 +909,7 @@ class WorkItemDetailsControllerTest {
     void byStatusMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/by-status")
                         .param("statusCode", "BUGS")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -881,7 +917,7 @@ class WorkItemDetailsControllerTest {
     void byStatusMissingStatusCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/by-status")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -904,7 +940,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItemId").value(WORK_ITEM_ID.toString()))
@@ -924,7 +960,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -938,7 +974,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -953,7 +989,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -962,7 +998,7 @@ class WorkItemDetailsControllerTest {
     void byOwnerMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/by-owner")
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -970,7 +1006,7 @@ class WorkItemDetailsControllerTest {
     void byOwnerMissingOwnerUserIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/by-owner")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1006,7 +1042,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItem.workItemId").value(WORK_ITEM_ID.toString()))
@@ -1028,7 +1064,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -1042,7 +1078,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "PROCESSING")
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -1057,7 +1093,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -1066,7 +1102,7 @@ class WorkItemDetailsControllerTest {
     void supportSummaryByStatusMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-status")
                         .param("statusCode", "BUGS")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1074,7 +1110,7 @@ class WorkItemDetailsControllerTest {
     void supportSummaryByStatusMissingStatusCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-status")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1110,7 +1146,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].workItem.workItemId").value(WORK_ITEM_ID.toString()))
@@ -1132,7 +1168,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -1146,7 +1182,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -1161,7 +1197,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -1170,7 +1206,7 @@ class WorkItemDetailsControllerTest {
     void supportSummaryByOwnerMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1178,7 +1214,7 @@ class WorkItemDetailsControllerTest {
     void supportSummaryByOwnerMissingOwnerUserIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-summary/by-owner")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1235,7 +1271,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 // workItem section — full details level
@@ -1275,7 +1311,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-status")
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -1289,7 +1325,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "PROCESSING")
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -1304,7 +1340,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("statusCode", "BUGS")
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -1313,7 +1349,7 @@ class WorkItemDetailsControllerTest {
     void supportDetailsByStatusMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-status")
                         .param("statusCode", "BUGS")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1321,7 +1357,7 @@ class WorkItemDetailsControllerTest {
     void supportDetailsByStatusMissingStatusCodeReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-status")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1377,7 +1413,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "20")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 // workItem section — full details level
@@ -1417,7 +1453,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-owner")
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -1431,7 +1467,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "10")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -1446,7 +1482,7 @@ class WorkItemDetailsControllerTest {
                         .param("tenantId", TENANT_ID.toString())
                         .param("ownerUserId", OWNER_USER_ID.toString())
                         .param("limit", "0")
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -1455,7 +1491,7 @@ class WorkItemDetailsControllerTest {
     void supportDetailsByOwnerMissingTenantIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-owner")
                         .param("ownerUserId", OWNER_USER_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1463,7 +1499,7 @@ class WorkItemDetailsControllerTest {
     void supportDetailsByOwnerMissingOwnerUserIdReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/work-items/support-details/by-owner")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1476,7 +1512,7 @@ class WorkItemDetailsControllerTest {
 
         mockMvc.perform(get("/api/admin/work-items/summary")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -1489,7 +1525,7 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -1502,19 +1538,33 @@ class WorkItemDetailsControllerTest {
         mockMvc.perform(get("/api/admin/work-items/support-details")
                         .param("tenantId", TENANT_ID.toString())
                         .param("workItemCode", WORK_ITEM_CODE)
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 
     @Test
-    void missingActorHeaderStillReachesEndpointAndReturns403() throws Exception {
-        when(summaryReadFacade.getSummaryList(eq(TENANT_ID), eq(20), any()))
-                .thenThrow(new AccessDeniedException("Actor identifikatsiyasi talab qilinadi"));
-
+    void missingAuthenticatedActorReturns403WithoutReachingFacade() throws Exception {
+        // Phase 129: @CurrentActor resolver SecurityContext'da AuthenticatedActor
+        // bo'lmaganida AccessDeniedException tashlaydi va GlobalExceptionHandler
+        // 403 ACCESS_DENIED qaytaradi. Bu facade chaqirilishidan OLDIN bo'ladi —
+        // shuning uchun facade'lar mock'lanmaydi va verifyNoInteractions tasdiqlaydi.
         mockMvc.perform(get("/api/admin/work-items/summary")
                         .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(detailsReadFacade);
+        verifyNoInteractions(summaryReadFacade);
+        verifyNoInteractions(supportDetailsReadFacade);
+        verifyNoInteractions(supportSummaryFacade);
+        verifyNoInteractions(supportDetailsByIdFacade);
+        verifyNoInteractions(detailsByIdFacade);
+        verifyNoInteractions(summaryByStatusReadFacade);
+        verifyNoInteractions(summaryByOwnerReadFacade);
+        verifyNoInteractions(supportSummaryByStatusFacade);
+        verifyNoInteractions(supportSummaryByOwnerFacade);
+        verifyNoInteractions(supportDetailsByStatusFacade);
+        verifyNoInteractions(supportDetailsByOwnerFacade);
     }
 }

@@ -1,5 +1,6 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.infrastructure.security.CurrentActor;
 import com.engops.platform.telegram.TelegramDeliveryAttempt;
 import com.engops.platform.telegram.TelegramDeliveryMetricsSnapshot;
 import com.engops.platform.telegram.TelegramDeliveryObservabilityDetailsView;
@@ -7,7 +8,6 @@ import com.engops.platform.workitem.model.WorkItem;
 import com.engops.platform.workitem.model.WorkItemUpdate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,8 +32,13 @@ import java.util.UUID;
  * - GET /support-details/by-owner — owner bo'yicha combined support details ro'yxat
  *
  * Faqat GET — write operatsiya yo'q.
- * Barcha endpoint'lar X-Actor-User-Id header orqali actor identifikatsiyasini oladi.
- * Authorization facade boundary'da amalga oshiriladi — controller thin adapter bo'lib qoladi.
+ * Barcha endpoint'lar joriy actor'ni Spring SecurityContext'dan {@link CurrentActor}
+ * argument resolver orqali oladi (Phase 129). Avvalgi {@code X-Actor-User-Id}
+ * header endi ishlatilmaydi — JWT'dan kelgan {@code AuthenticatedActor} yagona
+ * actor manbai. Authentication SecurityContext'da bo'lmasa resolver
+ * AccessDeniedException tashlaydi va GlobalExceptionHandler 403 qaytaradi.
+ * Authorization facade boundary'da amalga oshiriladi — controller thin adapter
+ * bo'lib qoladi.
  *
  * Bu controller thin adapter:
  * - HTTP request parametrlarini facade'larga uzatadi
@@ -88,7 +93,7 @@ public class WorkItemDetailsController {
     public ResponseEntity<WorkItemSummaryResponse> getSummary(
             @RequestParam UUID tenantId,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = summaryReadFacade.getSummaryList(tenantId, limit, actorUserId);
 
@@ -104,7 +109,7 @@ public class WorkItemDetailsController {
             @RequestParam UUID tenantId,
             @RequestParam String statusCode,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = summaryByStatusReadFacade.getSummaryList(tenantId, statusCode, limit, actorUserId);
 
@@ -120,7 +125,7 @@ public class WorkItemDetailsController {
             @RequestParam UUID tenantId,
             @RequestParam UUID ownerUserId,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = summaryByOwnerReadFacade.getSummaryList(tenantId, ownerUserId, limit, actorUserId);
 
@@ -135,7 +140,7 @@ public class WorkItemDetailsController {
     public ResponseEntity<WorkItemSupportSummaryResponse> getSupportSummary(
             @RequestParam UUID tenantId,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = supportSummaryFacade.getSummaryList(tenantId, limit, actorUserId);
 
@@ -151,7 +156,7 @@ public class WorkItemDetailsController {
             @RequestParam UUID tenantId,
             @RequestParam String statusCode,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = supportSummaryByStatusFacade.getSummaryList(tenantId, statusCode, limit, actorUserId);
 
@@ -167,7 +172,7 @@ public class WorkItemDetailsController {
             @RequestParam UUID tenantId,
             @RequestParam UUID ownerUserId,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var items = supportSummaryByOwnerFacade.getSummaryList(tenantId, ownerUserId, limit, actorUserId);
 
@@ -183,7 +188,7 @@ public class WorkItemDetailsController {
             @RequestParam UUID tenantId,
             @RequestParam String workItemCode,
             @RequestParam(defaultValue = "10") int historyLimit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         WorkItemSupportDetailsFacade.WorkItemSupportDetailsView view =
                 supportDetailsReadFacade.getDetails(tenantId, workItemCode, historyLimit, actorUserId);
@@ -196,7 +201,7 @@ public class WorkItemDetailsController {
             @RequestParam UUID tenantId,
             @RequestParam String statusCode,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var views = supportDetailsByStatusFacade.getDetailsList(tenantId, statusCode, limit, actorUserId);
 
@@ -212,7 +217,7 @@ public class WorkItemDetailsController {
             @RequestParam UUID tenantId,
             @RequestParam UUID ownerUserId,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         var views = supportDetailsByOwnerFacade.getDetailsList(tenantId, ownerUserId, limit, actorUserId);
 
@@ -228,7 +233,7 @@ public class WorkItemDetailsController {
             @RequestParam UUID tenantId,
             @RequestParam UUID workItemId,
             @RequestParam(defaultValue = "10") int historyLimit,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         WorkItemSupportDetailsFacade.WorkItemSupportDetailsView view =
                 supportDetailsByIdFacade.getDetails(tenantId, workItemId, historyLimit, actorUserId);
@@ -240,7 +245,7 @@ public class WorkItemDetailsController {
     public ResponseEntity<WorkItemDetailsResponse> getDetails(
             @RequestParam UUID tenantId,
             @RequestParam String workItemCode,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         WorkItemDetailsFacade.WorkItemDetailsView view =
                 detailsReadFacade.getDetails(tenantId, workItemCode, actorUserId);
@@ -252,7 +257,7 @@ public class WorkItemDetailsController {
     public ResponseEntity<WorkItemDetailsResponse> getDetailsById(
             @RequestParam UUID tenantId,
             @RequestParam UUID workItemId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         WorkItemDetailsFacade.WorkItemDetailsView view =
                 detailsByIdFacade.getDetails(tenantId, workItemId, actorUserId);
