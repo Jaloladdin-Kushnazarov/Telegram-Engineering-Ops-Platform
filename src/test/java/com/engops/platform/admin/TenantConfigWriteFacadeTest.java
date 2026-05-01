@@ -2278,4 +2278,114 @@ class TenantConfigWriteFacadeTest {
         verifyNoInteractions(authorizationService);
         verifyNoInteractions(commandService);
     }
+
+    // ========== createWorkflowTransitionRule tests ==========
+
+    private static final UUID FROM_STATUS_ID =
+            UUID.fromString("55555555-5555-5555-5555-555555555551");
+    private static final UUID TO_STATUS_ID =
+            UUID.fromString("55555555-5555-5555-5555-555555555552");
+    private static final UUID TRANSITION_RULE_ID =
+            UUID.fromString("66666666-6666-6666-6666-666666666661");
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenTenantIdNull() {
+        var request = new CreateWorkflowTransitionRuleRequest(FROM_STATUS_ID, TO_STATUS_ID);
+
+        assertThatThrownBy(() -> facade.createWorkflowTransitionRule(null, DEFINITION_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenDefinitionIdNull() {
+        var request = new CreateWorkflowTransitionRuleRequest(FROM_STATUS_ID, TO_STATUS_ID);
+
+        assertThatThrownBy(() -> facade.createWorkflowTransitionRule(TENANT_ID, null, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("definitionId");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenRequestNull() {
+        assertThatThrownBy(() -> facade.createWorkflowTransitionRule(TENANT_ID, DEFINITION_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenFromStatusIdNull() {
+        var request = new CreateWorkflowTransitionRuleRequest(null, TO_STATUS_ID);
+
+        assertThatThrownBy(() -> facade.createWorkflowTransitionRule(TENANT_ID, DEFINITION_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("fromStatusId");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenToStatusIdNull() {
+        var request = new CreateWorkflowTransitionRuleRequest(FROM_STATUS_ID, null);
+
+        assertThatThrownBy(() -> facade.createWorkflowTransitionRule(TENANT_ID, DEFINITION_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("toStatusId");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleDeniedWhenAuthorizationFails() {
+        var request = new CreateWorkflowTransitionRuleRequest(FROM_STATUS_ID, TO_STATUS_ID);
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.createWorkflowTransitionRule(TENANT_ID, DEFINITION_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleDelegatesAndMapsResponse() {
+        var request = new CreateWorkflowTransitionRuleRequest(FROM_STATUS_ID, TO_STATUS_ID);
+
+        var fromStatus = mock(com.engops.platform.tenantconfig.model.WorkflowStatus.class);
+        when(fromStatus.getId()).thenReturn(FROM_STATUS_ID);
+        var toStatus = mock(com.engops.platform.tenantconfig.model.WorkflowStatus.class);
+        when(toStatus.getId()).thenReturn(TO_STATUS_ID);
+
+        var rule = mock(com.engops.platform.tenantconfig.model.WorkflowTransitionRule.class);
+        java.time.Instant createdAt = java.time.Instant.parse("2026-04-29T10:00:00Z");
+        when(rule.getId()).thenReturn(TRANSITION_RULE_ID);
+        when(rule.getFromStatus()).thenReturn(fromStatus);
+        when(rule.getToStatus()).thenReturn(toStatus);
+        when(rule.getCreatedAt()).thenReturn(createdAt);
+        when(commandService.createWorkflowTransitionRule(TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID))
+                .thenReturn(rule);
+
+        var view = facade.createWorkflowTransitionRule(TENANT_ID, DEFINITION_ID, request, ACTOR_USER_ID);
+
+        assertThat(view.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(view.workflowDefinitionId()).isEqualTo(DEFINITION_ID);
+        assertThat(view.transitionRuleId()).isEqualTo(TRANSITION_RULE_ID);
+        assertThat(view.fromStatusId()).isEqualTo(FROM_STATUS_ID);
+        assertThat(view.toStatusId()).isEqualTo(TO_STATUS_ID);
+        assertThat(view.createdAt()).isEqualTo(createdAt);
+
+        verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+        verify(commandService).createWorkflowTransitionRule(TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID);
+    }
 }

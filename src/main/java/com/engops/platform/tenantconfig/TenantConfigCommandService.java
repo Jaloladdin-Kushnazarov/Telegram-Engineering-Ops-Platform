@@ -9,12 +9,14 @@ import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
+import com.engops.platform.tenantconfig.model.WorkflowTransitionRule;
 import com.engops.platform.tenantconfig.repository.RoutingRuleRepository;
 import com.engops.platform.tenantconfig.repository.TelegramChatBindingRepository;
 import com.engops.platform.tenantconfig.repository.TelegramTopicBindingRepository;
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowStatusRepository;
+import com.engops.platform.tenantconfig.repository.WorkflowTransitionRuleRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +41,7 @@ public class TenantConfigCommandService {
     private final TenantRepository tenantRepository;
     private final WorkflowDefinitionRepository workflowDefinitionRepository;
     private final WorkflowStatusRepository workflowStatusRepository;
+    private final WorkflowTransitionRuleRepository workflowTransitionRuleRepository;
     private final RoutingRuleRepository routingRuleRepository;
     private final TelegramChatBindingRepository telegramChatBindingRepository;
     private final TelegramTopicBindingRepository telegramTopicBindingRepository;
@@ -47,6 +50,7 @@ public class TenantConfigCommandService {
     public TenantConfigCommandService(TenantRepository tenantRepository,
                                        WorkflowDefinitionRepository workflowDefinitionRepository,
                                        WorkflowStatusRepository workflowStatusRepository,
+                                       WorkflowTransitionRuleRepository workflowTransitionRuleRepository,
                                        RoutingRuleRepository routingRuleRepository,
                                        TelegramChatBindingRepository telegramChatBindingRepository,
                                        TelegramTopicBindingRepository telegramTopicBindingRepository,
@@ -54,6 +58,7 @@ public class TenantConfigCommandService {
         this.tenantRepository = tenantRepository;
         this.workflowDefinitionRepository = workflowDefinitionRepository;
         this.workflowStatusRepository = workflowStatusRepository;
+        this.workflowTransitionRuleRepository = workflowTransitionRuleRepository;
         this.routingRuleRepository = routingRuleRepository;
         this.telegramChatBindingRepository = telegramChatBindingRepository;
         this.telegramTopicBindingRepository = telegramTopicBindingRepository;
@@ -342,6 +347,124 @@ public class TenantConfigCommandService {
                 "CREATED", null, "ADMIN_API", null, name);
 
         return status;
+    }
+
+    // ========== WorkflowTransitionRule operations ==========
+
+    /**
+     * Mavjud workflow definition uchun yangi transition rule (status o'tish qoidasi)
+     * yaratadi. Rule "fromStatus → toStatus" yo'nalishini ruxsat etilgan deb belgilaydi.
+     *
+     * Validatsiyalar:
+     * 1. Tenant mavjud bo'lishi kerak
+     * 2. Workflow definition shu tenantga tegishli bo'lishi kerak
+     * 3. fromStatus mavjud va shu workflow definition'ga tegishli bo'lishi kerak
+     * 4. toStatus mavjud va shu workflow definition'ga tegishli bo'lishi kerak
+     * 5. fromStatusId != toStatusId — self-transition rad etiladi
+     *    (WorkflowTransitionService.transition runtime'da SAME_STATUS sifatida
+     *    rad etadi; create-time gate ham shu kontraktni qo'llab-quvvatlaydi —
+     *    aks holda hech qachon ishga tushmaydigan dead config saqlanardi).
+     * 6. Bir xil (definition, from, to) uchun rule allaqachon mavjud bo'lmasligi
+     *    kerak (DB constraint: UNIQUE (workflow_definition_id, from_status_id,
+     *    to_status_id) — pre-check + DB fallback).
+     *
+     * Tenant/status safety: cross-tenant yoki cross-definition status'lar
+     * ResourceNotFoundException sifatida 404 qaytaradi (mavjud
+     * findByIdAndTenantId pattern bilan bir xil — "boshqa scope'da topilmadi").
+     *
+     * requiredPermissionId Phase 116 surface'ga kirmaydi:
+     * WorkflowTransitionService.validateTransition runtime hozirda uni e'tiborga
+     * olmaydi — schema field bo'lsa ham hech qanday xulq-atvor effekti yo'q.
+     * Runtime gate kelajak phase'ida qo'shilganda surface ham yangilanadi.
+     *
+     * @param tenantId tenant identifikatori
+     * @param workflowDefinitionId workflow definition identifikatori
+     * @param fromStatusId boshlang'ich status identifikatori
+     * @param toStatusId maqsad status identifikatori
+     * @return yaratilgan WorkflowTransitionRule
+     * @throws ResourceNotFoundException tenant, workflow definition yoki status
+     *         topilmasa (cross-definition status ham 404)
+     * @throws BusinessRuleException self-transition yoki duplicate rule
+     */
+    public WorkflowTransitionRule createWorkflowTransitionRule(UUID tenantId,
+                                                                UUID workflowDefinitionId,
+                                                                UUID fromStatusId,
+                                                                UUID toStatusId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (workflowDefinitionId == null) {
+            throw new IllegalArgumentException("workflowDefinitionId null bo'lishi mumkin emas");
+        }
+        if (fromStatusId == null) {
+            throw new IllegalArgumentException("fromStatusId null bo'lishi mumkin emas");
+        }
+        if (toStatusId == null) {
+            throw new IllegalArgumentException("toStatusId null bo'lishi mumkin emas");
+        }
+
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        WorkflowDefinition definition = workflowDefinitionRepository
+                .findByTenantIdAndId(tenantId, workflowDefinitionId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "WorkflowDefinition", workflowDefinitionId));
+
+        if (fromStatusId.equals(toStatusId)) {
+            throw new BusinessRuleException("SELF_TRANSITION_NOT_ALLOWED",
+                    "Workflow transition rule fromStatus va toStatus bir xil bo'lishi mumkin emas "
+                            + "(statusId=" + fromStatusId + ")");
+        }
+
+        WorkflowStatus fromStatus = resolveStatusInDefinition(
+                fromStatusId, workflowDefinitionId, tenantId, "fromStatus");
+        WorkflowStatus toStatus = resolveStatusInDefinition(
+                toStatusId, workflowDefinitionId, tenantId, "toStatus");
+
+        if (workflowTransitionRuleRepository
+                .existsByWorkflowDefinition_IdAndFromStatus_IdAndToStatus_Id(
+                        workflowDefinitionId, fromStatusId, toStatusId)) {
+            throw new BusinessRuleException("DUPLICATE_WORKFLOW_TRANSITION_RULE",
+                    "Workflow definition ichida '" + fromStatus.getName() + " -> "
+                            + toStatus.getName() + "' transition rule allaqachon mavjud");
+        }
+
+        WorkflowTransitionRule rule = new WorkflowTransitionRule(definition, fromStatus, toStatus);
+
+        try {
+            rule = workflowTransitionRuleRepository.save(rule);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateWorkflowTransitionRuleConstraint(ex)) {
+                throw new BusinessRuleException("DUPLICATE_WORKFLOW_TRANSITION_RULE",
+                        "Workflow definition ichida '" + fromStatus.getName() + " -> "
+                                + toStatus.getName() + "' transition rule allaqachon mavjud");
+            }
+            throw ex;
+        }
+
+        auditService.recordEvent(tenantId, "WORKFLOW_TRANSITION_RULE", rule.getId(),
+                "CREATED", null, "ADMIN_API", null,
+                fromStatus.getName() + " -> " + toStatus.getName());
+
+        return rule;
+    }
+
+    /**
+     * Status'ni (tenant + workflow definition) scope ichida bitta tenant-safe
+     * SQL bilan topadi. Cross-tenant yoki cross-definition status — 404.
+     *
+     * In-memory scope check ishlatilmaydi — tenant-safety discipline
+     * (mavjud findByIdAndTenantId pattern bilan bir xil) repository darajasida
+     * ta'minlanadi.
+     */
+    private WorkflowStatus resolveStatusInDefinition(UUID statusId, UUID workflowDefinitionId,
+                                                       UUID tenantId, String label) {
+        return workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        statusId, workflowDefinitionId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "WorkflowStatus", label + "=" + statusId));
     }
 
     // ========== TelegramChatBinding operations ==========
@@ -995,6 +1118,31 @@ public class TenantConfigCommandService {
                     && constraintName.contains("workflow_status")
                     && constraintName.contains("workflow_definition_id")
                     && constraintName.contains("name");
+        }
+        return false;
+    }
+
+    /**
+     * DataIntegrityViolationException workflow_transition_rule
+     * (workflow_definition_id, from_status_id, to_status_id) unique constraint
+     * violation ekanligini tekshiradi.
+     *
+     * PostgreSQL avtomatik constraint nomlari identifier uzunligi limiti (63 belgi)
+     * tufayli kesilishi mumkin. Masalan:
+     * "workflow_transition_rule_workflow_definition_id_from_status_id_"
+     * — bu yerda "to_status_id" qoldiq belgilarga sig'maydi va kesib tashlanadi.
+     * Shuning uchun pattern faqat "workflow_transition_rule" + ikkita kalit
+     * column'gacha tekshiradi (workflow_definition_id va from_status_id) —
+     * boshqa workflow_transition_rule unique constraint'i mavjud emas.
+     */
+    private static boolean isDuplicateWorkflowTransitionRuleConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("workflow_transition_rule")
+                    && constraintName.contains("workflow_definition_id")
+                    && constraintName.contains("from_status_id");
         }
         return false;
     }

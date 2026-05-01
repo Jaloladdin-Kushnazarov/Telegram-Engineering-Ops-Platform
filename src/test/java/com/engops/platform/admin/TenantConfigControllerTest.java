@@ -4914,4 +4914,170 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
+
+    // ========== POST /workflow-definitions/{definitionId}/transition-rules endpoint ==========
+
+    private static final UUID TR_DEFINITION_ID =
+            UUID.fromString("33333333-3333-3333-3333-333333333331");
+    private static final UUID TR_RULE_ID =
+            UUID.fromString("66666666-6666-6666-6666-666666666661");
+    private static final UUID TR_FROM_STATUS_ID =
+            UUID.fromString("55555555-5555-5555-5555-555555555551");
+    private static final UUID TR_TO_STATUS_ID =
+            UUID.fromString("55555555-5555-5555-5555-555555555552");
+
+    @Test
+    void createWorkflowTransitionRuleReturns201WithCreatedResource() throws Exception {
+        var view = new TenantConfigWriteFacade.WorkflowTransitionRuleCreatedView(
+                TENANT_ID,
+                TR_DEFINITION_ID,
+                TR_RULE_ID,
+                TR_FROM_STATUS_ID,
+                TR_TO_STATUS_ID,
+                Instant.parse("2026-04-29T10:00:00Z"));
+
+        when(writeFacade.createWorkflowTransitionRule(eq(TENANT_ID), eq(TR_DEFINITION_ID),
+                any(CreateWorkflowTransitionRuleRequest.class), any())).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
+                        TR_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
+                                + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.workflowDefinitionId").value(TR_DEFINITION_ID.toString()))
+                .andExpect(jsonPath("$.transitionRuleId").value(TR_RULE_ID.toString()))
+                .andExpect(jsonPath("$.fromStatusId").value(TR_FROM_STATUS_ID.toString()))
+                .andExpect(jsonPath("$.toStatusId").value(TR_TO_STATUS_ID.toString()))
+                .andExpect(jsonPath("$.createdAt").value("2026-04-29T10:00:00Z"));
+    }
+
+    @Test
+    void createWorkflowTransitionRuleMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
+                        TR_DEFINITION_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
+                                + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createWorkflowTransitionRuleMalformedDefinitionIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
+                        "not-a-uuid")
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
+                                + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createWorkflowTransitionRuleMissingFromStatusIdReturns400() throws Exception {
+        when(writeFacade.createWorkflowTransitionRule(eq(TENANT_ID), eq(TR_DEFINITION_ID),
+                any(CreateWorkflowTransitionRuleRequest.class), any()))
+                .thenThrow(new IllegalArgumentException("fromStatusId null bo'lishi mumkin emas"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
+                        TR_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createWorkflowTransitionRuleDefinitionNotFoundReturns404() throws Exception {
+        when(writeFacade.createWorkflowTransitionRule(eq(TENANT_ID), eq(TR_DEFINITION_ID),
+                any(CreateWorkflowTransitionRuleRequest.class), any()))
+                .thenThrow(new ResourceNotFoundException("WorkflowDefinition", TR_DEFINITION_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
+                        TR_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
+                                + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void createWorkflowTransitionRuleStatusNotFoundReturns404() throws Exception {
+        when(writeFacade.createWorkflowTransitionRule(eq(TENANT_ID), eq(TR_DEFINITION_ID),
+                any(CreateWorkflowTransitionRuleRequest.class), any()))
+                .thenThrow(new ResourceNotFoundException("WorkflowStatus", "fromStatus=" + TR_FROM_STATUS_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
+                        TR_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
+                                + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void createWorkflowTransitionRuleSelfTransitionReturns422() throws Exception {
+        when(writeFacade.createWorkflowTransitionRule(eq(TENANT_ID), eq(TR_DEFINITION_ID),
+                any(CreateWorkflowTransitionRuleRequest.class), any()))
+                .thenThrow(new BusinessRuleException("SELF_TRANSITION_NOT_ALLOWED",
+                        "Workflow transition rule fromStatus va toStatus bir xil bo'lishi mumkin emas "
+                                + "(statusId=" + TR_FROM_STATUS_ID + ")"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
+                        TR_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
+                                + "\"toStatusId\":\"" + TR_FROM_STATUS_ID + "\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("SELF_TRANSITION_NOT_ALLOWED"));
+    }
+
+    @Test
+    void createWorkflowTransitionRuleDuplicateReturns422() throws Exception {
+        when(writeFacade.createWorkflowTransitionRule(eq(TENANT_ID), eq(TR_DEFINITION_ID),
+                any(CreateWorkflowTransitionRuleRequest.class), any()))
+                .thenThrow(new BusinessRuleException("DUPLICATE_WORKFLOW_TRANSITION_RULE",
+                        "Workflow definition ichida 'BUGS -> PROCESSING' transition rule allaqachon mavjud"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
+                        TR_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
+                                + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_WORKFLOW_TRANSITION_RULE"));
+    }
+
+    @Test
+    void createWorkflowTransitionRuleForbiddenWhenAuthorizationFails() throws Exception {
+        doThrow(new AccessDeniedException("Bu operatsiya uchun TENANT_CONFIG_WRITE ruxsati talab qilinadi"))
+                .when(writeFacade).createWorkflowTransitionRule(eq(TENANT_ID), eq(TR_DEFINITION_ID),
+                        any(CreateWorkflowTransitionRuleRequest.class), any());
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/transition-rules",
+                        TR_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fromStatusId\":\"" + TR_FROM_STATUS_ID + "\","
+                                + "\"toStatusId\":\"" + TR_TO_STATUS_ID + "\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
 }

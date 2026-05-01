@@ -12,6 +12,7 @@ import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
+import com.engops.platform.tenantconfig.model.WorkflowTransitionRule;
 import org.springframework.stereotype.Service;
 
 import java.util.Set;
@@ -300,6 +301,72 @@ public class TenantConfigWriteFacade {
             int statusOrder,
             boolean initial,
             boolean terminal,
+            java.time.Instant createdAt) {}
+
+    // ========== WorkflowTransitionRule operations ==========
+
+    /**
+     * Mavjud workflow definition uchun yangi transition rule yaratish — request
+     * boundary validatsiyasi va delegation.
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId, definitionId null bo'lmasligi
+     * 2. request null bo'lmasligi
+     * 3. fromStatusId, toStatusId null bo'lmasligi
+     * 4. authorizeWrite chaqiriladi
+     * 5. CommandService.createWorkflowTransitionRule delegate qilinadi
+     *
+     * Phase 116 surface'i string action/actionCode field bermaydi (model va schema'da
+     * yo'q) — shuning uchun normalize/length-check qilish uchun string yo'q.
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @param request yaratish so'rovi
+     * @param actorUserId joriy actor
+     * @return yaratilgan transition rule view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public WorkflowTransitionRuleCreatedView createWorkflowTransitionRule(
+            UUID tenantId, UUID definitionId,
+            CreateWorkflowTransitionRuleRequest request, UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (definitionId == null) {
+            throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.fromStatusId() == null) {
+            throw new IllegalArgumentException("fromStatusId null bo'lishi mumkin emas");
+        }
+        if (request.toStatusId() == null) {
+            throw new IllegalArgumentException("toStatusId null bo'lishi mumkin emas");
+        }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
+
+        WorkflowTransitionRule rule = commandService.createWorkflowTransitionRule(
+                tenantId, definitionId, request.fromStatusId(), request.toStatusId());
+
+        return new WorkflowTransitionRuleCreatedView(
+                tenantId,
+                definitionId,
+                rule.getId(),
+                rule.getFromStatus() != null ? rule.getFromStatus().getId() : null,
+                rule.getToStatus() != null ? rule.getToStatus().getId() : null,
+                rule.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — yaratilgan workflow transition rule.
+     */
+    public record WorkflowTransitionRuleCreatedView(
+            UUID tenantId,
+            UUID workflowDefinitionId,
+            UUID transitionRuleId,
+            UUID fromStatusId,
+            UUID toStatusId,
             java.time.Instant createdAt) {}
 
     // ========== TelegramChatBinding operations ==========

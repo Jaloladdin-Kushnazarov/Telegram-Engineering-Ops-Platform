@@ -751,6 +751,34 @@ public class TenantConfigController {
     }
 
     /**
+     * Mavjud workflow definition uchun yangi transition rule yaratadi.
+     *
+     * @param definitionId ota workflow definition identifikatori
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi (fromStatusId, toStatusId)
+     * @return yaratilgan transition rule (201 Created)
+     */
+    @PostMapping("/workflow-definitions/{definitionId}/transition-rules")
+    public ResponseEntity<TenantConfigWorkflowTransitionRuleCreatedResponse> createWorkflowTransitionRule(
+            @PathVariable UUID definitionId,
+            @RequestParam UUID tenantId,
+            @RequestBody CreateWorkflowTransitionRuleRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigWriteFacade.WorkflowTransitionRuleCreatedView view =
+                writeFacade.createWorkflowTransitionRule(tenantId, definitionId, request, actorUserId);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new TenantConfigWorkflowTransitionRuleCreatedResponse(
+                        view.tenantId(),
+                        view.workflowDefinitionId(),
+                        view.transitionRuleId(),
+                        view.fromStatusId(),
+                        view.toStatusId(),
+                        view.createdAt()));
+    }
+
+    /**
      * Yangi chat binding yaratadi.
      *
      * @param tenantId tenant identifikatori

@@ -15,6 +15,7 @@ import com.engops.platform.tenantconfig.repository.TelegramTopicBindingRepositor
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowStatusRepository;
+import com.engops.platform.tenantconfig.repository.WorkflowTransitionRuleRepository;
 import org.junit.jupiter.api.Test;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -48,6 +49,8 @@ class TenantConfigCommandServiceTest {
             mock(WorkflowDefinitionRepository.class);
     private final WorkflowStatusRepository workflowStatusRepository =
             mock(WorkflowStatusRepository.class);
+    private final WorkflowTransitionRuleRepository workflowTransitionRuleRepository =
+            mock(WorkflowTransitionRuleRepository.class);
     private final RoutingRuleRepository routingRuleRepository =
             mock(RoutingRuleRepository.class);
     private final TelegramChatBindingRepository telegramChatBindingRepository =
@@ -57,9 +60,9 @@ class TenantConfigCommandServiceTest {
     private final AuditService auditService = mock(AuditService.class);
     private final TenantConfigCommandService service =
             new TenantConfigCommandService(tenantRepository, workflowDefinitionRepository,
-                    workflowStatusRepository, routingRuleRepository,
-                    telegramChatBindingRepository, telegramTopicBindingRepository,
-                    auditService);
+                    workflowStatusRepository, workflowTransitionRuleRepository,
+                    routingRuleRepository, telegramChatBindingRepository,
+                    telegramTopicBindingRepository, auditService);
 
     @Test
     void createWorkflowDefinitionSuccess() {
@@ -1970,6 +1973,304 @@ class TenantConfigCommandServiceTest {
                 TENANT_ID, DEFINITION_ID, "BUGS", 0, true, false))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("BUGS");
+
+        verifyNoInteractions(auditService);
+    }
+
+    // ========== createWorkflowTransitionRule tests ==========
+
+    private static final UUID FROM_STATUS_ID =
+            UUID.fromString("55555555-5555-5555-5555-555555555551");
+    private static final UUID TO_STATUS_ID =
+            UUID.fromString("55555555-5555-5555-5555-555555555552");
+    private static final UUID OTHER_DEFINITION_ID =
+            UUID.fromString("33333333-3333-3333-3333-333333333339");
+
+    private com.engops.platform.tenantconfig.model.WorkflowStatus mockStatusInDefinition(
+            UUID statusId, UUID definitionId, String name) {
+        var status = mock(com.engops.platform.tenantconfig.model.WorkflowStatus.class);
+        when(status.getId()).thenReturn(statusId);
+        when(status.getName()).thenReturn(name);
+        var def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(definitionId);
+        when(status.getWorkflowDefinition()).thenReturn(def);
+        return status;
+    }
+
+    @Test
+    void createWorkflowTransitionRuleSuccessAndAuditEvent() {
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        var fromStatus = mockStatusInDefinition(FROM_STATUS_ID, DEFINITION_ID, "BUGS");
+        var toStatus = mockStatusInDefinition(TO_STATUS_ID, DEFINITION_ID, "PROCESSING");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+        when(workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        FROM_STATUS_ID, DEFINITION_ID, TENANT_ID))
+                .thenReturn(Optional.of(fromStatus));
+        when(workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        TO_STATUS_ID, DEFINITION_ID, TENANT_ID))
+                .thenReturn(Optional.of(toStatus));
+        when(workflowTransitionRuleRepository
+                .existsByWorkflowDefinition_IdAndFromStatus_IdAndToStatus_Id(
+                        DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID)).thenReturn(false);
+        when(workflowTransitionRuleRepository.save(any(com.engops.platform.tenantconfig.model.WorkflowTransitionRule.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        com.engops.platform.tenantconfig.model.WorkflowTransitionRule result =
+                service.createWorkflowTransitionRule(TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID);
+
+        assertThat(result.getFromStatus()).isSameAs(fromStatus);
+        assertThat(result.getToStatus()).isSameAs(toStatus);
+        assertThat(result.getId()).isNotNull();
+
+        verify(auditService).recordEvent(
+                eq(TENANT_ID),
+                eq("WORKFLOW_TRANSITION_RULE"),
+                eq(result.getId()),
+                eq("CREATED"),
+                eq(null),
+                eq("ADMIN_API"),
+                eq(null),
+                eq("BUGS -> PROCESSING"));
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenTenantIdNull() {
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                null, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(tenantRepository);
+        verifyNoInteractions(workflowTransitionRuleRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenDefinitionIdNull() {
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, null, FROM_STATUS_ID, TO_STATUS_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("workflowDefinitionId");
+
+        verifyNoInteractions(tenantRepository);
+        verifyNoInteractions(workflowTransitionRuleRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenFromStatusIdNull() {
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, DEFINITION_ID, null, TO_STATUS_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("fromStatusId");
+
+        verifyNoInteractions(tenantRepository);
+        verifyNoInteractions(workflowStatusRepository);
+        verifyNoInteractions(workflowTransitionRuleRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenToStatusIdNull() {
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("toStatusId");
+
+        verifyNoInteractions(tenantRepository);
+        verifyNoInteractions(workflowStatusRepository);
+        verifyNoInteractions(workflowTransitionRuleRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(workflowDefinitionRepository, never()).findByTenantIdAndId(any(), any());
+        verifyNoInteractions(workflowTransitionRuleRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenDefinitionMissingInTenant() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(workflowTransitionRuleRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenFromStatusMissing() {
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+        when(workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        FROM_STATUS_ID, DEFINITION_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(workflowTransitionRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleThrowsWhenToStatusMissing() {
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        var fromStatus = mockStatusInDefinition(FROM_STATUS_ID, DEFINITION_ID, "BUGS");
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+        when(workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        FROM_STATUS_ID, DEFINITION_ID, TENANT_ID))
+                .thenReturn(Optional.of(fromStatus));
+        when(workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        TO_STATUS_ID, DEFINITION_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(workflowTransitionRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleRejectsCrossScopeFromStatusViaTenantSafeLookup() {
+        // Tenant-safe SQL: agar status (tenant + workflowDefinition) scope ichida
+        // topilmasa — repo Optional.empty qaytaradi va caller 404 ga aylantiradi.
+        // Bu test cross-tenant yoki cross-definition status'ni qoplaydi —
+        // ikkala holat ham bitta SQL gate orqali rad etiladi.
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+        when(workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        FROM_STATUS_ID, DEFINITION_ID, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("fromStatus=" + FROM_STATUS_ID);
+
+        // In-memory parent check ishlatilmaydi — findById umuman chaqirilmaydi
+        verify(workflowStatusRepository, never()).findById(any());
+        verify(workflowTransitionRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleRejectsSelfTransition() {
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, FROM_STATUS_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("bir xil");
+
+        verifyNoInteractions(workflowTransitionRuleRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleRejectsDuplicateViaPreCheck() {
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        var fromStatus = mockStatusInDefinition(FROM_STATUS_ID, DEFINITION_ID, "BUGS");
+        var toStatus = mockStatusInDefinition(TO_STATUS_ID, DEFINITION_ID, "PROCESSING");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+        when(workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        FROM_STATUS_ID, DEFINITION_ID, TENANT_ID))
+                .thenReturn(Optional.of(fromStatus));
+        when(workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        TO_STATUS_ID, DEFINITION_ID, TENANT_ID))
+                .thenReturn(Optional.of(toStatus));
+        when(workflowTransitionRuleRepository
+                .existsByWorkflowDefinition_IdAndFromStatus_IdAndToStatus_Id(
+                        DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("BUGS -> PROCESSING");
+
+        verify(workflowTransitionRuleRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowTransitionRuleTranslatesDbDuplicateConstraintWithTruncatedName() {
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        var fromStatus = mockStatusInDefinition(FROM_STATUS_ID, DEFINITION_ID, "BUGS");
+        var toStatus = mockStatusInDefinition(TO_STATUS_ID, DEFINITION_ID, "PROCESSING");
+
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+        when(workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        FROM_STATUS_ID, DEFINITION_ID, TENANT_ID))
+                .thenReturn(Optional.of(fromStatus));
+        when(workflowStatusRepository
+                .findByIdAndWorkflowDefinition_IdAndWorkflowDefinition_TenantId(
+                        TO_STATUS_ID, DEFINITION_ID, TENANT_ID))
+                .thenReturn(Optional.of(toStatus));
+        when(workflowTransitionRuleRepository
+                .existsByWorkflowDefinition_IdAndFromStatus_IdAndToStatus_Id(
+                        DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID)).thenReturn(false);
+
+        // PostgreSQL identifier limiti tufayli "to_status_id" qoldiq belgilarga
+        // sig'maydi va kesib tashlanadi — pattern shunda ham tan olishi kerak.
+        var cause = new ConstraintViolationException(
+                "duplicate key", new SQLException(),
+                "workflow_transition_rule_workflow_definition_id_from_status_id_");
+        when(workflowTransitionRuleRepository.save(any(com.engops.platform.tenantconfig.model.WorkflowTransitionRule.class)))
+                .thenThrow(new DataIntegrityViolationException("unique constraint", cause));
+
+        assertThatThrownBy(() -> service.createWorkflowTransitionRule(
+                TENANT_ID, DEFINITION_ID, FROM_STATUS_ID, TO_STATUS_ID))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("BUGS -> PROCESSING");
 
         verifyNoInteractions(auditService);
     }

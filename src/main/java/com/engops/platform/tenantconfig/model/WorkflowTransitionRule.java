@@ -61,6 +61,7 @@ public class WorkflowTransitionRule {
     public WorkflowStatus getToStatus() { return toStatus; }
     public UUID getRequiredPermissionId() { return requiredPermissionId; }
     public void setRequiredPermissionId(UUID requiredPermissionId) { this.requiredPermissionId = requiredPermissionId; }
+    public Instant getCreatedAt() { return createdAt; }
 
     @Override
     public boolean equals(Object o) {
