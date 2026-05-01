@@ -4751,4 +4751,167 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
+
+    // ========== POST /workflow-definitions/{definitionId}/statuses endpoint ==========
+
+    private static final UUID WS_DEFINITION_ID =
+            UUID.fromString("33333333-3333-3333-3333-333333333331");
+    private static final UUID WS_STATUS_ID =
+            UUID.fromString("44444444-4444-4444-4444-444444444441");
+
+    @Test
+    void createWorkflowStatusReturns201WithCreatedResource() throws Exception {
+        var view = new TenantConfigWriteFacade.WorkflowStatusCreatedView(
+                TENANT_ID,
+                WS_DEFINITION_ID,
+                WS_STATUS_ID,
+                "BUGS",
+                0,
+                true,
+                false,
+                Instant.parse("2026-04-29T10:00:00Z"));
+
+        when(writeFacade.createWorkflowStatus(eq(TENANT_ID), eq(WS_DEFINITION_ID),
+                any(CreateWorkflowStatusRequest.class), any())).thenReturn(view);
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
+                        WS_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"BUGS","statusOrder":0,"initial":true,"terminal":false}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.workflowDefinitionId").value(WS_DEFINITION_ID.toString()))
+                .andExpect(jsonPath("$.statusId").value(WS_STATUS_ID.toString()))
+                .andExpect(jsonPath("$.name").value("BUGS"))
+                .andExpect(jsonPath("$.statusOrder").value(0))
+                .andExpect(jsonPath("$.initial").value(true))
+                .andExpect(jsonPath("$.terminal").value(false))
+                .andExpect(jsonPath("$.createdAt").value("2026-04-29T10:00:00Z"));
+    }
+
+    @Test
+    void createWorkflowStatusMissingTenantIdReturns400() throws Exception {
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
+                        WS_DEFINITION_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"BUGS","statusOrder":0,"initial":true,"terminal":false}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createWorkflowStatusBlankNameReturns400() throws Exception {
+        when(writeFacade.createWorkflowStatus(eq(TENANT_ID), eq(WS_DEFINITION_ID),
+                any(CreateWorkflowStatusRequest.class), any()))
+                .thenThrow(new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
+                        WS_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"","statusOrder":0,"initial":false,"terminal":false}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createWorkflowStatusDefinitionNotFoundReturns404() throws Exception {
+        when(writeFacade.createWorkflowStatus(eq(TENANT_ID), eq(WS_DEFINITION_ID),
+                any(CreateWorkflowStatusRequest.class), any()))
+                .thenThrow(new ResourceNotFoundException("WorkflowDefinition", WS_DEFINITION_ID));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
+                        WS_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"BUGS","statusOrder":0,"initial":true,"terminal":false}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void createWorkflowStatusDuplicateNameReturns422() throws Exception {
+        when(writeFacade.createWorkflowStatus(eq(TENANT_ID), eq(WS_DEFINITION_ID),
+                any(CreateWorkflowStatusRequest.class), any()))
+                .thenThrow(new BusinessRuleException("DUPLICATE_WORKFLOW_STATUS_NAME",
+                        "Workflow definition ichida 'BUGS' nomli status allaqachon mavjud"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
+                        WS_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"BUGS","statusOrder":0,"initial":false,"terminal":false}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_WORKFLOW_STATUS_NAME"));
+    }
+
+    @Test
+    void createWorkflowStatusDuplicateInitialReturns422() throws Exception {
+        when(writeFacade.createWorkflowStatus(eq(TENANT_ID), eq(WS_DEFINITION_ID),
+                any(CreateWorkflowStatusRequest.class), any()))
+                .thenThrow(new BusinessRuleException("DUPLICATE_INITIAL_STATUS",
+                        "Workflow definition uchun boshlang'ich status allaqachon belgilangan "
+                                + "(definitionId=" + WS_DEFINITION_ID + ")"));
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
+                        WS_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"PROCESSING","statusOrder":1,"initial":true,"terminal":false}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DUPLICATE_INITIAL_STATUS"));
+    }
+
+    @Test
+    void createWorkflowStatusNameTooLongReturns400() throws Exception {
+        when(writeFacade.createWorkflowStatus(eq(TENANT_ID), eq(WS_DEFINITION_ID),
+                any(CreateWorkflowStatusRequest.class), any()))
+                .thenThrow(new IllegalArgumentException("name 100 belgidan oshmasligi kerak: 101"));
+
+        String tooLong = "X".repeat(101);
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
+                        WS_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + tooLong + "\",\"statusOrder\":0,"
+                                + "\"initial\":true,\"terminal\":false}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void createWorkflowStatusForbiddenWhenAuthorizationFails() throws Exception {
+        doThrow(new AccessDeniedException("Bu operatsiya uchun TENANT_CONFIG_WRITE ruxsati talab qilinadi"))
+                .when(writeFacade).createWorkflowStatus(eq(TENANT_ID), eq(WS_DEFINITION_ID),
+                        any(CreateWorkflowStatusRequest.class), any());
+
+        mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/statuses",
+                        WS_DEFINITION_ID)
+                        .param("tenantId", TENANT_ID.toString())
+                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"BUGS","statusOrder":0,"initial":true,"terminal":false}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
 }

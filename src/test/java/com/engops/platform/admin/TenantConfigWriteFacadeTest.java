@@ -2139,4 +2139,143 @@ class TenantConfigWriteFacadeTest {
 
         verifyNoInteractions(identityCommandService);
     }
+
+    // ========== createWorkflowStatus tests ==========
+
+    private static final UUID DEFINITION_ID =
+            UUID.fromString("33333333-3333-3333-3333-333333333331");
+    private static final UUID STATUS_ID =
+            UUID.fromString("44444444-4444-4444-4444-444444444441");
+
+    @Test
+    void createWorkflowStatusThrowsWhenTenantIdNull() {
+        var request = new CreateWorkflowStatusRequest("BUGS", 0, true, false);
+
+        assertThatThrownBy(() -> facade.createWorkflowStatus(null, DEFINITION_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowStatusThrowsWhenDefinitionIdNull() {
+        var request = new CreateWorkflowStatusRequest("BUGS", 0, true, false);
+
+        assertThatThrownBy(() -> facade.createWorkflowStatus(TENANT_ID, null, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("definitionId");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowStatusThrowsWhenRequestNull() {
+        assertThatThrownBy(() -> facade.createWorkflowStatus(TENANT_ID, DEFINITION_ID, null, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Request");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowStatusThrowsWhenNameBlank() {
+        var request = new CreateWorkflowStatusRequest("   ", 0, false, false);
+
+        assertThatThrownBy(() -> facade.createWorkflowStatus(TENANT_ID, DEFINITION_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowStatusThrowsWhenStatusOrderNegative() {
+        var request = new CreateWorkflowStatusRequest("BUGS", -1, true, false);
+
+        assertThatThrownBy(() -> facade.createWorkflowStatus(TENANT_ID, DEFINITION_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("statusOrder");
+
+        verifyNoInteractions(commandService);
+        verifyNoInteractions(authorizationService);
+    }
+
+    @Test
+    void createWorkflowStatusDeniedWhenAuthorizationFails() {
+        var request = new CreateWorkflowStatusRequest("BUGS", 0, true, false);
+        doThrow(new com.engops.platform.sharedkernel.exception.AccessDeniedException("Ruxsat yo'q"))
+                .when(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+
+        assertThatThrownBy(() -> facade.createWorkflowStatus(TENANT_ID, DEFINITION_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.AccessDeniedException.class);
+
+        verifyNoInteractions(commandService);
+    }
+
+    @Test
+    void createWorkflowStatusDelegatesAndMapsResponse() {
+        var request = new CreateWorkflowStatusRequest("BUGS", 0, true, false);
+        var status = mock(com.engops.platform.tenantconfig.model.WorkflowStatus.class);
+        java.time.Instant createdAt = java.time.Instant.parse("2026-04-29T10:00:00Z");
+        when(status.getId()).thenReturn(STATUS_ID);
+        when(status.getName()).thenReturn("BUGS");
+        when(status.getStatusOrder()).thenReturn(0);
+        when(status.isInitial()).thenReturn(true);
+        when(status.isTerminal()).thenReturn(false);
+        when(status.getCreatedAt()).thenReturn(createdAt);
+        when(commandService.createWorkflowStatus(TENANT_ID, DEFINITION_ID, "BUGS", 0, true, false))
+                .thenReturn(status);
+
+        var view = facade.createWorkflowStatus(TENANT_ID, DEFINITION_ID, request, ACTOR_USER_ID);
+
+        assertThat(view.tenantId()).isEqualTo(TENANT_ID);
+        assertThat(view.workflowDefinitionId()).isEqualTo(DEFINITION_ID);
+        assertThat(view.statusId()).isEqualTo(STATUS_ID);
+        assertThat(view.name()).isEqualTo("BUGS");
+        assertThat(view.statusOrder()).isZero();
+        assertThat(view.initial()).isTrue();
+        assertThat(view.terminal()).isFalse();
+        assertThat(view.createdAt()).isEqualTo(createdAt);
+
+        verify(authorizationService).authorizeWrite(TENANT_ID, ACTOR_USER_ID);
+        verify(commandService).createWorkflowStatus(TENANT_ID, DEFINITION_ID, "BUGS", 0, true, false);
+    }
+
+    @Test
+    void createWorkflowStatusTrimsNameBeforeDelegating() {
+        var request = new CreateWorkflowStatusRequest("  BUGS  ", 0, true, false);
+        var status = mock(com.engops.platform.tenantconfig.model.WorkflowStatus.class);
+        java.time.Instant createdAt = java.time.Instant.parse("2026-04-29T10:00:00Z");
+        when(status.getId()).thenReturn(STATUS_ID);
+        when(status.getName()).thenReturn("BUGS");
+        when(status.getStatusOrder()).thenReturn(0);
+        when(status.isInitial()).thenReturn(true);
+        when(status.isTerminal()).thenReturn(false);
+        when(status.getCreatedAt()).thenReturn(createdAt);
+        when(commandService.createWorkflowStatus(TENANT_ID, DEFINITION_ID, "BUGS", 0, true, false))
+                .thenReturn(status);
+
+        var view = facade.createWorkflowStatus(TENANT_ID, DEFINITION_ID, request, ACTOR_USER_ID);
+
+        assertThat(view.name()).isEqualTo("BUGS");
+        verify(commandService).createWorkflowStatus(TENANT_ID, DEFINITION_ID, "BUGS", 0, true, false);
+    }
+
+    @Test
+    void createWorkflowStatusRejectsNameLongerThan100BeforeAuthorization() {
+        String tooLong = "X".repeat(101);
+        var request = new CreateWorkflowStatusRequest(tooLong, 0, true, false);
+
+        assertThatThrownBy(() -> facade.createWorkflowStatus(TENANT_ID, DEFINITION_ID, request, ACTOR_USER_ID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("100");
+
+        verifyNoInteractions(authorizationService);
+        verifyNoInteractions(commandService);
+    }
 }

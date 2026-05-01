@@ -68,6 +68,7 @@ public class WorkflowStatus {
     public int getStatusOrder() { return statusOrder; }
     public boolean isInitial() { return initial; }
     public boolean isTerminal() { return terminal; }
+    public Instant getCreatedAt() { return createdAt; }
 
     @Override
     public boolean equals(Object o) {

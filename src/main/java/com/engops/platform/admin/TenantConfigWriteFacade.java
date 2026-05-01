@@ -11,6 +11,7 @@ import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
+import com.engops.platform.tenantconfig.model.WorkflowStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.Set;
@@ -218,6 +219,88 @@ public class TenantConfigWriteFacade {
 
         commandService.deleteWorkflowDefinition(tenantId, definitionId);
     }
+
+    // ========== WorkflowStatus operations ==========
+
+    /**
+     * Mavjud workflow definition uchun yangi status yaratish — request boundary
+     * validatsiyasi va delegation.
+     *
+     * Validation-before-authorization ordering:
+     * 1. tenantId, definitionId null bo'lmasligi
+     * 2. request null bo'lmasligi
+     * 3. name null/blank bo'lmasligi
+     * 4. statusOrder >= 0
+     * 5. authorizeWrite chaqiriladi
+     * 6. CommandService.createWorkflowStatus delegate qilinadi
+     *
+     * @param tenantId tenant identifikatori
+     * @param definitionId workflow definition identifikatori
+     * @param request yaratish so'rovi
+     * @param actorUserId joriy actor
+     * @return yaratilgan workflow status view
+     * @throws IllegalArgumentException request boundary buzilsa
+     */
+    public WorkflowStatusCreatedView createWorkflowStatus(UUID tenantId, UUID definitionId,
+                                                            CreateWorkflowStatusRequest request,
+                                                            UUID actorUserId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId null bo'lishi mumkin emas");
+        }
+        if (definitionId == null) {
+            throw new IllegalArgumentException("definitionId null bo'lishi mumkin emas");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("Request null bo'lishi mumkin emas");
+        }
+        if (request.name() == null) {
+            throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
+        }
+        // Strip first so "  BUGS  " → "BUGS"; downstream pre-check, persistence,
+        // DB duplicate message va audit newValue normallashgan nomdan foydalanadi.
+        String normalizedName = request.name().strip();
+        if (normalizedName.isBlank()) {
+            throw new IllegalArgumentException("name null yoki bo'sh bo'lishi mumkin emas");
+        }
+        // WorkflowStatus.@Size(max = 100) — boundary'da clean 400 qaytaring,
+        // pastki qatlam validation/DB error'idan oldin.
+        if (normalizedName.length() > 100) {
+            throw new IllegalArgumentException(
+                    "name 100 belgidan oshmasligi kerak: " + normalizedName.length());
+        }
+        if (request.statusOrder() < 0) {
+            throw new IllegalArgumentException(
+                    "statusOrder manfiy bo'lishi mumkin emas: " + request.statusOrder());
+        }
+        authorizationService.authorizeWrite(tenantId, actorUserId);
+
+        WorkflowStatus status = commandService.createWorkflowStatus(
+                tenantId, definitionId, normalizedName,
+                request.statusOrder(), request.initial(), request.terminal());
+
+        return new WorkflowStatusCreatedView(
+                tenantId,
+                definitionId,
+                status.getId(),
+                status.getName(),
+                status.getStatusOrder(),
+                status.isInitial(),
+                status.isTerminal(),
+                status.getCreatedAt());
+    }
+
+    /**
+     * Facade natija modeli — yaratilgan workflow status.
+     */
+    public record WorkflowStatusCreatedView(
+            UUID tenantId,
+            UUID workflowDefinitionId,
+            UUID statusId,
+            String name,
+            int statusOrder,
+            boolean initial,
+            boolean terminal,
+            java.time.Instant createdAt) {}
 
     // ========== TelegramChatBinding operations ==========
 

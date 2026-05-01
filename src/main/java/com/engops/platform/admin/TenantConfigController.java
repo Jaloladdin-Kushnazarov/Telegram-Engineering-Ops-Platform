@@ -721,6 +721,36 @@ public class TenantConfigController {
     }
 
     /**
+     * Mavjud workflow definition uchun yangi status yaratadi.
+     *
+     * @param definitionId ota workflow definition identifikatori
+     * @param tenantId tenant identifikatori
+     * @param request yaratish so'rovi
+     * @return yaratilgan workflow status (201 Created)
+     */
+    @PostMapping("/workflow-definitions/{definitionId}/statuses")
+    public ResponseEntity<TenantConfigWorkflowStatusCreatedResponse> createWorkflowStatus(
+            @PathVariable UUID definitionId,
+            @RequestParam UUID tenantId,
+            @RequestBody CreateWorkflowStatusRequest request,
+            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+
+        TenantConfigWriteFacade.WorkflowStatusCreatedView view =
+                writeFacade.createWorkflowStatus(tenantId, definitionId, request, actorUserId);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new TenantConfigWorkflowStatusCreatedResponse(
+                        view.tenantId(),
+                        view.workflowDefinitionId(),
+                        view.statusId(),
+                        view.name(),
+                        view.statusOrder(),
+                        view.initial(),
+                        view.terminal(),
+                        view.createdAt()));
+    }
+
+    /**
      * Yangi chat binding yaratadi.
      *
      * @param tenantId tenant identifikatori

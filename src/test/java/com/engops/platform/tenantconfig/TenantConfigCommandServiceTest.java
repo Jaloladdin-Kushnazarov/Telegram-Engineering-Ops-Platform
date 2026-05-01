@@ -14,6 +14,7 @@ import com.engops.platform.tenantconfig.repository.TelegramChatBindingRepository
 import com.engops.platform.tenantconfig.repository.TelegramTopicBindingRepository;
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
+import com.engops.platform.tenantconfig.repository.WorkflowStatusRepository;
 import org.junit.jupiter.api.Test;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -45,6 +46,8 @@ class TenantConfigCommandServiceTest {
     private final TenantRepository tenantRepository = mock(TenantRepository.class);
     private final WorkflowDefinitionRepository workflowDefinitionRepository =
             mock(WorkflowDefinitionRepository.class);
+    private final WorkflowStatusRepository workflowStatusRepository =
+            mock(WorkflowStatusRepository.class);
     private final RoutingRuleRepository routingRuleRepository =
             mock(RoutingRuleRepository.class);
     private final TelegramChatBindingRepository telegramChatBindingRepository =
@@ -54,8 +57,9 @@ class TenantConfigCommandServiceTest {
     private final AuditService auditService = mock(AuditService.class);
     private final TenantConfigCommandService service =
             new TenantConfigCommandService(tenantRepository, workflowDefinitionRepository,
-                    routingRuleRepository, telegramChatBindingRepository,
-                    telegramTopicBindingRepository, auditService);
+                    workflowStatusRepository, routingRuleRepository,
+                    telegramChatBindingRepository, telegramTopicBindingRepository,
+                    auditService);
 
     @Test
     void createWorkflowDefinitionSuccess() {
@@ -1834,6 +1838,139 @@ class TenantConfigCommandServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(routingRuleRepository, never()).delete(any());
+        verifyNoInteractions(auditService);
+    }
+
+    // ========== createWorkflowStatus tests ==========
+
+    private static final UUID DEFINITION_ID =
+            UUID.fromString("33333333-3333-3333-3333-333333333331");
+
+    @Test
+    void createWorkflowStatusSuccessAndAuditEvent() {
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+        when(workflowStatusRepository.existsByWorkflowDefinition_IdAndName(DEFINITION_ID, "BUGS"))
+                .thenReturn(false);
+        when(workflowStatusRepository.existsByWorkflowDefinition_IdAndInitialTrue(DEFINITION_ID))
+                .thenReturn(false);
+        when(workflowStatusRepository.save(any(com.engops.platform.tenantconfig.model.WorkflowStatus.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        com.engops.platform.tenantconfig.model.WorkflowStatus result =
+                service.createWorkflowStatus(TENANT_ID, DEFINITION_ID, "BUGS", 0, true, false);
+
+        assertThat(result.getName()).isEqualTo("BUGS");
+        assertThat(result.getStatusOrder()).isZero();
+        assertThat(result.isInitial()).isTrue();
+        assertThat(result.isTerminal()).isFalse();
+        assertThat(result.getId()).isNotNull();
+
+        verify(auditService).recordEvent(
+                eq(TENANT_ID),
+                eq("WORKFLOW_STATUS"),
+                eq(result.getId()),
+                eq("CREATED"),
+                eq(null),
+                eq("ADMIN_API"),
+                eq(null),
+                eq("BUGS"));
+    }
+
+    @Test
+    void createWorkflowStatusThrowsWhenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createWorkflowStatus(
+                TENANT_ID, DEFINITION_ID, "BUGS", 0, true, false))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(workflowDefinitionRepository, never()).findByTenantIdAndId(any(), any());
+        verifyNoInteractions(workflowStatusRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowStatusThrowsWhenWorkflowDefinitionMissingInTenant() {
+        Tenant tenant = mock(Tenant.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createWorkflowStatus(
+                TENANT_ID, DEFINITION_ID, "BUGS", 0, true, false))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(workflowStatusRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowStatusRejectsDuplicateNameWithinSameDefinition() {
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+        when(workflowStatusRepository.existsByWorkflowDefinition_IdAndName(DEFINITION_ID, "BUGS"))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> service.createWorkflowStatus(
+                TENANT_ID, DEFINITION_ID, "BUGS", 0, false, false))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("BUGS");
+
+        verify(workflowStatusRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowStatusRejectsSecondInitialStatus() {
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+        when(workflowStatusRepository.existsByWorkflowDefinition_IdAndName(DEFINITION_ID, "PROCESSING"))
+                .thenReturn(false);
+        when(workflowStatusRepository.existsByWorkflowDefinition_IdAndInitialTrue(DEFINITION_ID))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> service.createWorkflowStatus(
+                TENANT_ID, DEFINITION_ID, "PROCESSING", 1, true, false))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("boshlang'ich status");
+
+        verify(workflowStatusRepository, never()).save(any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void createWorkflowStatusTranslatesDbDuplicateNameConstraint() {
+        Tenant tenant = mock(Tenant.class);
+        WorkflowDefinition definition = mock(WorkflowDefinition.class);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(workflowDefinitionRepository.findByTenantIdAndId(TENANT_ID, DEFINITION_ID))
+                .thenReturn(Optional.of(definition));
+        when(workflowStatusRepository.existsByWorkflowDefinition_IdAndName(DEFINITION_ID, "BUGS"))
+                .thenReturn(false);
+        when(workflowStatusRepository.existsByWorkflowDefinition_IdAndInitialTrue(DEFINITION_ID))
+                .thenReturn(false);
+
+        var cause = new ConstraintViolationException(
+                "duplicate key", new SQLException(),
+                "workflow_status_workflow_definition_id_name_key");
+        when(workflowStatusRepository.save(any(com.engops.platform.tenantconfig.model.WorkflowStatus.class)))
+                .thenThrow(new DataIntegrityViolationException("unique constraint", cause));
+
+        assertThatThrownBy(() -> service.createWorkflowStatus(
+                TENANT_ID, DEFINITION_ID, "BUGS", 0, true, false))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("BUGS");
+
         verifyNoInteractions(auditService);
     }
 }

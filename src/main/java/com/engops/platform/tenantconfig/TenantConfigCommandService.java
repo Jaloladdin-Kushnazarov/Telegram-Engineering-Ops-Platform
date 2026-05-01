@@ -8,11 +8,13 @@ import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.TelegramChatBinding;
 import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
+import com.engops.platform.tenantconfig.model.WorkflowStatus;
 import com.engops.platform.tenantconfig.repository.RoutingRuleRepository;
 import com.engops.platform.tenantconfig.repository.TelegramChatBindingRepository;
 import com.engops.platform.tenantconfig.repository.TelegramTopicBindingRepository;
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
+import com.engops.platform.tenantconfig.repository.WorkflowStatusRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +38,7 @@ public class TenantConfigCommandService {
 
     private final TenantRepository tenantRepository;
     private final WorkflowDefinitionRepository workflowDefinitionRepository;
+    private final WorkflowStatusRepository workflowStatusRepository;
     private final RoutingRuleRepository routingRuleRepository;
     private final TelegramChatBindingRepository telegramChatBindingRepository;
     private final TelegramTopicBindingRepository telegramTopicBindingRepository;
@@ -43,12 +46,14 @@ public class TenantConfigCommandService {
 
     public TenantConfigCommandService(TenantRepository tenantRepository,
                                        WorkflowDefinitionRepository workflowDefinitionRepository,
+                                       WorkflowStatusRepository workflowStatusRepository,
                                        RoutingRuleRepository routingRuleRepository,
                                        TelegramChatBindingRepository telegramChatBindingRepository,
                                        TelegramTopicBindingRepository telegramTopicBindingRepository,
                                        AuditService auditService) {
         this.tenantRepository = tenantRepository;
         this.workflowDefinitionRepository = workflowDefinitionRepository;
+        this.workflowStatusRepository = workflowStatusRepository;
         this.routingRuleRepository = routingRuleRepository;
         this.telegramChatBindingRepository = telegramChatBindingRepository;
         this.telegramTopicBindingRepository = telegramTopicBindingRepository;
@@ -266,6 +271,77 @@ public class TenantConfigCommandService {
 
         auditService.recordEvent(tenantId, "WORKFLOW_DEFINITION", definitionId,
                 "DELETED", null, "ADMIN_API", oldValue, null);
+    }
+
+    // ========== WorkflowStatus operations ==========
+
+    /**
+     * Mavjud workflow definition uchun yangi status (holat) yaratadi.
+     *
+     * Validatsiyalar:
+     * 1. Tenant mavjud bo'lishi kerak
+     * 2. Workflow definition shu tenantga tegishli bo'lishi kerak (tenant-safe lookup)
+     * 3. Shu workflow definition ichida nom unikal bo'lishi kerak
+     *    (DB constraint: UNIQUE (workflow_definition_id, name) — pre-check + DB fallback)
+     * 4. Agar initial=true bo'lsa, shu workflow definition'da boshqa initial status
+     *    bo'lmasligi kerak (faqat application-level — DB partial unique index YO'Q)
+     *
+     * Concurrency:
+     * - Duplicate status nomi uchun DB unique constraint ham himoya beradi
+     * - Duplicate initial uchun faqat application-level pre-check — concurrent
+     *   ikkita create initial=true rivoj qilinsa, ikkalasi ham DB ga tushishi mumkin.
+     *   Bu phase qabul qilingan trade-off; haqiqiy partial index DB-level
+     *   hardening keyingi alohida migration phase'iga qoldirilgan.
+     *
+     * @param tenantId tenant identifikatori
+     * @param workflowDefinitionId workflow definition identifikatori
+     * @param name status nomi
+     * @param statusOrder status tartibi (>= 0)
+     * @param initial boshlang'ich status flag'i
+     * @param terminal yakuniy status flag'i
+     * @return yaratilgan WorkflowStatus
+     * @throws ResourceNotFoundException agar tenant yoki workflow definition topilmasa
+     * @throws BusinessRuleException agar nom takrorlansa yoki ikkinchi initial bo'lsa
+     */
+    public WorkflowStatus createWorkflowStatus(UUID tenantId, UUID workflowDefinitionId,
+                                                 String name, int statusOrder,
+                                                 boolean initial, boolean terminal) {
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant", tenantId));
+
+        WorkflowDefinition definition = workflowDefinitionRepository
+                .findByTenantIdAndId(tenantId, workflowDefinitionId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "WorkflowDefinition", workflowDefinitionId));
+
+        if (workflowStatusRepository.existsByWorkflowDefinition_IdAndName(workflowDefinitionId, name)) {
+            throw new BusinessRuleException("DUPLICATE_WORKFLOW_STATUS_NAME",
+                    "Workflow definition ichida '" + name + "' nomli status allaqachon mavjud");
+        }
+
+        if (initial && workflowStatusRepository
+                .existsByWorkflowDefinition_IdAndInitialTrue(workflowDefinitionId)) {
+            throw new BusinessRuleException("DUPLICATE_INITIAL_STATUS",
+                    "Workflow definition uchun boshlang'ich status allaqachon belgilangan "
+                            + "(definitionId=" + workflowDefinitionId + ")");
+        }
+
+        WorkflowStatus status = new WorkflowStatus(definition, name, statusOrder, initial, terminal);
+
+        try {
+            status = workflowStatusRepository.save(status);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateWorkflowStatusNameConstraint(ex)) {
+                throw new BusinessRuleException("DUPLICATE_WORKFLOW_STATUS_NAME",
+                        "Workflow definition ichida '" + name + "' nomli status allaqachon mavjud");
+            }
+            throw ex;
+        }
+
+        auditService.recordEvent(tenantId, "WORKFLOW_STATUS", status.getId(),
+                "CREATED", null, "ADMIN_API", null, name);
+
+        return status;
     }
 
     // ========== TelegramChatBinding operations ==========
@@ -900,6 +976,25 @@ public class TenantConfigCommandService {
                     && constraintName.contains("telegram_chat_binding")
                     && constraintName.contains("tenant_id")
                     && constraintName.contains("chat_id");
+        }
+        return false;
+    }
+
+    /**
+     * DataIntegrityViolationException workflow_status (workflow_definition_id, name)
+     * unique constraint violation ekanligini tekshiradi.
+     *
+     * PostgreSQL auto-generated constraint nomi:
+     * workflow_status_workflow_definition_id_name_key
+     */
+    private static boolean isDuplicateWorkflowStatusNameConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof org.hibernate.exception.ConstraintViolationException cve) {
+            String constraintName = cve.getConstraintName();
+            return constraintName != null
+                    && constraintName.contains("workflow_status")
+                    && constraintName.contains("workflow_definition_id")
+                    && constraintName.contains("name");
         }
         return false;
     }
