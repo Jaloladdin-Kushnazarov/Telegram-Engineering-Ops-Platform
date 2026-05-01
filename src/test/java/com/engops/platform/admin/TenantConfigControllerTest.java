@@ -5,8 +5,10 @@ import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.engops.platform.infrastructure.security.SecurityConfig;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -34,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - response JSON structure nested section'lar bilan to'g'ri
  */
 @WebMvcTest(TenantConfigController.class)
+@Import(SecurityConfig.class)
 class TenantConfigControllerTest {
 
     

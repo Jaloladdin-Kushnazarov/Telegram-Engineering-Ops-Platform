@@ -11,11 +11,13 @@ import com.engops.platform.workitem.model.UpdateType;
 import com.engops.platform.workitem.model.Visibility;
 import com.engops.platform.workitem.model.WorkItem;
 import com.engops.platform.workitem.model.WorkItemType;
+import com.engops.platform.infrastructure.security.SecurityConfig;
 import com.engops.platform.workitem.model.WorkItemUpdate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
@@ -72,6 +74,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - by-status missing statusCode: 400 qaytariladi
  */
 @WebMvcTest(WorkItemDetailsController.class)
+@Import(SecurityConfig.class)
 class WorkItemDetailsControllerTest {
 
     private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");

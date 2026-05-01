@@ -1,5 +1,6 @@
 package com.engops.platform.workflow;
 
+import com.engops.platform.infrastructure.security.SecurityConfig;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import com.engops.platform.workitem.model.WorkItem;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -41,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   bo'lganida @WebMvcTest context yuklab bo'lmas edi).
  */
 @WebMvcTest(WorkflowTransitionController.class)
+@Import(SecurityConfig.class)
 class WorkflowTransitionControllerTest {
 
     private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
