@@ -1,24 +1,34 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.infrastructure.security.AuthenticatedActor;
+import com.engops.platform.infrastructure.security.SecurityConfig;
+import com.engops.platform.infrastructure.security.SecurityWebMvcConfig;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import com.engops.platform.infrastructure.security.SecurityConfig;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -36,13 +46,47 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - response JSON structure nested section'lar bilan to'g'ri
  */
 @WebMvcTest(TenantConfigController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, SecurityWebMvcConfig.class})
 class TenantConfigControllerTest {
 
-    
+
 private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID ACTOR_USER_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    /**
+     * Phase 131: read endpoint testlari {@link #withActor(UUID)} helper'idan
+     * foydalanadi. {@code ACTOR_HEADER} konstanta saqlanadi — 37 ta write
+     * endpoint testi hali shu header'ni ishlatadi (Phase 132'da migratsiya
+     * qilinadi).
+     */
     private static final String ACTOR_HEADER = "X-Actor-User-Id";
+
+    /**
+     * Phase 131 helper: SecurityContext'ga {@link AuthenticatedActor} principal'ini
+     * request attribute orqali o'rnatadi. Spring Security'ning
+     * {@code SecurityContextHolderFilter} {@link RequestAttributeSecurityContextRepository}
+     * orqali shu attribute'ni o'qiydi va {@code @CurrentActor} resolver
+     * principal'ni controller {@code actorUserId} parametriga uzatadi.
+     *
+     * <p>{@code SecurityMockMvcRequestPostProcessors.authentication(...)} ham
+     * shu effektni beradi, lekin {@code spring-security-test} dependency'sini
+     * talab qiladi — bu phase'da {@code pom.xml} o'zgartirilmaydi, shuning uchun
+     * Spring Security ichidagi public {@code RequestAttributeSecurityContextRepository}
+     * API'sidan foydalanib effekt qo'lda yaratiladi (Phase 128/129 pattern bilan
+     * bir xil).</p>
+     */
+    private static RequestPostProcessor withActor(UUID actorUserId) {
+        return request -> {
+            Authentication auth = new UsernamePasswordAuthenticationToken(
+                    new AuthenticatedActor(actorUserId, null), null, Collections.emptyList());
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(auth);
+            request.setAttribute(
+                    RequestAttributeSecurityContextRepository.class.getName()
+                            + ".SPRING_SECURITY_CONTEXT",
+                    context);
+            return request;
+        };
+    }
 
 
     @Autowired
@@ -72,7 +116,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 // tenant section
                 .andExpect(jsonPath("$.tenant.tenantId").value(TENANT_ID.toString()))
@@ -110,7 +154,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenant.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.tenant.name").value("Empty Tenant"))
@@ -131,7 +175,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -143,7 +187,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -179,7 +223,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -206,7 +250,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -220,7 +264,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -232,7 +276,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -270,7 +314,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -299,7 +343,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -313,7 +357,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -325,7 +369,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -363,7 +407,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -392,7 +436,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -406,7 +450,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -418,7 +462,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -460,7 +504,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -490,7 +534,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -504,7 +548,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -516,7 +560,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -556,7 +600,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -585,7 +629,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -599,7 +643,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -611,7 +655,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -647,7 +691,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -674,7 +718,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -688,7 +732,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -700,7 +744,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }
@@ -732,7 +776,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -755,7 +799,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.items").isArray())
@@ -769,7 +813,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -794,7 +838,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -822,7 +866,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}/permissions", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.roleId").value(roleId.toString()))
@@ -849,7 +893,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}/permissions", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.roleId").value(roleId.toString()))
@@ -866,7 +910,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}/permissions", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -879,7 +923,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}/permissions", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -903,7 +947,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void rolePermissionsInvalidRoleIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}/permissions", "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -915,7 +959,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}/permissions", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -936,7 +980,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}/permissions", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].description").doesNotExist());
     }
@@ -968,7 +1012,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.permissionId").value(permissionId.toString()))
@@ -998,7 +1042,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.permissionId").value(permissionId.toString()))
@@ -1015,7 +1059,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1028,7 +1072,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1052,7 +1096,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void permissionRolesInvalidPermissionIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1064,7 +1108,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -1087,7 +1131,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}/roles", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].description").doesNotExist());
     }
@@ -1120,7 +1164,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.membershipId").value(membershipId.toString()))
@@ -1152,7 +1196,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.membershipId").value(membershipId.toString()))
@@ -1170,7 +1214,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1183,7 +1227,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1207,7 +1251,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void membershipRolesInvalidMembershipIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1219,7 +1263,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -1243,7 +1287,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}/roles", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].description").doesNotExist());
     }
@@ -1275,7 +1319,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.definitionId").value(definitionId.toString()))
@@ -1317,7 +1361,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.statuses").isArray())
                 .andExpect(jsonPath("$.statuses.length()").value(0))
@@ -1335,7 +1379,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1348,7 +1392,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1372,7 +1416,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void workflowDetailsInvalidDefinitionIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1384,7 +1428,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -1413,7 +1457,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/workflow-definitions/{definitionId}", definitionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.description").doesNotExist())
                 .andExpect(jsonPath("$.transitionRules[0].requiredPermissionId").doesNotExist());
@@ -1439,7 +1483,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.ruleId").value(ruleId.toString()))
@@ -1472,7 +1516,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.targetTopicBinding").doesNotExist())
                 .andExpect(jsonPath("$.conditionExpression").doesNotExist())
@@ -1487,7 +1531,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1500,7 +1544,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1514,7 +1558,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1538,7 +1582,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void routingRuleDetailsInvalidRuleIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1550,7 +1594,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -1567,7 +1611,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.conditionExpression").doesNotExist());
     }
@@ -1590,7 +1634,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/routing-rules/{ruleId}", ruleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.targetTopicBinding.topicName").doesNotExist())
                 .andExpect(jsonPath("$.targetTopicBinding.chatTitle").doesNotExist())
@@ -1624,7 +1668,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.chatBindingId").value(chatBindingId.toString()))
@@ -1659,7 +1703,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.bindingType").value("NOTIFICATION_GROUP"))
                 .andExpect(jsonPath("$.active").value(false))
@@ -1676,7 +1720,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1689,7 +1733,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1713,7 +1757,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void chatBindingDetailsInvalidChatBindingIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1725,7 +1769,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -1749,7 +1793,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/chat-bindings/{chatBindingId}", chatBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.chatTitle").doesNotExist())
                 .andExpect(jsonPath("$.topicBindings[0].topicName").doesNotExist())
@@ -1774,7 +1818,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.topicBindingId").value(topicBindingId.toString()))
@@ -1805,7 +1849,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.topicName").doesNotExist())
                 .andExpect(jsonPath("$.active").value(false))
@@ -1828,7 +1872,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.parentChatBinding.chatTitle").doesNotExist())
                 .andExpect(jsonPath("$.parentChatBinding.chatId").value(-99L))
@@ -1843,7 +1887,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1856,7 +1900,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1880,7 +1924,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void topicBindingDetailsInvalidTopicBindingIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1892,7 +1936,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/topic-bindings/{topicBindingId}", topicBindingId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -1915,7 +1959,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.membershipId").value(membershipId.toString()))
@@ -1943,7 +1987,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.membershipStatus").value("SUSPENDED"))
                 .andExpect(jsonPath("$.userIdentity.telegramUserId").value(987654321L))
@@ -1959,7 +2003,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1972,7 +2016,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -1986,7 +2030,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2010,7 +2054,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void membershipDetailsInvalidMembershipIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2022,7 +2066,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/memberships/{membershipId}", membershipId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -2040,7 +2084,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.roleId").value(roleId.toString()))
@@ -2063,7 +2107,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("CUSTOM"))
                 .andExpect(jsonPath("$.description").doesNotExist())
@@ -2079,7 +2123,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2092,7 +2136,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2116,7 +2160,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void roleDetailsInvalidRoleIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2128,7 +2172,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/roles/{roleId}", roleId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -2146,7 +2190,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
                 .andExpect(jsonPath("$.permissionId").value(permissionId.toString()))
@@ -2166,7 +2210,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("CUSTOM_PERM"))
                 .andExpect(jsonPath("$.description").doesNotExist());
@@ -2180,7 +2224,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2193,7 +2237,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -2217,7 +2261,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     void permissionDetailsInvalidPermissionIdFormatReturns400() throws Exception {
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", "not-a-uuid")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -2229,7 +2273,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/permissions/{permissionId}", permissionId)
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
@@ -4549,14 +4593,19 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     }
 
     @Test
-    void missingActorHeaderStillReachesEndpoint() throws Exception {
-        when(detailsFacade.getDetails(eq(TENANT_ID), any()))
-                .thenThrow(new AccessDeniedException("Actor identifikatsiyasi talab qilinadi"));
-
+    void missingAuthenticatedActorOnReadReturns403WithoutReachingFacade() throws Exception {
+        // Phase 131: read endpoint @CurrentActor ga ko'chgani uchun
+        // SecurityContext'da AuthenticatedActor bo'lmaganida resolver
+        // AccessDeniedException tashlaydi va GlobalExceptionHandler 403
+        // ACCESS_DENIED qaytaradi. Bu detailsFacade chaqirilishidan OLDIN
+        // bo'ladi — verifyNoInteractions(detailsFacade) shu kontraktni
+        // tasdiqlaydi.
         mockMvc.perform(get("/api/admin/tenant-config/details")
                         .param("tenantId", TENANT_ID.toString()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+
+        verifyNoInteractions(detailsFacade);
     }
 
     @Test
@@ -4566,7 +4615,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
     }
@@ -4578,7 +4627,7 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
 
         mockMvc.perform(get("/api/admin/tenant-config/details")
                         .param("tenantId", TENANT_ID.toString())
-                        .header(ACTOR_HEADER, ACTOR_USER_ID.toString()))
+                        .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }

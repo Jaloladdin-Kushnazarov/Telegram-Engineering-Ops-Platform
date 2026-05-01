@@ -1,5 +1,6 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.infrastructure.security.CurrentActor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -99,7 +100,7 @@ public class TenantConfigController {
     @GetMapping("/details")
     public ResponseEntity<TenantConfigDetailsResponse> getDetails(
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.TenantConfigDetailsView view =
                 detailsFacade.getDetails(tenantId, actorUserId);
@@ -116,7 +117,7 @@ public class TenantConfigController {
     @GetMapping("/workflow-definitions")
     public ResponseEntity<TenantConfigWorkflowListResponse> getWorkflowDefinitions(
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.WorkflowDefinitionListView view =
                 detailsFacade.getWorkflowDefinitions(tenantId, actorUserId);
@@ -135,7 +136,7 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigWorkflowDefinitionDetailResponse> getWorkflowDefinitionDetails(
             @PathVariable UUID definitionId,
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.WorkflowDefinitionDetailView view =
                 detailsFacade.getWorkflowDefinitionDetails(tenantId, definitionId, actorUserId);
@@ -184,7 +185,7 @@ public class TenantConfigController {
     @GetMapping("/routing-rules")
     public ResponseEntity<TenantConfigRoutingRuleListResponse> getRoutingRules(
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.RoutingRuleListView view =
                 detailsFacade.getRoutingRules(tenantId, actorUserId);
@@ -204,7 +205,7 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigRoutingRuleDetailResponse> getRoutingRuleDetails(
             @PathVariable UUID ruleId,
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.RoutingRuleDetailView view =
                 detailsFacade.getRoutingRuleDetails(tenantId, ruleId, actorUserId);
@@ -249,7 +250,7 @@ public class TenantConfigController {
     @GetMapping("/chat-bindings")
     public ResponseEntity<TenantConfigChatBindingListResponse> getChatBindings(
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.ChatBindingListView view =
                 detailsFacade.getChatBindings(tenantId, actorUserId);
@@ -268,7 +269,7 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigChatBindingDetailResponse> getChatBindingDetails(
             @PathVariable UUID chatBindingId,
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.ChatBindingDetailView view =
                 detailsFacade.getChatBindingDetails(tenantId, chatBindingId, actorUserId);
@@ -307,7 +308,7 @@ public class TenantConfigController {
     @GetMapping("/topic-bindings")
     public ResponseEntity<TenantConfigTopicBindingListResponse> getTopicBindings(
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.TopicBindingListView view =
                 detailsFacade.getTopicBindings(tenantId, actorUserId);
@@ -326,7 +327,7 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigTopicBindingDetailResponse> getTopicBindingDetails(
             @PathVariable UUID topicBindingId,
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.TopicBindingDetailView view =
                 detailsFacade.getTopicBindingDetails(tenantId, topicBindingId, actorUserId);
@@ -363,7 +364,7 @@ public class TenantConfigController {
     @GetMapping("/memberships")
     public ResponseEntity<TenantConfigMembershipListResponse> getMemberships(
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.MembershipListView view =
                 detailsFacade.getMemberships(tenantId, actorUserId);
@@ -382,7 +383,7 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigMembershipDetailResponse> getMembershipDetails(
             @PathVariable UUID membershipId,
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.MembershipDetailView view =
                 detailsFacade.getMembershipDetails(tenantId, membershipId, actorUserId);
@@ -419,7 +420,7 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigMembershipRoleListResponse> getMembershipRoles(
             @PathVariable UUID membershipId,
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.MembershipRoleListView view =
                 detailsFacade.getMembershipRoles(tenantId, membershipId, actorUserId);
@@ -455,7 +456,7 @@ public class TenantConfigController {
     @GetMapping("/roles")
     public ResponseEntity<TenantConfigRoleListResponse> getRoles(
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.RoleListView view =
                 detailsFacade.getRoles(tenantId, actorUserId);
@@ -477,7 +478,7 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigRoleDetailResponse> getRoleDetails(
             @PathVariable UUID roleId,
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.RoleDetailView view =
                 detailsFacade.getRoleDetails(tenantId, roleId, actorUserId);
@@ -509,7 +510,7 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigRolePermissionListResponse> getRolePermissions(
             @PathVariable UUID roleId,
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.RolePermissionListView view =
                 detailsFacade.getRolePermissions(tenantId, roleId, actorUserId);
@@ -543,7 +544,7 @@ public class TenantConfigController {
     @GetMapping("/permissions")
     public ResponseEntity<TenantConfigPermissionListResponse> getPermissions(
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.PermissionListView view =
                 detailsFacade.getPermissions(tenantId, actorUserId);
@@ -565,7 +566,7 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigPermissionDetailResponse> getPermissionDetails(
             @PathVariable UUID permissionId,
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.PermissionDetailView view =
                 detailsFacade.getPermissionDetails(tenantId, permissionId, actorUserId);
@@ -595,7 +596,7 @@ public class TenantConfigController {
     public ResponseEntity<TenantConfigPermissionRoleListResponse> getPermissionRoles(
             @PathVariable UUID permissionId,
             @RequestParam UUID tenantId,
-            @RequestHeader(value = "X-Actor-User-Id", required = false) UUID actorUserId) {
+            @CurrentActor UUID actorUserId) {
 
         TenantConfigDetailsFacade.PermissionRoleListView view =
                 detailsFacade.getPermissionRoles(tenantId, permissionId, actorUserId);
