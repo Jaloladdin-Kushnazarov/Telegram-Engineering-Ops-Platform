@@ -70,7 +70,11 @@ class BootstrapAdminInitializerTest {
     @BeforeEach
     void setUp() {
         properties = new BootstrapProperties();
-        initializer = new BootstrapAdminInitializer(properties,
+        // Phase 156: workflow seed default disabled — Phase 143 testlar
+        // hech qanday workflow operatsiyasini kutmaydi. Workflow seed
+        // o'ziga xos qoplamalar BootstrapWorkflowSeedTest'da.
+        BootstrapWorkflowProperties workflowProperties = new BootstrapWorkflowProperties();
+        initializer = new BootstrapAdminInitializer(properties, workflowProperties,
                 tenantConfigQueryService, tenantConfigCommandService,
                 identityQueryService, identityCommandService, auditService);
     }
