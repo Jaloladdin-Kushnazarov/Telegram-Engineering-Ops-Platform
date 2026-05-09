@@ -4708,16 +4708,18 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     }
 
     @Test
-    void missingAuthenticatedActorOnReadReturns403WithoutReachingFacade() throws Exception {
-        // Phase 131: missing actor 403 + facade chaqirilmaydi.
-        // Phase 146'dan keyin reject layer Spring Security filter chain'iga
-        // ko'chdi: @WebMvcTest slice'da JwtDecoder bean yo'q, shuning uchun
-        // Spring Security default fallback Http403ForbiddenEntryPoint 403
-        // qaytaradi (custom JSON envelope'siz). 403 status va facade'ga
-        // yetmaslik invariantlari saqlanadi.
+    void missingAuthenticatedActorOnReadReturns401UnauthorizedEnvelopeWithoutReachingFacade()
+            throws Exception {
+        // Phase 131 missing-actor coverage. Phase 146'da reject layer Spring
+        // Security filter chain'iga ko'chdi; Phase 148'da default fallback
+        // JsonAuthenticationEntryPoint bilan almashtirildi — anonymous principal
+        // /api/** authenticated qoidasini buzganda 401 + UNAUTHORIZED envelope
+        // (ApiErrorResponse) qaytariladi. Facade'ga yetmaslik invariant'i
+        // saqlanadi.
         mockMvc.perform(get("/api/admin/tenant-config/details")
                         .param("tenantId", TENANT_ID.toString()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
         verifyNoInteractions(detailsFacade);
     }
@@ -5473,13 +5475,12 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
     }
 
-    // ========== Phase 132: missing-actor 403 coverage for write endpoints ==========
+    // ========== Phase 132: missing-actor coverage for write endpoints ==========
     //
     // Phase 132'da TenantConfigController barcha write endpoint'lar @CurrentActor
     // resolver'iga ko'chirildi. SecurityContext'da AuthenticatedActor bo'lmaganida
-    // resolver controller method ham, write facade ham chaqirilishidan OLDIN
-    // AccessDeniedException tashlaydi va GlobalExceptionHandler 403 ACCESS_DENIED
-    // qaytaradi. Quyidagi 6 ta test write endpoint kategoriyasi bo'yicha
+    // himoyalangan /api/** so'rovi write facade'ga yetib bormay rad etilishi
+    // kerak. Quyidagi 6 ta test write endpoint kategoriyasi bo'yicha
     // representative qoplama beradi (har bir endpointga emas):
     //   1) POST body bilan create
     //   2) PATCH update
@@ -5491,15 +5492,14 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
     // chaqirilmaganini tasdiqlaydi.
     //
     // Phase 146 yangilanishi: reject layer Spring Security filter chain'iga
-    // ko'chdi (SecurityConfig /api/** authenticated qoidasi). @WebMvcTest
-    // slice'da JwtDecoder bean yo'q, shuning uchun resource-server entry point
-    // wire qilinmaydi va Spring Security default fallback Http403ForbiddenEntryPoint
-    // 403 qaytaradi (custom JSON envelope'siz). 403 status va writeFacade'ga
-    // yetmaslik invariantlari saqlanadi; GlobalExceptionHandler errorCode
-    // envelope'i bu yo'lda emit qilinmaydi.
+    // ko'chdi (SecurityConfig /api/** authenticated qoidasi). Phase 148:
+    // default fallback JsonAuthenticationEntryPoint bilan almashtirildi —
+    // anonymous principal authenticated() qoidasini buzganda 401 + UNAUTHORIZED
+    // envelope (ApiErrorResponse) qaytariladi. writeFacade'ga yetmaslik
+    // invariant'i saqlanadi.
 
     @Test
-    void missingAuthenticatedActorOnCreateWorkflowDefinitionReturns403WithoutReachingFacade()
+    void missingAuthenticatedActorOnCreateWorkflowDefinitionReturns401UnauthorizedEnvelope()
             throws Exception {
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions")
                         .param("tenantId", TENANT_ID.toString())
@@ -5507,13 +5507,14 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .content("""
                                 {"name":"Bug Flow","workItemType":"BUG"}
                                 """))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
         verifyNoInteractions(writeFacade);
     }
 
     @Test
-    void missingAuthenticatedActorOnUpdateWorkflowDefinitionReturns403WithoutReachingFacade()
+    void missingAuthenticatedActorOnUpdateWorkflowDefinitionReturns401UnauthorizedEnvelope()
             throws Exception {
         mockMvc.perform(patch("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -5521,33 +5522,36 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .content("""
                                 {"name":"Updated"}
                                 """))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
         verifyNoInteractions(writeFacade);
     }
 
     @Test
-    void missingAuthenticatedActorOnActivateWorkflowDefinitionReturns403WithoutReachingFacade()
+    void missingAuthenticatedActorOnActivateWorkflowDefinitionReturns401UnauthorizedEnvelope()
             throws Exception {
         mockMvc.perform(post("/api/admin/tenant-config/workflow-definitions/{definitionId}/activate", DEF_ID)
                         .param("tenantId", TENANT_ID.toString()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
         verifyNoInteractions(writeFacade);
     }
 
     @Test
-    void missingAuthenticatedActorOnDeleteWorkflowDefinitionReturns403WithoutReachingFacade()
+    void missingAuthenticatedActorOnDeleteWorkflowDefinitionReturns401UnauthorizedEnvelope()
             throws Exception {
         mockMvc.perform(delete("/api/admin/tenant-config/workflow-definitions/{definitionId}", DEF_ID)
                         .param("tenantId", TENANT_ID.toString()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
         verifyNoInteractions(writeFacade);
     }
 
     @Test
-    void missingAuthenticatedActorOnAssignPermissionToRoleReturns403WithoutReachingFacade()
+    void missingAuthenticatedActorOnAssignPermissionToRoleReturns401UnauthorizedEnvelope()
             throws Exception {
         mockMvc.perform(post("/api/admin/tenant-config/roles/{roleId}/permissions", ROLE_ID)
                         .param("tenantId", TENANT_ID.toString())
@@ -5555,17 +5559,19 @@ private static final UUID TENANT_ID = UUID.fromString("11111111-1111-1111-1111-1
                         .content("""
                                 {"permissionId":"cccccccc-cccc-cccc-cccc-ccccccccccc1"}
                                 """))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
         verifyNoInteractions(writeFacade);
     }
 
     @Test
-    void missingAuthenticatedActorOnSuspendMembershipReturns403WithoutReachingFacade()
+    void missingAuthenticatedActorOnSuspendMembershipReturns401UnauthorizedEnvelope()
             throws Exception {
         mockMvc.perform(post("/api/admin/tenant-config/memberships/{membershipId}/suspend", MEMBERSHIP_ID)
                         .param("tenantId", TENANT_ID.toString()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
         verifyNoInteractions(writeFacade);
     }

@@ -1,5 +1,6 @@
 package com.engops.platform.infrastructure.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,7 +12,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Spring Security konfiguratsiyasi (Phase 124 + Phase 125 + Phase 126 + Phase 146).
+ * Spring Security konfiguratsiyasi (Phase 124 + Phase 125 + Phase 126 +
+ * Phase 146 + Phase 148).
  *
  * <p>Phase 124'da skeleton: CSRF/formLogin/httpBasic disabled, STATELESS session,
  * hamma endpoint'lar {@code permitAll}.</p>
@@ -42,45 +44,82 @@ import org.springframework.security.web.SecurityFilterChain;
  *       qaytariladi va auth challenge qaytarilmaydi).</li>
  * </ol>
  *
- * <p><strong>JWT decoder posture'ga ta'siri:</strong></p>
+ * <p><strong>Phase 148 — JSON envelope for filter-chain rejects:</strong>
+ * Spring Security filter-chain reject yo'llari (autentifikatsiya yo'q yoki
+ * yaroqsiz, ruxsat yo'q) endi platforma {@link com.engops.platform.infrastructure.web.ApiErrorResponse}
+ * shaklini saqlaydi. Mexanizm:</p>
+ * <ul>
+ *   <li>{@code http.exceptionHandling(...)} default fallback'ni
+ *       {@link JsonAuthenticationEntryPoint} (401 + UNAUTHORIZED envelope) va
+ *       {@link JsonAccessDeniedHandler} (403 + ACCESS_DENIED envelope) bilan
+ *       almashtiradi. Bu Spring Security'ning default
+ *       {@code Http403ForbiddenEntryPoint} (bo'sh body, 403) yo'lini
+ *       to'sib qo'yadi.</li>
+ *   <li>{@code oauth2ResourceServer(...)} chain'iga ham xuddi shu entry
+ *       point va handler ulanadi — Bearer token reject'lari
+ *       ({@code BearerTokenAuthenticationEntryPoint} default) ham platforma
+ *       envelope shaklida qaytariladi.</li>
+ *   <li>Correlation id {@link com.engops.platform.infrastructure.web.CorrelationIdFilter}
+ *       (HIGHEST_PRECEDENCE) tomonidan filter chain'dan oldin MDC'ga
+ *       o'rnatiladi va envelope'ga qo'shiladi.</li>
+ *   <li>{@code WWW-Authenticate: Bearer} header 401 javoblarda saqlanadi
+ *       (resource-server chain o'rnatgan header birinchi navbatda saqlanadi;
+ *       aks holda fallback sifatida {@code Bearer} qiymati o'rnatiladi).</li>
+ * </ul>
+ *
+ * <p><strong>JWT decoder posture'ga ta'siri (Phase 148 holati):</strong></p>
  * <ul>
  *   <li>Decoder mavjud (production: {@code issuer-uri}/{@code jwk-set-uri}
  *       sozlangan; test: HMAC secret @TestPropertySource bilan): missing yoki
- *       invalid Bearer token uchun {@code BearerTokenAuthenticationEntryPoint}
- *       <strong>401</strong> qaytaradi ({@code WWW-Authenticate: Bearer}).
- *       Valid Bearer + DB permission yo'q: facade/service-level
- *       <strong>403 ACCESS_DENIED</strong> ({@code GlobalExceptionHandler}).</li>
- *   <li>Decoder mavjud emas ({@code app.security.jwt.*} sozlanmagan,
- *       shu jumladan {@code @WebMvcTest} slice'lari): hech qanday
- *       resource-server entry point wire qilinmaydi va Spring Security
- *       default fallback {@code Http403ForbiddenEntryPoint} ishlatiladi —
- *       {@code /api/**} va himoyalangan {@code /actuator/**} so'rovlari uchun
- *       <strong>403</strong> qaytariladi (custom envelope'siz). Bu
- *       intentional fail-closed posture: production deployment'lar
- *       JwtDecoder'ni Phase 137 mexanizmi orqali sozlashi shart, aks holda
- *       barcha himoyalangan endpoint'lar 403 bo'lib qoladi.</li>
+ *       invalid Bearer uchun {@code JsonAuthenticationEntryPoint}
+ *       <strong>401 + UNAUTHORIZED envelope</strong> qaytaradi
+ *       ({@code WWW-Authenticate: Bearer}). Valid Bearer + DB permission yo'q:
+ *       facade/service-level <strong>403 ACCESS_DENIED envelope</strong>
+ *       ({@code GlobalExceptionHandler}, kontrakt o'zgarmaydi).</li>
+ *   <li>Decoder mavjud emas (test slice'lar yoki misconfiguration): hech
+ *       qanday resource-server entry point wire qilinmaydi va
+ *       {@code http.exceptionHandling} default'lari ishlaydi —
+ *       {@code authenticated()} qoidasi anonymous principal uchun bajarilmagani
+ *       sababli {@code ExceptionTranslationFilter} entry point'ni chaqiradi va
+ *       {@code JsonAuthenticationEntryPoint} <strong>401 + UNAUTHORIZED envelope</strong>
+ *       qaytaradi (avvalgi {@code Http403ForbiddenEntryPoint} 403 bo'sh-body
+ *       fallback'i o'rnini bosadi).</li>
  * </ul>
  *
- * <p><strong>Out of scope for Phase 146:</strong> custom
- * {@code AuthenticationEntryPoint} JSON envelope (Phase 147 nomzodi);
- * {@code management.endpoints.web.exposure.include} cheklash (Phase 147);
- * {@code @PreAuthorize} yoki method security; controller/facade/service
- * o'zgarishlari.</p>
+ * <p><strong>Out of scope for Phase 148:</strong> {@code @PreAuthorize} yoki
+ * method security; controller/facade/service o'zgarishlari;
+ * {@code management.endpoints.web.exposure.include} cheklash; JWT claim
+ * model.</p>
  *
  * <p><strong>Test slice integratsiyasi:</strong> Production'da
  * {@code @SpringBootApplication} component-scan orqali yuklanadi.
  * {@code @WebMvcTest} slice'larida {@code @Import(SecurityConfig.class)} orqali
- * explicit yuklanadi. {@code @WebMvcTest} slice'lari {@code JwtDecoder} bean
- * yuklamaydi, shuning uchun missing-actor controller testlari Phase 146'dan
- * keyin ham 403 kutadi (resource-server entry point yo'q).</p>
+ * explicit yuklanadi. {@link JsonAuthenticationEntryPoint} va
+ * {@link JsonAccessDeniedHandler} klasslari shu konfiguratsiya ichidagi
+ * {@code @Bean} factory metodlari ({@link #jsonAuthenticationEntryPoint(ObjectMapper)},
+ * {@link #jsonAccessDeniedHandler(ObjectMapper)}) orqali yaratiladi va
+ * SecurityConfig bilan birga yuklanadi (auto-configured Jackson
+ * {@link ObjectMapper} dependency'sini ishlatadi).</p>
  */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     @Bean
+    public JsonAuthenticationEntryPoint jsonAuthenticationEntryPoint(ObjectMapper objectMapper) {
+        return new JsonAuthenticationEntryPoint(objectMapper);
+    }
+
+    @Bean
+    public JsonAccessDeniedHandler jsonAccessDeniedHandler(ObjectMapper objectMapper) {
+        return new JsonAccessDeniedHandler(objectMapper);
+    }
+
+    @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                     ObjectProvider<JwtDecoder> jwtDecoderProvider)
+                                                     ObjectProvider<JwtDecoder> jwtDecoderProvider,
+                                                     JsonAuthenticationEntryPoint jsonAuthenticationEntryPoint,
+                                                     JsonAccessDeniedHandler jsonAccessDeniedHandler)
             throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -101,17 +140,26 @@ public class SecurityConfig {
                         // SecurityConfigTest probe path'lari) uchun avvalgi
                         // permitAll posture saqlanadi — auth challenge qaytarilmaydi
                         // va MVC dispatcher 404 qaytaradi.
-                        .anyRequest().permitAll());
+                        .anyRequest().permitAll())
+                // Phase 148: filter-chain reject yo'llari ApiErrorResponse
+                // envelope shaklini saqlasin uchun JSON entry point va access
+                // denied handler default fallback'larni almashtiradi.
+                .exceptionHandling(eh -> eh
+                        .authenticationEntryPoint(jsonAuthenticationEntryPoint)
+                        .accessDeniedHandler(jsonAccessDeniedHandler));
 
         // Phase 126: JwtDecoder bean mavjud bo'lganda oauth2ResourceServer'ni
-        // explicit decoder + JwtActorConverter bilan wire qilamiz. Decoder
-        // mavjud bo'lmagan profillarda (HMAC secret/issuer-uri/jwk-set-uri
-        // property o'rnatilmagan) chain umuman qo'shilmaydi va Spring Security
-        // default fallback (Http403ForbiddenEntryPoint) himoyalangan
-        // endpoint'lar uchun 403 qaytaradi.
+        // explicit decoder + JwtActorConverter bilan wire qilamiz. Phase 148:
+        // resource-server chain'iga ham JSON entry point/handler ulanadi —
+        // Bearer reject'lari (BearerTokenAuthenticationEntryPoint default
+        // o'rniga) shu yo'ldan o'tadi va envelope shaklini saqlaydi.
+        // Decoder mavjud bo'lmagan profillarda chain umuman qo'shilmaydi va
+        // exceptionHandling default'lari (yuqorida) ishlaydi.
         JwtDecoder decoder = jwtDecoderProvider.getIfAvailable();
         if (decoder != null) {
             http.oauth2ResourceServer(oauth2 -> oauth2
+                    .authenticationEntryPoint(jsonAuthenticationEntryPoint)
+                    .accessDeniedHandler(jsonAccessDeniedHandler)
                     .jwt(jwt -> jwt
                             .decoder(decoder)
                             .jwtAuthenticationConverter(new JwtActorConverter())));

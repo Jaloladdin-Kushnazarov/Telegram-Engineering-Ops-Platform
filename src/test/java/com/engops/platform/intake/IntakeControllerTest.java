@@ -334,22 +334,21 @@ class IntakeControllerTest {
 
     /**
      * Phase 134 yangi qoplama: SecurityContext'da {@code AuthenticatedActor}
-     * yo'q bo'lganda himoyalangan {@code /api/**} so'rovi 403 qaytarishi va
+     * yo'q bo'lganda himoyalangan {@code /api/**} so'rovi rad etilishi va
      * IntakeApplicationService'ga umuman yetmasligi kerak.
      *
-     * <p>Phase 146'dan keyin reject layer Spring Security filter chain'iga
-     * ko'chdi: {@code SecurityConfig} {@code /api/**} ni {@code authenticated()}
-     * deb belgilaydi va @WebMvcTest slice'da JwtDecoder bean yo'q, shuning uchun
-     * resource-server entry point wire qilinmaydi va Spring Security default
-     * fallback {@code Http403ForbiddenEntryPoint} 403 qaytaradi (custom JSON
-     * envelope'siz). 403 status va facade-ga yetmaslik invariantlari saqlanadi;
-     * {@code GlobalExceptionHandler}'ning {@code errorCode=ACCESS_DENIED}
-     * envelope'i endi bu yo'lda emit qilinmaydi (filter-chain reject controller
-     * advice'gacha yetmaydi) — bu kelajakdagi mumkin bo'lgan custom
-     * AuthenticationEntryPoint phase'ida hal qilinishi mumkin.</p>
+     * <p>Phase 146'da reject layer Spring Security filter chain'iga ko'chdi:
+     * {@code SecurityConfig} {@code /api/**}'ni {@code authenticated()} deb
+     * belgilaydi va @WebMvcTest slice'da JwtDecoder bean yo'q. Phase 148'dan
+     * keyin {@code http.exceptionHandling} default fallback'ni
+     * {@code JsonAuthenticationEntryPoint} bilan almashtiradi: anonymous
+     * principal {@code authenticated()} qoidasini buzganda 401 + UNAUTHORIZED
+     * envelope ({@code ApiErrorResponse}) qaytariladi. Facade'ga yetmaslik
+     * invariant'i saqlanadi.</p>
      */
     @Test
-    void missingAuthenticatedActorOnSubmitReturns403WithoutReachingService() throws Exception {
+    void missingAuthenticatedActorOnSubmitReturns401UnauthorizedEnvelopeWithoutReachingService()
+            throws Exception {
         mockMvc.perform(post("/api/intake/work-items")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -361,7 +360,8 @@ class IntakeControllerTest {
                                   "actionSource":"MANUAL"
                                 }
                                 """.formatted(TENANT_ID, CREATED_BY_USER_ID)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
         verifyNoInteractions(intakeApplicationService);
     }

@@ -911,17 +911,18 @@ class DeliveryObservabilityControllerTest {
     }
 
     @Test
-    void missingAuthenticatedActorReturns403WithoutReachingFacade() throws Exception {
-        // Phase 128: missing actor bo'lganda himoyalangan endpoint 403 qaytaradi
-        // va facade chaqirilmaydi. Phase 146'dan keyin reject layer Spring Security
-        // filter chain'iga ko'chdi: @WebMvcTest slice'da JwtDecoder bean yo'q,
-        // shuning uchun resource-server entry point wire qilinmaydi va Spring
-        // Security default fallback Http403ForbiddenEntryPoint 403 qaytaradi
-        // (custom JSON envelope'siz). 403 status va facade'ga yetmaslik
-        // invariantlari saqlanadi.
+    void missingAuthenticatedActorReturns401UnauthorizedEnvelopeWithoutReachingFacade()
+            throws Exception {
+        // Phase 128 missing-actor coverage. Phase 146'da reject layer Spring
+        // Security filter chain'iga ko'chdi; Phase 148'da default fallback
+        // JsonAuthenticationEntryPoint bilan almashtirildi — anonymous principal
+        // /api/** authenticated qoidasini buzganda 401 + UNAUTHORIZED envelope
+        // (ApiErrorResponse) qaytariladi. Facade'ga yetmaslik invariant'i
+        // saqlanadi.
         mockMvc.perform(get("/api/admin/delivery-observability/summary")
                         .param("tenantId", TENANT_ID.toString()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
         verifyNoInteractions(summaryReadFacade);
         verifyNoInteractions(detailsByCodeFacade);

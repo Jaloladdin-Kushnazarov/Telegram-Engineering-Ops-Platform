@@ -374,25 +374,26 @@ class WorkflowTransitionControllerTest {
 
     /**
      * Phase 135 yangi qoplama: SecurityContext'da {@code AuthenticatedActor}
-     * yo'q bo'lganda {@code @CurrentActor} resolver controller body'ga ham,
-     * WorkflowTransitionService'ga ham yetib bormay 403 ACCESS_DENIED
-     * qaytarishi kerak. Bu eski {@code transitionMissingActorUserIdReturns400}
-     * test'ining o'rnini bosadi — endi body'dagi {@code actorUserId} jim
-     * e'tiborga olinmaydi va REST darajasidagi 400 kontrakti yo'q. Pattern
-     * Phase 128/129/131/132/134 missing-actor qoplamasi bilan bir xil.
+     * yo'q bo'lganda himoyalangan {@code /api/**} so'rovi rad etilishi va
+     * WorkflowTransitionService'ga umuman yetmasligi kerak. Bu eski
+     * {@code transitionMissingActorUserIdReturns400} test'ining o'rnini bosadi
+     * — endi body'dagi {@code actorUserId} jim e'tiborga olinmaydi va REST
+     * darajasidagi 400 kontrakti yo'q. Pattern Phase 128/129/131/132/134
+     * missing-actor qoplamasi bilan bir xil.
      *
      * <p>Body'da {@code actorUserId} ataylab ko'rsatilgan — uning mavjudligi
-     * 403 javobga ta'sir qilmasligini ko'rsatish uchun (spoofing yo'lga
+     * reject javobga ta'sir qilmasligini ko'rsatish uchun (spoofing yo'lga
      * qo'yilmaydi, autentifikatsiya yetishmasligi har doim eng birinchi
      * to'siq bo'lib qoladi).</p>
+     *
+     * <p>Phase 146 + Phase 148: filter-chain reject layer Spring Security
+     * ichiga ko'chdi va endi {@code JsonAuthenticationEntryPoint} 401 +
+     * UNAUTHORIZED envelope ({@code ApiErrorResponse}) qaytaradi. Service'ga
+     * yetmaslik invariant'i saqlanadi.</p>
      */
     @Test
-    void missingAuthenticatedActorOnTransitionReturns403WithoutReachingService() throws Exception {
-        // Phase 146: filter-chain reject ({@code SecurityConfig} {@code /api/**}
-        // authenticated qoidasi) controller advice'gacha yetmaydi, shuning uchun
-        // {@code GlobalExceptionHandler}'ning {@code errorCode=ACCESS_DENIED}
-        // envelope'i emit qilinmaydi. 403 status va service'ga yetmaslik
-        // invariantlari saqlanadi.
+    void missingAuthenticatedActorOnTransitionReturns401UnauthorizedEnvelopeWithoutReachingService()
+            throws Exception {
         mockMvc.perform(post("/api/work-items/{workItemId}/transitions", WORK_ITEM_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -403,7 +404,8 @@ class WorkflowTransitionControllerTest {
                                   "actionSource":"MANUAL"
                                 }
                                 """.formatted(TENANT_ID, SPOOFED_BODY_ACTOR_USER_ID)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
 
         verifyNoInteractions(workflowTransitionService);
     }
