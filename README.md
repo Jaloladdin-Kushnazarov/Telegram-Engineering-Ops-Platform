@@ -56,6 +56,31 @@ docker compose up -d
 - Application: http://localhost:8080
 - Health check: http://localhost:8080/actuator/health
 
+## Local DB credentials and overrides
+
+`docker compose up -d` provisions PostgreSQL with intentionally non-secret
+placeholder credentials:
+
+- database: `engops`
+- username: `engops`
+- password: `engops_local`
+
+`application.properties` uses those same values as default fallbacks for the
+`DATABASE_URL`, `DATABASE_USERNAME`, and `DATABASE_PASSWORD` environment
+variables, so local startup with the `local` profile works out-of-the-box.
+Override any of them by exporting the env vars before running.
+
+Production deployments must set `DATABASE_URL`, `DATABASE_USERNAME`, and
+`DATABASE_PASSWORD` to real values via the deployment platform — local
+defaults are not for production use.
+
+> **Security note (Phase 152):** a real-looking personal password was
+> previously committed in `application.properties` and
+> `application-local.properties`. The current HEAD removes it, but git
+> history still contains it. If that value was reused elsewhere, treat it
+> as compromised and rotate it outside the repo. Git history rewriting is
+> out of scope of this change.
+
 ## Profiles
 
 | Profile | Purpose |
