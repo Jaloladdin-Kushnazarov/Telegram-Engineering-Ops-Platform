@@ -1,8 +1,16 @@
 package com.engops.platform.workflow;
 
 import com.engops.platform.audit.AuditService;
+import com.engops.platform.intake.PreparedDeliveryTarget;
+import com.engops.platform.intake.ProjectionAssembler;
+import com.engops.platform.intake.ProjectionPayload;
+import com.engops.platform.routing.RoutingDecision;
+import com.engops.platform.routing.RoutingDecisionService;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
+import com.engops.platform.telegram.TelegramCardDispatchService;
+import com.engops.platform.telegram.TelegramCardView;
+import com.engops.platform.telegram.TelegramCardViewService;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowTransitionRule;
@@ -12,6 +20,8 @@ import com.engops.platform.workitem.OperationalAuthorizationService;
 import com.engops.platform.workitem.WorkItemCommandService;
 import com.engops.platform.workitem.WorkItemQueryService;
 import com.engops.platform.workitem.model.WorkItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,12 +36,47 @@ import java.util.UUID;
  * - WorkItemCommandService — work item saqlash uchun (public API)
  * - TenantConfigQueryService — workflow definition olish uchun (public API)
  * - AuditService — audit yozish uchun (public API)
+ * - RoutingDecisionService — Phase 161, transition'dan keyin Telegram
+ *   notification target'ini qayta resolve qilish uchun (WorkItem'da
+ *   routing target field'i saqlanmaydi — har transition uchun joriy
+ *   konfiguratsiyaga ko'ra qayta hisoblanadi, intake bilan bir xil pattern)
+ * - ProjectionAssembler — Phase 161, intake module'ning public DTO
+ *   assembler'i (PreparedDeliveryTarget → ProjectionPayload)
+ * - TelegramCardViewService — Phase 161, telegram module'ning public API'si
+ * - TelegramCardDispatchService — Phase 161, telegram module'ning public
+ *   dispatch facade'i (render + outbound + persisted attempt)
  *
  * Bu generic BPM engine EMAS — aniq domain servisi.
+ *
+ * <p><strong>Phase 161 — Telegram update card dispatch:</strong> work item
+ * status muvaffaqiyatli o'tkazilib, audit yozilgandan keyin, agar joriy
+ * routing konfiguratsiyasi target taklif qilsa, Telegram dispatch zanjiri
+ * ishga tushadi: {@code workItem (yangi status) → RoutingDecisionService
+ * → PreparedDeliveryTarget → ProjectionPayload → TelegramCardView →
+ * TelegramCardDispatchService.dispatchAttempt()}. Bu YANGI sendMessage
+ * attempt sifatida amalga oshiriladi (editMessageText emas — Telegram
+ * message_id work item'ga bog'lanmagan). Append-only delivery attempt
+ * jadvalida transition uchun yangi row paydo bo'ladi.</p>
+ *
+ * <p><strong>Fail-soft kontrakt:</strong> work item status transition =
+ * manba-haqiqat. Telegram notification = projection/side-effect. Routing
+ * resolution failure, dispatch reject/failure yoki kutilmagan
+ * {@link RuntimeException} transition natijasini buzmaydi va rollback
+ * qilmaydi. Faqat bounded metadata ({@code tenantId}, {@code workItemId},
+ * {@code targetStatusCode}, {@code exceptionType}) log qilinadi —
+ * exception message log'ga chiqarilmaydi (Phase 160 mini-fix bilan
+ * o'rnatilgan token-leak hardening pattern).</p>
+ *
+ * <p><strong>Out of scope (Phase 161 da TEGILMAYDI):</strong> editMessageText
+ * (Telegram message_id work item modelida saqlanmaydi); retry/backoff;
+ * inbound webhook/callback handling; parse_mode rendering; async/event
+ * pattern; Telegram gateway o'zgarishi.</p>
  */
 @Service
 @Transactional
 public class WorkflowTransitionService {
+
+    private static final Logger log = LoggerFactory.getLogger(WorkflowTransitionService.class);
 
     private final WorkItemQueryService workItemQueryService;
     private final WorkItemCommandService workItemCommandService;
@@ -39,19 +84,31 @@ public class WorkflowTransitionService {
     private final WorkItemTransitionRepository transitionRepository;
     private final AuditService auditService;
     private final OperationalAuthorizationService operationalAuthorizationService;
+    private final RoutingDecisionService routingDecisionService;
+    private final ProjectionAssembler projectionAssembler;
+    private final TelegramCardViewService telegramCardViewService;
+    private final TelegramCardDispatchService telegramCardDispatchService;
 
     public WorkflowTransitionService(WorkItemQueryService workItemQueryService,
                                       WorkItemCommandService workItemCommandService,
                                       TenantConfigQueryService tenantConfigQueryService,
                                       WorkItemTransitionRepository transitionRepository,
                                       AuditService auditService,
-                                      OperationalAuthorizationService operationalAuthorizationService) {
+                                      OperationalAuthorizationService operationalAuthorizationService,
+                                      RoutingDecisionService routingDecisionService,
+                                      ProjectionAssembler projectionAssembler,
+                                      TelegramCardViewService telegramCardViewService,
+                                      TelegramCardDispatchService telegramCardDispatchService) {
         this.workItemQueryService = workItemQueryService;
         this.workItemCommandService = workItemCommandService;
         this.tenantConfigQueryService = tenantConfigQueryService;
         this.transitionRepository = transitionRepository;
         this.auditService = auditService;
         this.operationalAuthorizationService = operationalAuthorizationService;
+        this.routingDecisionService = routingDecisionService;
+        this.projectionAssembler = projectionAssembler;
+        this.telegramCardViewService = telegramCardViewService;
+        this.telegramCardDispatchService = telegramCardDispatchService;
     }
 
     /**
@@ -122,7 +179,77 @@ public class WorkflowTransitionService {
         auditService.recordEvent(tenantId, "WORK_ITEM", workItemId,
                 "STATUS_TRANSITION", actorUserId, actionSource, fromStatus, targetStatusCode);
 
+        // Phase 161: Telegram update card outbound dispatch — fail-soft side-effect.
+        // Status transition allaqachon yozilgan (manba-haqiqat). Dispatch
+        // muvaffaqiyatli qaytsa (SUCCESS / REJECTED / FAILED outcome bilan
+        // attempt qaytarsa), TelegramCardDispatchService ichidagi
+        // attemptPersistence orqali telegram_delivery_attempt jadvaliga
+        // yoziladi va observability admin endpoint'larida ko'rinadi.
+        // Dispatch boundary'idan kutilmagan RuntimeException uchun persistence
+        // KAFOLATLANMAYDI — exception qaysi qadamda tashlanganiga bog'liq;
+        // transition baribir muvaffaqiyatli qaytadi (fail-soft).
+        dispatchTelegramCardSafely(workItem, targetStatusCode);
+
         return workItem;
+    }
+
+    /**
+     * Phase 161 — fail-soft Telegram update card dispatch boundary.
+     *
+     * <p>Routing target qayta resolve qilinadi (intake bilan bir xil pattern):
+     * {@code workItem.getTenantId()} + {@code workItem.getTypeCode()} bo'yicha
+     * {@link RoutingDecisionService}. Agar mos rule yo'q yoki target
+     * yetishmagan bo'lsa, Telegram chaqiruvi umuman bo'lmaydi va transition
+     * baribir muvaffaqiyatli qaytadi.</p>
+     *
+     * <p>Routing prepared bo'lsa: yangi {@link PreparedDeliveryTarget}
+     * (tenantId + workItem identity + yangi statusCode + resolved chat/topic)
+     * quriladi → {@link ProjectionAssembler#assemble(PreparedDeliveryTarget)}
+     * → {@link TelegramCardViewService#buildCardView(ProjectionPayload)}
+     * → {@link TelegramCardDispatchService#dispatchAttempt(TelegramCardView)}.
+     * Append-only delivery attempt yangi row sifatida {@code telegram_delivery_attempt}
+     * jadvaliga yoziladi.</p>
+     *
+     * <p>Kutilmagan {@link RuntimeException} (routing exception, rendering
+     * xatosi, collaborator null qaytarishi va h.k.) ushlanadi va transition
+     * natijasini buzmaydi. Log faqat <em>bounded metadata</em> chiqaradi:
+     * {@code tenantId}, {@code workItemId}, {@code targetStatusCode},
+     * {@code exceptionType} (exception simple class name).
+     * {@code ex.getMessage()} ataylab log qilinmaydi — workflow boundary
+     * Telegram bot token konfiguratsiyasi haqida hech narsa bilmaydi va
+     * exception message ichidagi har qanday secret sub-string'ining log'ga
+     * sizib chiqishini oldini oladi (Phase 160 mini-fix logging hardening
+     * pattern).</p>
+     *
+     * <p><strong>Diqqat:</strong> bu metod work item save + transition
+     * history + audit'dan KEYIN chaqiriladi. Telegram dispatch failure
+     * outer transaction'ni rollback qilmasligi shart.</p>
+     */
+    private void dispatchTelegramCardSafely(WorkItem workItem, String targetStatusCode) {
+        try {
+            RoutingDecision routing = routingDecisionService.resolve(
+                    workItem.getTenantId(), workItem.getTypeCode().name());
+            if (!routing.isPrepared()) {
+                return;
+            }
+            PreparedDeliveryTarget target = new PreparedDeliveryTarget(
+                    workItem.getTenantId(),
+                    workItem.getId(),
+                    workItem.getWorkItemCode(),
+                    workItem.getTypeCode().name(),
+                    workItem.getTitle(),
+                    workItem.getCurrentStatusCode(),
+                    true,
+                    routing.getTargetChatBindingId(),
+                    routing.getTargetTopicId());
+            ProjectionPayload payload = projectionAssembler.assemble(target);
+            TelegramCardView cardView = telegramCardViewService.buildCardView(payload);
+            telegramCardDispatchService.dispatchAttempt(cardView);
+        } catch (RuntimeException ex) {
+            log.warn("Telegram card dispatch failed (fail-soft) tenantId={} workItemId={} targetStatusCode={} exceptionType={}",
+                    workItem.getTenantId(), workItem.getId(), targetStatusCode,
+                    ex.getClass().getSimpleName());
+        }
     }
 
     /**

@@ -2,9 +2,18 @@ package com.engops.platform.workflow;
 
 import com.engops.platform.audit.AuditService;
 import com.engops.platform.audit.model.AuditEvent;
+import com.engops.platform.intake.PreparedDeliveryTarget;
+import com.engops.platform.intake.ProjectionAssembler;
+import com.engops.platform.intake.ProjectionPayload;
+import com.engops.platform.routing.RoutingDecision;
+import com.engops.platform.routing.RoutingDecisionService;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
+import com.engops.platform.telegram.TelegramCardDispatchService;
+import com.engops.platform.telegram.TelegramCardView;
+import com.engops.platform.telegram.TelegramCardViewService;
+import com.engops.platform.telegram.TelegramDeliveryAttempt;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
@@ -19,6 +28,7 @@ import com.engops.platform.workitem.model.WorkItemType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -32,6 +42,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -49,6 +61,11 @@ class WorkflowTransitionServiceTest {
     @Mock private WorkItemTransitionRepository transitionRepository;
     @Mock private AuditService auditService;
     @Mock private OperationalAuthorizationService operationalAuthorizationService;
+    // Phase 161 — Telegram update card dispatch zanjir collaborator'lari.
+    @Mock private RoutingDecisionService routingDecisionService;
+    @Mock private ProjectionAssembler projectionAssembler;
+    @Mock private TelegramCardViewService telegramCardViewService;
+    @Mock private TelegramCardDispatchService telegramCardDispatchService;
 
     @InjectMocks
     private WorkflowTransitionService transitionService;
@@ -117,6 +134,12 @@ class WorkflowTransitionServiceTest {
         when(transitionRepository.save(any(WorkItemTransition.class))).thenAnswer(inv -> inv.getArgument(0));
         when(auditService.recordEvent(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new AuditEvent(tenantId, "WORK_ITEM", workItemId, "STATUS_TRANSITION", actorUserId));
+        // Phase 161 default: routing prepared emas — mavjud transition testlari
+        // Telegram dispatch zanjirini ataylab chetlab o'tadi (Mockito null'lariga
+        // tayanmaydi va fail-soft catch yo'liga tushmaydi). Routing prepared
+        // sharoitidagi explicit testlar bu stub'ni override qiladi.
+        when(routingDecisionService.resolve(any(UUID.class), any(String.class)))
+                .thenReturn(RoutingDecision.none());
     }
 
     @Test
@@ -260,6 +283,201 @@ class WorkflowTransitionServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class);
 
         org.mockito.Mockito.verifyNoInteractions(operationalAuthorizationService,
-                tenantConfigQueryService, transitionRepository, auditService);
+                tenantConfigQueryService, transitionRepository, auditService,
+                routingDecisionService, projectionAssembler,
+                telegramCardViewService, telegramCardDispatchService);
+    }
+
+    // --- Phase 161: Telegram update card dispatch integration ---
+
+    /**
+     * Phase 161 + mini-fix: routing prepared bo'lsa transition muvaffaqiyatdan
+     * keyin Telegram update card dispatch zanjiri ishga tushadi:
+     * RoutingDecisionService → ProjectionAssembler → TelegramCardViewService →
+     * TelegramCardDispatchService.
+     *
+     * <p>Mini-fix qo'shimchasi: {@link ArgumentCaptor} orqali
+     * {@link PreparedDeliveryTarget} ichidagi field'lar (yangi statusCode,
+     * resolved chat/topic) tasdiqlanadi — productionTransition keyingi
+     * statusni va resolved routing target'ni payload'ga to'g'ri uzatishini
+     * lock qiladi.</p>
+     */
+    @Test
+    void routingPreparedBolsaTelegramCardDispatchChaqiriladi() {
+        WorkItem workItem = createWorkItem("BUGS");
+        setupMocks(workItem);
+
+        UUID routingRuleId = UUID.randomUUID();
+        UUID topicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        long topicId = 42L;
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId, chatBindingId, topicId));
+        stubSuccessfulTelegramDispatch();
+
+        WorkItem result = transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        assertThat(result.getCurrentStatusCode()).isEqualTo("PROCESSING");
+        verify(routingDecisionService).resolve(tenantId, "BUG");
+
+        // Mini-fix: PreparedDeliveryTarget mazmunini lock qilish.
+        ArgumentCaptor<PreparedDeliveryTarget> targetCaptor =
+                ArgumentCaptor.forClass(PreparedDeliveryTarget.class);
+        verify(projectionAssembler).assemble(targetCaptor.capture());
+        PreparedDeliveryTarget captured = targetCaptor.getValue();
+        assertThat(captured.getTenantId()).isEqualTo(tenantId);
+        assertThat(captured.getWorkItemId()).isEqualTo(workItem.getId());
+        assertThat(captured.getWorkItemCode()).isEqualTo("BUG-1");
+        assertThat(captured.getWorkItemType()).isEqualTo("BUG");
+        assertThat(captured.getTitle()).isEqualTo("Test bug");
+        assertThat(captured.getCurrentStatusCode())
+                .as("PreparedDeliveryTarget yangi statusCode'ni saqlashi shart (transitionTo'dan keyin)")
+                .isEqualTo("PROCESSING");
+        assertThat(captured.isDeliveryReady()).isTrue();
+        assertThat(captured.getTargetChatBindingId()).isEqualTo(chatBindingId);
+        assertThat(captured.getTargetTopicId()).isEqualTo(topicId);
+
+        verify(telegramCardViewService).buildCardView(any(ProjectionPayload.class));
+        verify(telegramCardDispatchService).dispatchAttempt(any(TelegramCardView.class));
+    }
+
+    /**
+     * Phase 161 mini-fix: routing resolution {@link RuntimeException} tashlasa
+     * (masalan ambiguous rule {@code BusinessRuleException} yoki kutilmagan
+     * exception), transition fail-soft kontrakti bo'yicha muvaffaqiyatli
+     * qaytadi va Telegram dispatch zanjirining qolgan qadamlari (assemble /
+     * buildCardView / dispatchAttempt) <strong>umuman chaqirilmaydi</strong>.
+     * Transition history va audit oldindan yozilgan — manba-haqiqat saqlanadi.
+     */
+    @Test
+    void routingExceptionTashlasaTransitionMuvaffaqiyatliQoladi() {
+        WorkItem workItem = createWorkItem("BUGS");
+        setupMocks(workItem);
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenThrow(new BusinessRuleException("ROUTING_AMBIGUOUS",
+                        "bir nechta unconditional rule eng yuqori priority'da"));
+
+        WorkItem result = transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        assertThat(result.getCurrentStatusCode()).isEqualTo("PROCESSING");
+        verify(transitionRepository).save(any(WorkItemTransition.class));
+        verify(auditService).recordEvent(tenantId, "WORK_ITEM", workItemId,
+                "STATUS_TRANSITION", actorUserId, "MANUAL", "BUGS", "PROCESSING");
+        verify(routingDecisionService).resolve(tenantId, "BUG");
+        verify(projectionAssembler, never()).assemble(any());
+        verify(telegramCardViewService, never()).buildCardView(any());
+        verify(telegramCardDispatchService, never()).dispatchAttempt(any());
+    }
+
+    /**
+     * Phase 161: routing prepared bo'lmasa (mos rule yo'q) Telegram dispatch
+     * zanjiri umuman chaqirilmaydi. Transition baribir muvaffaqiyatli qaytadi.
+     */
+    @Test
+    void routingPreparedEmasBolsaTelegramDispatchChaqirilmaydi() {
+        WorkItem workItem = createWorkItem("BUGS");
+        setupMocks(workItem);
+        // setupMocks RoutingDecision.none() default'ini o'rnatadi.
+
+        WorkItem result = transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        assertThat(result.getCurrentStatusCode()).isEqualTo("PROCESSING");
+        verify(routingDecisionService).resolve(tenantId, "BUG");
+        verify(projectionAssembler, never()).assemble(any());
+        verify(telegramCardViewService, never()).buildCardView(any());
+        verify(telegramCardDispatchService, never()).dispatchAttempt(any());
+    }
+
+    /**
+     * Phase 161: dispatch service kutilmagan {@link RuntimeException} tashlasa,
+     * transition fail-soft kontrakti bo'yicha muvaffaqiyatli qaytadi. Work
+     * item save + transition history + audit allaqachon yozilgan — manba-
+     * haqiqat saqlanadi.
+     *
+     * <p><strong>Diqqat:</strong> RuntimeException dispatch boundary ichidan
+     * tashlangan bo'lsa, persisted failed attempt KAFOLATLANMAYDI — exception
+     * qaysi qadamda tashlanganiga bog'liq (TelegramCardDispatchService
+     * persistence dispatch'dan keyin amalga oshiriladi). Bu test faqat
+     * transition fail-soft xulqini lock qiladi, persistence garantiyasini
+     * tasdiqlamaydi.</p>
+     */
+    @Test
+    void telegramDispatchExceptionTashlasaTransitionMuvaffaqiyatliQoladi() {
+        WorkItem workItem = createWorkItem("BUGS");
+        setupMocks(workItem);
+
+        UUID routingRuleId = UUID.randomUUID();
+        UUID topicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        long topicId = 42L;
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId, chatBindingId, topicId));
+
+        ProjectionPayload payload = mock(ProjectionPayload.class);
+        TelegramCardView cardView = mock(TelegramCardView.class);
+        when(projectionAssembler.assemble(any(PreparedDeliveryTarget.class))).thenReturn(payload);
+        when(telegramCardViewService.buildCardView(payload)).thenReturn(cardView);
+        when(telegramCardDispatchService.dispatchAttempt(cardView))
+                .thenThrow(new RuntimeException("simulated outbound dispatch failure"));
+
+        WorkItem result = transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        assertThat(result.getCurrentStatusCode()).isEqualTo("PROCESSING");
+        verify(transitionRepository).save(any(WorkItemTransition.class));
+        verify(auditService).recordEvent(tenantId, "WORK_ITEM", workItemId,
+                "STATUS_TRANSITION", actorUserId, "MANUAL", "BUGS", "PROCESSING");
+        verify(telegramCardDispatchService).dispatchAttempt(cardView);
+    }
+
+    /**
+     * Phase 161: Telegram dispatch FAILED yoki REJECTED outcome bilan attempt
+     * qaytarsa, transition baribir muvaffaqiyatli qaytadi. Failed attempt
+     * allaqachon DB'da (TelegramCardDispatchService ichidagi
+     * attemptPersistence orqali) — observability admin endpoint'larida
+     * ko'rinadi. Production code dispatch result'iga branch qilmaydi.
+     */
+    @Test
+    void telegramDispatchFailedAttemptQaytarsaTransitionMuvaffaqiyatliQoladi() {
+        WorkItem workItem = createWorkItem("BUGS");
+        setupMocks(workItem);
+
+        UUID routingRuleId = UUID.randomUUID();
+        UUID topicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        long topicId = 42L;
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId, chatBindingId, topicId));
+
+        ProjectionPayload payload = mock(ProjectionPayload.class);
+        TelegramCardView cardView = mock(TelegramCardView.class);
+        TelegramDeliveryAttempt failedAttempt = mock(TelegramDeliveryAttempt.class);
+        when(projectionAssembler.assemble(any(PreparedDeliveryTarget.class))).thenReturn(payload);
+        when(telegramCardViewService.buildCardView(payload)).thenReturn(cardView);
+        when(telegramCardDispatchService.dispatchAttempt(cardView)).thenReturn(failedAttempt);
+
+        WorkItem result = transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        assertThat(result.getCurrentStatusCode()).isEqualTo("PROCESSING");
+        verify(telegramCardDispatchService).dispatchAttempt(cardView);
+    }
+
+    /**
+     * Phase 161 mini-fix vintage helper: routingPrepared=true sharoiti uchun
+     * Telegram dispatch zanjirini explicit clean stub'lar bilan to'ldiradi.
+     * Mockito default null'lariga emas, explicit qiymatlarga tayanish — Phase
+     * 160 mini-fix pattern'ini takrorlaydi.
+     */
+    private void stubSuccessfulTelegramDispatch() {
+        ProjectionPayload payload = mock(ProjectionPayload.class);
+        TelegramCardView cardView = mock(TelegramCardView.class);
+        TelegramDeliveryAttempt attempt = mock(TelegramDeliveryAttempt.class);
+        when(projectionAssembler.assemble(any(PreparedDeliveryTarget.class))).thenReturn(payload);
+        when(telegramCardViewService.buildCardView(payload)).thenReturn(cardView);
+        when(telegramCardDispatchService.dispatchAttempt(cardView)).thenReturn(attempt);
     }
 }
