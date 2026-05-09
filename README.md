@@ -81,6 +81,18 @@ defaults are not for production use.
 > as compromised and rotate it outside the repo. Git history rewriting is
 > out of scope of this change.
 
+## Production deployment
+
+Run the application with the `prod` profile (`--profiles=prod` or
+`SPRING_PROFILES_ACTIVE=prod`). Production datasource values must come from
+the deployment environment (`DATABASE_URL`, `DATABASE_USERNAME`,
+`DATABASE_PASSWORD`); local defaults are not used.
+
+The full operator contract — JWT decoder env vars, first-admin bootstrap
+env vars, HTTP auth failure semantics, audit expectations, and rollback
+scenarios — lives in the
+[First-Admin Bootstrap Runbook](docs/operations/first-admin-bootstrap-runbook.md).
+
 ## Profiles
 
 | Profile | Purpose |
