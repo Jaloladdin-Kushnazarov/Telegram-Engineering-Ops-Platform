@@ -142,34 +142,42 @@ tenant is mid-configuration.
 
 ## 6. Runtime flow
 
-### 6.1 Intake flow
+### 6.1 Intake flow (Phase 164: AFTER_COMMIT dispatch)
 
 ```
 HTTP POST  /api/intake/work-items
   → IntakeController
-  → IntakeApplicationService.submit(IntakeCommand)
+  → IntakeApplicationService.submit(IntakeCommand)              // @Transactional
         ├─ validate command
         ├─ authorize actor (WORK_ITEM_CREATE)
         ├─ resolve workflow definition + initial status
         ├─ RoutingDecisionService.resolve(tenantId, typeCode)        // fail-fast
         ├─ WorkItemCommandService.create(...)                        // mutation + audit
         └─ if routing.isPrepared():
-              ProjectionAssembler.assemble(target)
-              → TelegramCardViewService.buildCardView(payload)
-              → TelegramCardDispatchService.dispatchAttempt(view)
-                    → TelegramMessageRenderer.render
-                    → TelegramDeliveryCommandAssembler.assembleSend
-                    → TelegramOutboundDispatchService.dispatch(command)
-                          → TelegramOutboundGateway.execute(request)   // Http or Stub
-                    → JpaTelegramDeliveryAttemptPersistence.save(attempt)
+              eventPublisher.publishEvent(
+                  TelegramCardDispatchRequested(target, "INTAKE", null))   // queued in TX
+
+  ── transaction commits ────────────────────────────────────────
+
+  → TelegramCardDispatchEventListener.onTelegramCardDispatchRequested(event)
+        @TransactionalEventListener(phase = AFTER_COMMIT)
+        ProjectionAssembler.assemble(target)
+        → TelegramCardViewService.buildCardView(payload)
+        → TelegramCardDispatchService.dispatchAttempt(view)
+              → TelegramMessageRenderer.render
+              → TelegramDeliveryCommandAssembler.assembleSend
+              → TelegramOutboundDispatchService.dispatch(command)
+                    → TelegramOutboundGateway.execute(request)   // Http or Stub
+              → JpaTelegramDeliveryAttemptPersistence.save(attempt)
+        catch RuntimeException → bounded log, swallow
 ```
 
-### 6.2 Workflow transition flow
+### 6.2 Workflow transition flow (Phase 164: AFTER_COMMIT dispatch)
 
 ```
 HTTP POST  /api/workflow/work-items/{id}/transitions
   → WorkflowTransitionController
-  → WorkflowTransitionService.transition(...)
+  → WorkflowTransitionService.transition(...)                    // @Transactional
         ├─ load work item (tenant-safe)
         ├─ authorize actor (WORK_ITEM_TRANSITION)
         ├─ validate transition rule
@@ -181,12 +189,20 @@ HTTP POST  /api/workflow/work-items/{id}/transitions
               RoutingDecisionService.resolve(tenantId, typeCode)      // re-resolved
               if routing.isPrepared():
                     PreparedDeliveryTarget(... newStatusCode ...)
-                    → ProjectionAssembler.assemble
-                    → TelegramCardViewService.buildCardView
-                    → TelegramCardDispatchService.dispatchAttempt
-                          (same chain as intake)
+                    eventPublisher.publishEvent(
+                        TelegramCardDispatchRequested(target,
+                            "WORKFLOW_TRANSITION", targetStatusCode))    // queued in TX
            catch RuntimeException → bounded log, swallow
+
+  ── transaction commits ────────────────────────────────────────
+
+  → TelegramCardDispatchEventListener.onTelegramCardDispatchRequested(event)
+        (same AFTER_COMMIT chain as intake)
 ```
+
+If the surrounding transaction rolls back, no event is delivered and the
+listener never runs — there is no Telegram message and no
+`telegram_delivery_attempt` row. This is by design.
 
 **Append-only.** Each transition produces a *new* `sendMessage` attempt;
 `editMessageText` is **not** used because the Telegram `message_id` is
@@ -302,17 +318,27 @@ recognized gaps and are scheduled for later phases.
 - **No `editMessageText`.** Each transition sends a *new* message
   because the Telegram `message_id` is not stored on `WorkItem`. Old
   cards are not updated, deleted, or superseded by the bot.
-- **Synchronous fail-soft side effect.** Dispatch runs inside the same
-  application transaction that committed the work-item / transition
-  mutation, just before the transaction commits. There is no
-  `@TransactionalEventListener(AFTER_COMMIT)`, no outbox, and no async
-  worker yet.
+- **Synchronous AFTER_COMMIT side effect** *(Phase 164)*. Intake and
+  workflow services publish a `TelegramCardDispatchRequested` application
+  event inside their `@Transactional` scope; a
+  `@TransactionalEventListener(phase = AFTER_COMMIT)` listener performs
+  the render → outbound → delivery_attempt persistence chain on the same
+  thread, *after* the surrounding transaction commits. The listener
+  method itself is annotated
+  `@Transactional(propagation = REQUIRES_NEW)` so the
+  `telegram_delivery_attempt` insert runs in an independent transaction
+  decoupled from the originating business transaction (Phase 164
+  mini-fix). Telegram HTTP I/O no longer runs inside the business write
+  transaction, and a rolled-back business transaction never produces a
+  Telegram message or a `telegram_delivery_attempt` row. There is still
+  no async worker pool, no retry, and no outbox.
 - **Pre-persist exception observability gap.** A `RuntimeException`
   thrown *before* `JpaTelegramDeliveryAttemptPersistence.save(attempt)`
   succeeds will not produce a `telegram_delivery_attempt` row. The
-  fail-soft boundary in intake / workflow logs only bounded metadata, so
-  diagnosis of these cases relies on the structured log entry rather
-  than on the attempt history.
+  fail-soft boundary in the AFTER_COMMIT listener logs only bounded
+  metadata (`sourceFlow`, `tenantId`, `workItemId`, `targetStatusCode`,
+  `exceptionType`), so diagnosis of these cases relies on the structured
+  log entry rather than on the attempt history.
 
 ---
 

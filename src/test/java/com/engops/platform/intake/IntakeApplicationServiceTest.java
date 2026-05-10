@@ -5,10 +5,6 @@ import com.engops.platform.routing.RoutingDecisionService;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
-import com.engops.platform.telegram.TelegramCardDispatchService;
-import com.engops.platform.telegram.TelegramCardView;
-import com.engops.platform.telegram.TelegramCardViewService;
-import com.engops.platform.telegram.TelegramDeliveryAttempt;
 import com.engops.platform.tenantconfig.TenantConfigQueryService;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
@@ -18,9 +14,11 @@ import com.engops.platform.workitem.model.WorkItem;
 import com.engops.platform.workitem.model.WorkItemType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 import java.util.Optional;
@@ -41,7 +39,13 @@ import static org.mockito.Mockito.when;
  *
  * Routing policy testlari RoutingDecisionServiceTest ichida.
  * Bu yerda faqat orchestration tekshiriladi:
- * - validate → workflow resolve → status resolve → routing → create → result
+ * - validate → workflow resolve → status resolve → routing → create → result → event publish
+ *
+ * <p>Phase 164: Telegram dispatch endi {@link ApplicationEventPublisher} orqali
+ * AFTER_COMMIT listener'ga delegate qilinadi. Service test bu yerda faqat
+ * publish boundary'ni tekshiradi (event publish bo'ladi yoki bo'lmaydi).
+ * Listener fail-soft xulqi {@link TelegramCardDispatchEventListenerTest}
+ * ichida tekshiriladi.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class IntakeApplicationServiceTest {
@@ -50,10 +54,8 @@ class IntakeApplicationServiceTest {
     @Mock private TenantConfigQueryService tenantConfigQueryService;
     @Mock private RoutingDecisionService routingDecisionService;
     @Mock private OperationalAuthorizationService operationalAuthorizationService;
-    // Phase 160 — Telegram card outbound dispatch zanjir collaborator'lari.
-    @Mock private ProjectionAssembler projectionAssembler;
-    @Mock private TelegramCardViewService telegramCardViewService;
-    @Mock private TelegramCardDispatchService telegramCardDispatchService;
+    // Phase 164: AFTER_COMMIT Telegram dispatch event publish.
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private IntakeApplicationService intakeService;
@@ -201,11 +203,6 @@ class IntakeApplicationServiceTest {
                 eq("Test"), eq((String) null), eq("BUGS"), eq(userId), eq("TELEGRAM")))
                 .thenReturn(createdItem);
 
-        // Phase 160 mini-fix: routingPrepared=true bo'lganda Telegram dispatch
-        // chain Mockito default null'lariga emas, explicit clean stub'larga
-        // tayanishi kerak — fail-soft catch yo'liga tushib qolmasligi uchun.
-        stubSuccessfulTelegramDispatch();
-
         IntakeCommand command = IntakeCommand.builder()
                 .tenantId(tenantId)
                 .typeCode(WorkItemType.BUG)
@@ -255,6 +252,7 @@ class IntakeApplicationServiceTest {
                 .hasMessageContaining("topic binding topilmadi");
 
         verifyNoInteractions(workItemCommandService);
+        verifyNoInteractions(eventPublisher);
     }
 
     // --- Validation failures ---
@@ -272,7 +270,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("tenantId majburiy");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     @Test
@@ -288,7 +286,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("typeCode majburiy");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     @Test
@@ -305,7 +303,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("title bo'sh");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     @Test
@@ -321,7 +319,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("title bo'sh");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     @Test
@@ -337,7 +335,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("createdByUserId majburiy");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     @Test
@@ -354,7 +352,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("actionSource bo'sh");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     @Test
@@ -370,7 +368,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("actionSource bo'sh");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     // --- Workflow resolution failures ---
@@ -395,7 +393,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("WorkflowDefinition");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     @Test
@@ -427,6 +425,8 @@ class IntakeApplicationServiceTest {
         assertThatThrownBy(() -> intakeService.submit(command))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("aktiv emas");
+
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -446,7 +446,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("aktiv workflow ta'rifi topilmadi");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     @Test
@@ -469,7 +469,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("2 ta aktiv workflow topildi");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     // --- Initial status resolution ---
@@ -495,7 +495,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("boshlang'ich status topilmadi");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     @Test
@@ -524,7 +524,7 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("bir nechta boshlang'ich status");
 
-        verifyNoInteractions(workItemCommandService, routingDecisionService);
+        verifyNoInteractions(workItemCommandService, routingDecisionService, eventPublisher);
     }
 
     // --- PreparedDeliveryTarget conversion ---
@@ -577,16 +577,20 @@ class IntakeApplicationServiceTest {
         assertThat(target.getTargetTopicId()).isNull();
     }
 
-    // --- Phase 160: Telegram card dispatch integration ---
+    // --- Phase 164: Telegram card dispatch event publish boundary ---
 
     /**
-     * Phase 160: routing prepared bo'lsa intake muvaffaqiyatdan keyin
-     * Telegram card dispatch zanjiri ishga tushadi:
-     * ProjectionAssembler → TelegramCardViewService → TelegramCardDispatchService.
-     * Intake natija normal qaytadi.
+     * Phase 164: routing prepared bo'lsa intake muvaffaqiyatdan keyin
+     * {@link TelegramCardDispatchRequested} event AFTER_COMMIT listener uchun
+     * publish qilinadi. Telegram HTTP I/O endi intake transaction'i ichida
+     * emas — listener commit'dan keyin ishga tushadi.
+     *
+     * <p>Event payload'i (ichidagi {@link PreparedDeliveryTarget}) yangi
+     * yaratilgan work item identitysi va resolved routing target'ini olib
+     * keladi. {@code sourceFlow = INTAKE}, {@code targetStatusCode = null}.</p>
      */
     @Test
-    void routingPreparedBolsaTelegramCardDispatchChaqiriladi() {
+    void routingPreparedBolsaTelegramDispatchEventiPublishQilinadi() {
         WorkflowDefinition def = mock(WorkflowDefinition.class);
         when(def.getId()).thenReturn(workflowDefId);
         when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
@@ -605,13 +609,6 @@ class IntakeApplicationServiceTest {
                 eq("Login xato"), eq((String) null), eq("BUGS"), eq(userId), eq("TELEGRAM")))
                 .thenReturn(createdItem);
 
-        ProjectionPayload payload = mock(ProjectionPayload.class);
-        TelegramCardView cardView = mock(TelegramCardView.class);
-        TelegramDeliveryAttempt attempt = mock(TelegramDeliveryAttempt.class);
-        when(projectionAssembler.assemble(any(PreparedDeliveryTarget.class))).thenReturn(payload);
-        when(telegramCardViewService.buildCardView(payload)).thenReturn(cardView);
-        when(telegramCardDispatchService.dispatchAttempt(cardView)).thenReturn(attempt);
-
         IntakeCommand command = IntakeCommand.builder()
                 .tenantId(tenantId)
                 .typeCode(WorkItemType.BUG)
@@ -627,17 +624,34 @@ class IntakeApplicationServiceTest {
         assertThat(result.isRoutingPrepared()).isTrue();
         assertThat(result.getWorkItemCode()).isEqualTo("BUG-1");
 
-        verify(projectionAssembler).assemble(any(PreparedDeliveryTarget.class));
-        verify(telegramCardViewService).buildCardView(payload);
-        verify(telegramCardDispatchService).dispatchAttempt(cardView);
+        // Event publish bo'lganini va field'larini lock qilish.
+        ArgumentCaptor<TelegramCardDispatchRequested> eventCaptor =
+                ArgumentCaptor.forClass(TelegramCardDispatchRequested.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        TelegramCardDispatchRequested event = eventCaptor.getValue();
+
+        assertThat(event.sourceFlow()).isEqualTo(TelegramCardDispatchRequested.SOURCE_INTAKE);
+        assertThat(event.targetStatusCode()).isNull();
+
+        PreparedDeliveryTarget target = event.target();
+        assertThat(target).isNotNull();
+        assertThat(target.getTenantId()).isEqualTo(tenantId);
+        assertThat(target.getWorkItemId()).isEqualTo(createdItem.getId());
+        assertThat(target.getWorkItemCode()).isEqualTo("BUG-1");
+        assertThat(target.getWorkItemType()).isEqualTo("BUG");
+        assertThat(target.getTitle()).isEqualTo("Login xato");
+        assertThat(target.getCurrentStatusCode()).isEqualTo("BUGS");
+        assertThat(target.isDeliveryReady()).isTrue();
+        assertThat(target.getTargetChatBindingId()).isEqualTo(chatBindingId);
+        assertThat(target.getTargetTopicId()).isEqualTo(topicId);
     }
 
     /**
-     * Phase 160: routing prepared bo'lmasa Telegram dispatch zanjiri umuman
-     * chaqirilmaydi. Intake natija normal qaytadi.
+     * Phase 164: routing prepared bo'lmasa Telegram dispatch eventi
+     * <strong>umuman publish qilinmaydi</strong>. Intake natija normal qaytadi.
      */
     @Test
-    void routingPreparedEmasBolsaTelegramDispatchChaqirilmaydi() {
+    void routingPreparedEmasBolsaEventPublishQilinmaydi() {
         WorkflowDefinition def = mock(WorkflowDefinition.class);
         when(def.getId()).thenReturn(workflowDefId);
         when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
@@ -667,113 +681,7 @@ class IntakeApplicationServiceTest {
         assertThat(result.isRoutingPrepared()).isFalse();
         assertThat(result.getWorkItemCode()).isEqualTo("BUG-1");
 
-        verify(projectionAssembler, never()).assemble(any());
-        verify(telegramCardViewService, never()).buildCardView(any());
-        verify(telegramCardDispatchService, never()).dispatchAttempt(any());
-    }
-
-    /**
-     * Phase 160: dispatch service kutilmagan {@link RuntimeException} tashlasa,
-     * intake fail-soft kontrakti bo'yicha natijani sifatida qaytaradi.
-     * Work item allaqachon yaratilgan — manba-haqiqat saqlanadi.
-     */
-    @Test
-    void telegramDispatchExceptionTashlasaIntakeMuvaffaqiyatliQaytadi() {
-        WorkflowDefinition def = mock(WorkflowDefinition.class);
-        when(def.getId()).thenReturn(workflowDefId);
-        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
-                .thenReturn(Optional.of(def));
-
-        UUID routingRuleId = UUID.randomUUID();
-        UUID topicBindingId = UUID.randomUUID();
-        UUID chatBindingId = UUID.randomUUID();
-        long topicId = 42L;
-        when(routingDecisionService.resolve(tenantId, "BUG"))
-                .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId, chatBindingId, topicId));
-
-        WorkItem createdItem = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
-                workflowDefId, "Test", "BUGS", userId);
-        when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
-                eq("Test"), eq((String) null), eq("BUGS"), eq(userId), eq("TELEGRAM")))
-                .thenReturn(createdItem);
-
-        ProjectionPayload payload = mock(ProjectionPayload.class);
-        TelegramCardView cardView = mock(TelegramCardView.class);
-        when(projectionAssembler.assemble(any(PreparedDeliveryTarget.class))).thenReturn(payload);
-        when(telegramCardViewService.buildCardView(payload)).thenReturn(cardView);
-        when(telegramCardDispatchService.dispatchAttempt(cardView))
-                .thenThrow(new RuntimeException("simulated outbound dispatch failure"));
-
-        IntakeCommand command = IntakeCommand.builder()
-                .tenantId(tenantId)
-                .typeCode(WorkItemType.BUG)
-                .title("Test")
-                .workflowDefinitionId(workflowDefId)
-                .initialStatusCode("BUGS")
-                .createdByUserId(userId)
-                .actionSource("TELEGRAM")
-                .build();
-
-        IntakeResult result = intakeService.submit(command);
-
-        assertThat(result.isRoutingPrepared()).isTrue();
-        assertThat(result.getWorkItemCode()).isEqualTo("BUG-1");
-        verify(workItemCommandService).create(tenantId, WorkItemType.BUG, workflowDefId,
-                "Test", null, "BUGS", userId, "TELEGRAM");
-        verify(telegramCardDispatchService).dispatchAttempt(cardView);
-    }
-
-    /**
-     * Phase 160: Telegram dispatch FAILED yoki REJECTED outcome bilan attempt
-     * qaytarsa (gateway reject sharoitida — masalan invalid chat), intake
-     * baribir muvaffaqiyatli qaytadi. Failed attempt allaqachon DB'da
-     * (TelegramCardDispatchService ichidagi attemptPersistence orqali).
-     */
-    @Test
-    void telegramDispatchFailedAttemptQaytarsaIntakeMuvaffaqiyatliQaytadi() {
-        WorkflowDefinition def = mock(WorkflowDefinition.class);
-        when(def.getId()).thenReturn(workflowDefId);
-        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
-                .thenReturn(Optional.of(def));
-
-        UUID routingRuleId = UUID.randomUUID();
-        UUID topicBindingId = UUID.randomUUID();
-        UUID chatBindingId = UUID.randomUUID();
-        long topicId = 42L;
-        when(routingDecisionService.resolve(tenantId, "BUG"))
-                .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId, chatBindingId, topicId));
-
-        WorkItem createdItem = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
-                workflowDefId, "Test", "BUGS", userId);
-        when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
-                eq("Test"), eq((String) null), eq("BUGS"), eq(userId), eq("TELEGRAM")))
-                .thenReturn(createdItem);
-
-        ProjectionPayload payload = mock(ProjectionPayload.class);
-        TelegramCardView cardView = mock(TelegramCardView.class);
-        TelegramDeliveryAttempt failedAttempt = mock(TelegramDeliveryAttempt.class);
-        when(projectionAssembler.assemble(any(PreparedDeliveryTarget.class))).thenReturn(payload);
-        when(telegramCardViewService.buildCardView(payload)).thenReturn(cardView);
-        // Mock failed/rejected attempt — production code natijani o'qimaydi,
-        // faqat dispatch chaqirilganini va exception emas qaytarganini
-        // kutadi (failed attempt allaqachon attemptPersistence ichida yozilgan).
-        when(telegramCardDispatchService.dispatchAttempt(cardView)).thenReturn(failedAttempt);
-
-        IntakeCommand command = IntakeCommand.builder()
-                .tenantId(tenantId)
-                .typeCode(WorkItemType.BUG)
-                .title("Test")
-                .workflowDefinitionId(workflowDefId)
-                .initialStatusCode("BUGS")
-                .createdByUserId(userId)
-                .actionSource("TELEGRAM")
-                .build();
-
-        IntakeResult result = intakeService.submit(command);
-
-        assertThat(result.isRoutingPrepared()).isTrue();
-        assertThat(result.getWorkItemCode()).isEqualTo("BUG-1");
-        verify(telegramCardDispatchService).dispatchAttempt(cardView);
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     // --- Phase 139: authorization denial ---
@@ -783,8 +691,8 @@ class IntakeApplicationServiceTest {
         // validateCommand muvaffaqiyatli o'tadi (barcha field'lar to'ldirilgan).
         // Keyin operationalAuthorizationService.authorizeIntake AccessDeniedException
         // tashlaydi — submit shu exception'ni yuqoriga uzatishi va hech qanday
-        // workflow lookup, routing decision yoki work item create chaqiruvi
-        // bo'lmasligi shart.
+        // workflow lookup, routing decision, work item create yoki event publish
+        // chaqiruvi bo'lmasligi shart.
         org.mockito.Mockito.doThrow(new AccessDeniedException(
                         "Bu operatsiya uchun WORK_ITEM_CREATE ruxsati talab qilinadi"))
                 .when(operationalAuthorizationService).authorizeIntake(tenantId, userId);
@@ -803,7 +711,7 @@ class IntakeApplicationServiceTest {
 
         verify(operationalAuthorizationService).authorizeIntake(tenantId, userId);
         verifyNoInteractions(workItemCommandService, routingDecisionService,
-                tenantConfigQueryService);
+                tenantConfigQueryService, eventPublisher);
     }
 
     // --- Helper ---
@@ -819,24 +727,5 @@ class IntakeApplicationServiceTest {
         when(def.getStatuses()).thenReturn(List.of(initialStatus));
 
         return def;
-    }
-
-    /**
-     * Phase 160 mini-fix: routingPrepared=true sharoiti uchun Telegram dispatch
-     * zanjirini explicit clean stub'lar bilan to'ldiradi. Bu helper Mockito
-     * default null/no-stub yo'lining tasodifan fail-soft catch'ga tushib
-     * qolishini oldini oladi va dispatch invariantini aniq lock qiladi.
-     * Test'da {@code projectionAssembler.assemble(...)} yoki
-     * {@code telegramCardViewService.buildCardView(...)} stub'lari ataylab
-     * boshqa qiymat qaytarishi uchun yozilgan bo'lsa, helper'dan oldin
-     * stublash mumkin (Mockito so'nggi stubni saqlaydi).
-     */
-    private void stubSuccessfulTelegramDispatch() {
-        ProjectionPayload payload = mock(ProjectionPayload.class);
-        TelegramCardView cardView = mock(TelegramCardView.class);
-        TelegramDeliveryAttempt attempt = mock(TelegramDeliveryAttempt.class);
-        when(projectionAssembler.assemble(any(PreparedDeliveryTarget.class))).thenReturn(payload);
-        when(telegramCardViewService.buildCardView(payload)).thenReturn(cardView);
-        when(telegramCardDispatchService.dispatchAttempt(cardView)).thenReturn(attempt);
     }
 }
