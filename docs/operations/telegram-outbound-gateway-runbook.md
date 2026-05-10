@@ -322,10 +322,18 @@ recognized gaps and are scheduled for later phases.
   `telegram_delivery_attempt` row, so the full retry timeline is visible
   via the existing observability endpoints. No async worker pool, no
   scheduler, no outbox.
-- **No inbound webhook / `callback_query` handling.** The platform does
-  not consume Telegram updates. Inline keyboards may be rendered on
-  outbound cards but their button presses are not received or processed
-  by the backend yet.
+- **Inbound webhook accepts and parses `callback_query` but does not yet
+  trigger workflow transitions** *(Phase 171)*. The platform exposes
+  `POST /api/telegram/webhook` (see [Section 12](#12-inbound-webhook-phase-171)).
+  Inline-button presses are validated, parsed, and acknowledged with
+  `200 OK`; bounded log entries record `outcome`, `callbackQueryId`,
+  `telegramUserId`, `chatId`, `messageId`, `dataLength`, and (on
+  ACCEPTED) `workItemId` and `actionCode`. Workflow execution from
+  button presses is intentionally deferred: it requires a Telegram→app
+  user identity mapping (so that the resolved actor can pass the
+  existing `WORK_ITEM_TRANSITION` permission check), and that mapping
+  is its own bounded phase. Today, callback acknowledgement is the
+  end of the chain.
 - **No `parse_mode` / Markdown / HTML rendering.** All outbound text is
   plain text. Special characters are sent as-is.
 - **No `editMessageText`.** Each transition sends a *new* message
@@ -485,3 +493,125 @@ When `failure_code = UNKNOWN_ERROR` and
       (stub mode is active again).
 
 ---
+
+## 12. Inbound webhook (Phase 171)
+
+### 12.1 Endpoint
+
+```
+POST /api/telegram/webhook
+```
+
+The endpoint is registered under `permitAll` in the Spring Security
+chain — Telegram does not send a JWT. Authentication is enforced
+in-controller by the Telegram Bot API Secret Token mechanism (see
+12.2). `@CurrentActor` is **not** used on this endpoint.
+
+### 12.2 Activation property
+
+| Property                              | Env var (recommended)              | Default | Notes                                                                                                           |
+|---------------------------------------|------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------|
+| `app.telegram.webhook.secret-token`   | `TELEGRAM_WEBHOOK_SECRET_TOKEN`    | *(none)*| Required to enable the webhook. Blank/missing means **fail-closed**: every inbound request returns `401`.       |
+
+The token is opaque (any 1–256 character string per Telegram spec).
+Treat it as a high-value secret — never commit, never log, never paste
+into chat / issues / screenshots. Rotate by setting a new value via the
+deployment platform and restarting; then re-register the webhook with
+the new `secret_token` (see 12.3).
+
+### 12.3 One-time `setWebhook` registration
+
+Run once per deployment after the application is reachable on a stable,
+HTTPS-terminated URL:
+
+```bash
+curl -s -X POST \
+  "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -d "url=https://YOUR-PLATFORM-HOST/api/telegram/webhook" \
+  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET_TOKEN" \
+  -d "allowed_updates=[\"callback_query\"]"
+```
+
+Response: `{"ok":true,"result":true,"description":"Webhook was set"}`.
+
+To remove the webhook:
+
+```bash
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/deleteWebhook"
+```
+
+The platform itself does not call `setWebhook` — this is intentionally
+an operator-driven, one-shot deployment step.
+
+### 12.4 Request flow and outcomes
+
+1. Telegram POSTs an `Update` to `/api/telegram/webhook` with the
+   `X-Telegram-Bot-Api-Secret-Token` header set to the configured
+   secret.
+2. Controller verifies the header against the configured token using
+   constant-time comparison.
+3. If the body's `callback_query` is null (e.g. plain message, edited
+   message, channel post — all of which the platform does not
+   subscribe to by default), the controller returns `200 OK` with no
+   further action.
+4. If `callback_query` is present, the controller delegates to
+   `TelegramCallbackQueryService.process(...)` which parses `data`
+   and returns one of:
+
+   | Outcome                       | Meaning                                                                                  |
+   |-------------------------------|------------------------------------------------------------------------------------------|
+   | `ACCEPTED`                    | `data` matched `<UUID>:<ACTION_CODE>` with a known action code from the MVP Bug Flow set. |
+   | `IGNORED_NULL_CALLBACK`       | The callback_query object itself was null (defensive — controller already guards).       |
+   | `IGNORED_NULL_DATA`           | `data` was null, empty, or whitespace-only.                                              |
+   | `IGNORED_TOO_LONG`            | `data.length() > 64` — defensive check; Telegram itself enforces 64 bytes.               |
+   | `IGNORED_MALFORMED`           | No colon, leading/trailing colon, or left-side of the colon is not a valid UUID.         |
+   | `IGNORED_UNKNOWN_ACTION`      | Format was correct but the action code is not in the MVP Bug Flow catalog.               |
+
+5. **All callback outcomes — including ignored ones — return `200 OK`.**
+   Returning a 4xx for permanent client errors (e.g. malformed data)
+   would cause Telegram to retry indefinitely. Returning 5xx is
+   reserved for unexpected server errors.
+6. **Workflow transition is NOT executed** in Phase 171. The callback
+   chain ends with the outcome log entry. Wiring callback → workflow
+   transition requires a Telegram→app user mapping (so the resolved
+   actor can pass the existing `WORK_ITEM_TRANSITION` permission check).
+   That mapping is its own bounded phase.
+
+### 12.5 HTTP status reference
+
+| Situation                                       | HTTP status   | Body shape                                |
+|-------------------------------------------------|---------------|-------------------------------------------|
+| Valid secret + non-callback update              | `200 OK`      | empty                                     |
+| Valid secret + any callback outcome             | `200 OK`      | empty                                     |
+| Missing `X-Telegram-Bot-Api-Secret-Token`       | `401`         | `ApiErrorResponse(UNAUTHORIZED)` envelope |
+| Wrong `X-Telegram-Bot-Api-Secret-Token`         | `401`         | `ApiErrorResponse(UNAUTHORIZED)` envelope |
+| Webhook secret not configured (blank/missing)   | `401`         | `ApiErrorResponse(UNAUTHORIZED)` envelope |
+| Body cannot be parsed as JSON                   | `400`         | `ApiErrorResponse(BAD_REQUEST)` envelope (default `GlobalExceptionHandler`) |
+
+### 12.6 Bounded logging
+
+Per-request log fields (INFO level):
+
+- `outcome` — one of the `CallbackOutcome` enum values
+- `callbackQueryId` — Telegram's callback_query identifier
+- `telegramUserId` — numeric Telegram user id of the presser (informational)
+- `chatId` — numeric chat id where the card lives
+- `messageId` — Telegram message id of the card
+- `dataLength` — integer length only, **never the data value**
+- `workItemId` — only when the data parsed cleanly (UUID part valid)
+- `actionCode` — only when `outcome = ACCEPTED` or `outcome = IGNORED_UNKNOWN_ACTION`
+
+Never logged: configured token, incoming header value, full update
+payload, exception messages from auth failures.
+
+### 12.7 Out of scope (Phase 171)
+
+- `answerCallbackQuery` outbound call (Telegram clients show a transient
+  spinner if you don't answer; acceptable for MVP).
+- `editMessageText` updates to existing cards after a button press.
+- `setWebhook` automation in the application (operator runs the curl
+  command above).
+- Workflow transition execution from button presses (requires
+  Telegram→app user identity mapping — separate phase).
+- Telegram→app user identity mapping itself.
+- Audit persistence of inbound callbacks.

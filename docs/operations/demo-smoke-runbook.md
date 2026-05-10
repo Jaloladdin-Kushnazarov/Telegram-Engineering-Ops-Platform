@@ -597,8 +597,16 @@ not be surprised by them during the demo.
   is a separate `telegram_delivery_attempt` row. There is still no
   async worker, no scheduler, and no outbox — the retry layer is purely
   in-thread.
-- **No inbound webhook / `callback_query` handling.** Inline buttons may
-  be rendered, but their presses are not received by the backend.
+- **Inbound webhook accepts and parses `callback_query` but does not
+  yet execute workflow transitions** *(Phase 171)*. Inline buttons
+  render and Telegram delivers presses to
+  `POST /api/telegram/webhook`; the webhook validates the
+  `X-Telegram-Bot-Api-Secret-Token` header, parses
+  `<UUID>:<ACTION_CODE>` data, and acknowledges with `200 OK`. Triggering
+  the corresponding workflow transition is deliberately deferred until
+  a Telegram→app user identity mapping is in place. See
+  [Telegram Outbound Gateway Runbook §12](telegram-outbound-gateway-runbook.md#12-inbound-webhook-phase-171)
+  for the inbound contract.
 - **No `parse_mode` / Markdown / HTML rendering.** All outbound text is
   plain text.
 - **No `editMessageText`.** Each transition sends a fresh card; old

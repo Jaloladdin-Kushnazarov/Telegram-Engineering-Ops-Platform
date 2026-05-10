@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -134,6 +135,13 @@ public class SecurityConfig {
                         // flyway, va h.k.) production information leak'ini oldini
                         // olish uchun authenticated.
                         .requestMatchers("/actuator/**").authenticated()
+                        // Phase 171: Telegram inbound webhook — Telegram JWT
+                        // yubormaydi, shuning uchun JWT chain'idan ataylab
+                        // chiqariladi. TelegramWebhookController o'zining
+                        // X-Telegram-Bot-Api-Secret-Token tekshiruvi bilan
+                        // fail-closed himoya qiladi (Phase 158 token-activation
+                        // bilan bir xil pattern).
+                        .requestMatchers(HttpMethod.POST, "/api/telegram/webhook").permitAll()
                         // Phase 146: barcha business API endpoint'lari default-deny.
                         .requestMatchers("/api/**").authenticated()
                         // Boshqa yo'llar (masalan mavjud bo'lmagan endpoint'lar va
