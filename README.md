@@ -93,6 +93,12 @@ env vars, HTTP auth failure semantics, audit expectations, and rollback
 scenarios — lives in the
 [First-Admin Bootstrap Runbook](docs/operations/first-admin-bootstrap-runbook.md).
 
+Telegram outbound activation — `app.telegram.bot-token` /
+`TELEGRAM_BOT_TOKEN`, real-vs-stub gateway selection, delivery outcome
+semantics, observability endpoints, and current limitations — is covered
+in the
+[Telegram Outbound Gateway Runbook](docs/operations/telegram-outbound-gateway-runbook.md).
+
 ## Profiles
 
 | Profile | Purpose |
