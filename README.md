@@ -99,6 +99,10 @@ semantics, observability endpoints, and current limitations — is covered
 in the
 [Telegram Outbound Gateway Runbook](docs/operations/telegram-outbound-gateway-runbook.md).
 
+For an end-to-end MVP smoke run (env → bootstrap → JWT → tenant config →
+intake → workflow transition → delivery observability), follow the
+[Demo Smoke Runbook](docs/operations/demo-smoke-runbook.md).
+
 ## Profiles
 
 | Profile | Purpose |
