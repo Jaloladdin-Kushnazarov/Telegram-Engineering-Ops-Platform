@@ -15,10 +15,14 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -133,6 +137,31 @@ class TelegramDeliveryAttemptPersistenceTest {
         assertThatThrownBy(() -> persistence.save(null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("attempt null");
+    }
+
+    /**
+     * Phase 168: {@code save(...)} metodi
+     * {@code @Transactional(propagation = REQUIRES_NEW)} bilan annotatsiya
+     * qilingan bo'lishi shart. Phase 164 mini-fix da REQUIRES_NEW
+     * {@code TelegramCardDispatchEventListener} metodida turgan edi; Phase 168
+     * da retry uchun boundary persistence qatlamiga ko'chirildi va listener
+     * metodi non-transactional qilindi — HTTP chaqiruvi va backoff sleep'lar
+     * DB connection ushlamasligi uchun.
+     */
+    @Test
+    void saveMetodiRequiresNewBilanAnnotated() throws Exception {
+        Method method = JpaTelegramDeliveryAttemptPersistence.class.getDeclaredMethod(
+                "save", TelegramDeliveryAttempt.class);
+        Transactional txAnnotation = method.getAnnotation(Transactional.class);
+        assertThat(txAnnotation)
+                .as("@Transactional mavjud bo'lishi shart (Phase 168 — boundary "
+                        + "listener'dan persistence'ga ko'chirilgan)")
+                .isNotNull();
+        assertThat(txAnnotation.propagation())
+                .as("propagation = REQUIRES_NEW bo'lishi shart — Phase 164 mini-fix "
+                        + "invariantı saqlanadi (delivery_attempt persistence originating "
+                        + "business transaction'idan decouple bo'ladi)")
+                .isEqualTo(Propagation.REQUIRES_NEW);
     }
 
     private TelegramDeliveryAttempt buildAttempt(

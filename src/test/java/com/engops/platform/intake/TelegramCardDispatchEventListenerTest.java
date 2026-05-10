@@ -1,16 +1,11 @@
 package com.engops.platform.intake;
 
-import com.engops.platform.telegram.TelegramCardDispatchService;
-import com.engops.platform.telegram.TelegramCardView;
-import com.engops.platform.telegram.TelegramCardViewService;
-import com.engops.platform.telegram.TelegramDeliveryAttempt;
+import com.engops.platform.telegram.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -25,19 +20,24 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Phase 164 — {@link TelegramCardDispatchEventListener} unit testlari.
+ * Phase 164 + Phase 168 — {@link TelegramCardDispatchEventListener} unit testlari.
  *
  * <p>Listener faqat AFTER_COMMIT bosqichida ishga tushadi va event payload'ni
- * mavjud render → dispatch zanjiriga uzatadi. Bu testlar listener'ning
- * orchestration + fail-soft xulqini tekshiradi (Spring transaction
- * mexanikasi emas — bu Spring framework'ning o'zining contract'i).</p>
+ * mavjud render zanjiriga + retrying dispatch service'ga uzatadi.</p>
+ *
+ * <p><strong>Phase 168 o'zgarishi:</strong> listener {@link TelegramCardDispatchService}
+ * o'rniga {@link TelegramCardDispatchRetryingService}'ni inject qiladi —
+ * retry/backoff o'sha qatlamda. Listener metodi endi
+ * {@code @Transactional(REQUIRES_NEW)} EMAS — boundary
+ * {@code JpaTelegramDeliveryAttemptPersistence.save} ga ko'chirilgan
+ * (har bir attempt persistence o'z REQUIRES_NEW transaction'ida).</p>
  */
 @ExtendWith(MockitoExtension.class)
 class TelegramCardDispatchEventListenerTest {
 
     @Mock private ProjectionAssembler projectionAssembler;
     @Mock private TelegramCardViewService telegramCardViewService;
-    @Mock private TelegramCardDispatchService telegramCardDispatchService;
+    @Mock private TelegramCardDispatchRetryingService telegramCardDispatchRetryingService;
 
     @InjectMocks
     private TelegramCardDispatchEventListener listener;
@@ -70,7 +70,7 @@ class TelegramCardDispatchEventListenerTest {
         TelegramDeliveryAttempt attempt = mock(TelegramDeliveryAttempt.class);
         when(projectionAssembler.assemble(target)).thenReturn(payload);
         when(telegramCardViewService.buildCardView(payload)).thenReturn(cardView);
-        when(telegramCardDispatchService.dispatchAttempt(cardView)).thenReturn(attempt);
+        when(telegramCardDispatchRetryingService.dispatchWithRetry(cardView)).thenReturn(attempt);
 
         TelegramCardDispatchRequested event = new TelegramCardDispatchRequested(
                 target, TelegramCardDispatchRequested.SOURCE_INTAKE, null);
@@ -79,7 +79,7 @@ class TelegramCardDispatchEventListenerTest {
 
         verify(projectionAssembler).assemble(target);
         verify(telegramCardViewService).buildCardView(payload);
-        verify(telegramCardDispatchService).dispatchAttempt(cardView);
+        verify(telegramCardDispatchRetryingService).dispatchWithRetry(cardView);
     }
 
     @Test
@@ -90,7 +90,7 @@ class TelegramCardDispatchEventListenerTest {
         TelegramDeliveryAttempt attempt = mock(TelegramDeliveryAttempt.class);
         when(projectionAssembler.assemble(target)).thenReturn(payload);
         when(telegramCardViewService.buildCardView(payload)).thenReturn(cardView);
-        when(telegramCardDispatchService.dispatchAttempt(cardView)).thenReturn(attempt);
+        when(telegramCardDispatchRetryingService.dispatchWithRetry(cardView)).thenReturn(attempt);
 
         TelegramCardDispatchRequested event = new TelegramCardDispatchRequested(
                 target, TelegramCardDispatchRequested.SOURCE_WORKFLOW_TRANSITION, "PROCESSING");
@@ -99,7 +99,7 @@ class TelegramCardDispatchEventListenerTest {
 
         verify(projectionAssembler).assemble(target);
         verify(telegramCardViewService).buildCardView(payload);
-        verify(telegramCardDispatchService).dispatchAttempt(cardView);
+        verify(telegramCardDispatchRetryingService).dispatchWithRetry(cardView);
     }
 
     @Test
@@ -110,7 +110,7 @@ class TelegramCardDispatchEventListenerTest {
 
         listener.onTelegramCardDispatchRequested(event);
 
-        verifyNoInteractions(projectionAssembler, telegramCardViewService, telegramCardDispatchService);
+        verifyNoInteractions(projectionAssembler, telegramCardViewService, telegramCardDispatchRetryingService);
     }
 
     @Test
@@ -120,14 +120,14 @@ class TelegramCardDispatchEventListenerTest {
 
         listener.onTelegramCardDispatchRequested(event);
 
-        verifyNoInteractions(projectionAssembler, telegramCardViewService, telegramCardDispatchService);
+        verifyNoInteractions(projectionAssembler, telegramCardViewService, telegramCardDispatchRetryingService);
     }
 
     @Test
     void eventNullBolsaChainChaqirilmaydi() {
         listener.onTelegramCardDispatchRequested(null);
 
-        verifyNoInteractions(projectionAssembler, telegramCardViewService, telegramCardDispatchService);
+        verifyNoInteractions(projectionAssembler, telegramCardViewService, telegramCardDispatchRetryingService);
     }
 
     @Test
@@ -144,7 +144,7 @@ class TelegramCardDispatchEventListenerTest {
 
         verify(projectionAssembler).assemble(target);
         verify(telegramCardViewService, never()).buildCardView(any());
-        verify(telegramCardDispatchService, never()).dispatchAttempt(any());
+        verify(telegramCardDispatchRetryingService, never()).dispatchWithRetry(any());
     }
 
     @Test
@@ -161,19 +161,19 @@ class TelegramCardDispatchEventListenerTest {
         listener.onTelegramCardDispatchRequested(event);
 
         verify(telegramCardViewService).buildCardView(payload);
-        verify(telegramCardDispatchService, never()).dispatchAttempt(any());
+        verify(telegramCardDispatchRetryingService, never()).dispatchWithRetry(any());
     }
 
     /**
-     * Phase 164 mini-fix: listener metodi
-     * {@code @TransactionalEventListener(phase = AFTER_COMMIT)} hamda
-     * {@code @Transactional(propagation = REQUIRES_NEW)} bilan annotatsiya
-     * qilingan bo'lishi shart. Bu kombinatsiya AFTER_COMMIT callback ichidagi
-     * delivery_attempt insertini originating business transaction'idan
-     * decouple qiladi va deterministik commit semantikasini ta'minlaydi.
+     * Phase 168: listener metodi {@code @TransactionalEventListener(phase = AFTER_COMMIT)}
+     * bilan annotatsiya qilingan bo'lishi shart. {@code @Transactional(REQUIRES_NEW)}
+     * Phase 164 mini-fix da bu yerda turgan edi, lekin Phase 168 da boundary
+     * {@link com.engops.platform.telegram.JpaTelegramDeliveryAttemptPersistence#save}
+     * ga ko'chirildi — retry urinishlari va backoff sleep'lar DB connection
+     * ushlamasligi uchun.
      */
     @Test
-    void listenerMetodiAfterCommitVaRequiresNewBilanAnnotated() throws Exception {
+    void listenerMetodiAfterCommitBilanAnnotated() throws Exception {
         Method method = TelegramCardDispatchEventListener.class.getDeclaredMethod(
                 "onTelegramCardDispatchRequested", TelegramCardDispatchRequested.class);
 
@@ -186,24 +186,25 @@ class TelegramCardDispatchEventListenerTest {
                 .as("phase = AFTER_COMMIT bo'lishi shart")
                 .isEqualTo(TransactionPhase.AFTER_COMMIT);
 
-        Transactional txAnnotation = method.getAnnotation(Transactional.class);
+        // Phase 168: listener'da @Transactional bo'lmasligi shart — REQUIRES_NEW
+        // boundary persistence qatlamiga ko'chirilgan (Phase 164 mini-fix
+        // contracti saqlanadi, lekin retry sleep'lari uchun fine-grained).
+        org.springframework.transaction.annotation.Transactional txAnnotation =
+                method.getAnnotation(org.springframework.transaction.annotation.Transactional.class);
         org.assertj.core.api.Assertions.assertThat(txAnnotation)
-                .as("@Transactional mavjud bo'lishi shart (Phase 164 mini-fix)")
-                .isNotNull();
-        org.assertj.core.api.Assertions.assertThat(txAnnotation.propagation())
-                .as("propagation = REQUIRES_NEW bo'lishi shart — delivery_attempt persistence "
-                        + "originating business transaction'idan decouple bo'lishi uchun")
-                .isEqualTo(Propagation.REQUIRES_NEW);
+                .as("Phase 168: @Transactional listener metodida bo'lmasligi shart — "
+                        + "REQUIRES_NEW JpaTelegramDeliveryAttemptPersistence.save'ga ko'chirilgan")
+                .isNull();
     }
 
     @Test
-    void dispatchServiceExceptionTashlasaListenerYutadi() {
+    void retryingServiceExceptionTashlasaListenerYutadi() {
         PreparedDeliveryTarget target = readyTarget("BUGS");
         ProjectionPayload payload = mock(ProjectionPayload.class);
         TelegramCardView cardView = mock(TelegramCardView.class);
         when(projectionAssembler.assemble(target)).thenReturn(payload);
         when(telegramCardViewService.buildCardView(payload)).thenReturn(cardView);
-        when(telegramCardDispatchService.dispatchAttempt(cardView))
+        when(telegramCardDispatchRetryingService.dispatchWithRetry(cardView))
                 .thenThrow(new RuntimeException("simulated outbound dispatch failure"));
 
         TelegramCardDispatchRequested event = new TelegramCardDispatchRequested(
@@ -211,6 +212,6 @@ class TelegramCardDispatchEventListenerTest {
 
         listener.onTelegramCardDispatchRequested(event);
 
-        verify(telegramCardDispatchService).dispatchAttempt(cardView);
+        verify(telegramCardDispatchRetryingService).dispatchWithRetry(cardView);
     }
 }

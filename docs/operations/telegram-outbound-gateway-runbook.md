@@ -258,8 +258,8 @@ without opening the database.
 | `failure_code`                       | Source / meaning                                                                                  |
 |--------------------------------------|---------------------------------------------------------------------------------------------------|
 | `INVALID_REQUEST`                    | Telegram client error (4xx other than 429), `ok=false` response, or chat binding lookup failed.   |
-| `RATE_LIMIT`                         | Telegram HTTP 429. Retry is **not** implemented yet — the row records the throttling event only.  |
-| `NETWORK_ERROR`                      | Connect / read timeout, IO error, or Telegram HTTP 5xx.                                           |
+| `RATE_LIMIT`                         | Telegram HTTP 429. **Retryable** (Phase 168) — the retry layer attempts up to `app.telegram.retry.max-attempts` deliveries with capped exponential backoff before persisting the final failed row. Each attempt produces its own append-only row. |
+| `NETWORK_ERROR`                      | Connect / read timeout, IO error, or Telegram HTTP 5xx. **Retryable** (Phase 168) — same retry policy as `RATE_LIMIT`.                                                                                                                            |
 | `UNKNOWN_ERROR`                      | Unexpected exception during request build, transport, or response parsing. **Also produced by `StubTelegramOutboundGateway.execute(request)` when the token is missing** — paired with `failure_reason = "Telegram outbound gateway hali implement qilinmagan"`. Stub mode is the dominant cause locally. |
 | `DISPATCH_NOT_SUPPORTED`             | Defensive — only produced if a caller invokes the deprecated `gateway.dispatch(command)` path. Production code does not use this path. |
 | `TELEGRAM_GATEWAY_NOT_IMPLEMENTED`   | **Legacy literal.** Only emitted by the deprecated `StubTelegramOutboundGateway.dispatch(command)` path. Production code never invokes that path; the active `execute(request)` path emits `UNKNOWN_ERROR` (see row above). Listed here only for completeness — if you see it in a row, a non-production caller is using the legacy path. |
@@ -307,9 +307,21 @@ without opening the database.
 These are deliberate omissions in the current implementation. They are
 recognized gaps and are scheduled for later phases.
 
-- **No retry / backoff.** `RATE_LIMIT` and `NETWORK_ERROR` outcomes are
-  recorded but not retried. Operators must currently treat them as
-  signals; there is no automatic recovery.
+- **Bounded synchronous retry / backoff** *(Phase 168)*. `RATE_LIMIT` and
+  `NETWORK_ERROR` outcomes are now retried in-process by
+  `TelegramCardDispatchRetryingService` on the AFTER_COMMIT thread, with
+  capped exponential backoff. Properties (prefix `app.telegram.retry`):
+  `enabled` (default `true`), `max-attempts` (default `3` = 1 original +
+  2 retries), `initial-backoff-ms` (default `500`), `max-backoff-ms`
+  (default `5000`), `multiplier` (default `2.0`). `INVALID_REQUEST` and
+  `UNKNOWN_ERROR` are deliberately **not** retried — `INVALID_REQUEST`
+  is permanent, and retrying `UNKNOWN_ERROR` would risk duplicate sends
+  when an unexpected response wraps a successfully delivered Telegram
+  message (it would also turn local stub mode into a backoff loop).
+  Each retry attempt persists its own append-only
+  `telegram_delivery_attempt` row, so the full retry timeline is visible
+  via the existing observability endpoints. No async worker pool, no
+  scheduler, no outbox.
 - **No inbound webhook / `callback_query` handling.** The platform does
   not consume Telegram updates. Inline keyboards may be rendered on
   outbound cards but their button presses are not received or processed
@@ -319,20 +331,23 @@ recognized gaps and are scheduled for later phases.
 - **No `editMessageText`.** Each transition sends a *new* message
   because the Telegram `message_id` is not stored on `WorkItem`. Old
   cards are not updated, deleted, or superseded by the bot.
-- **Synchronous AFTER_COMMIT side effect** *(Phase 164)*. Intake and
-  workflow services publish a `TelegramCardDispatchRequested` application
-  event inside their `@Transactional` scope; a
-  `@TransactionalEventListener(phase = AFTER_COMMIT)` listener performs
-  the render → outbound → delivery_attempt persistence chain on the same
-  thread, *after* the surrounding transaction commits. The listener
-  method itself is annotated
-  `@Transactional(propagation = REQUIRES_NEW)` so the
-  `telegram_delivery_attempt` insert runs in an independent transaction
-  decoupled from the originating business transaction (Phase 164
-  mini-fix). Telegram HTTP I/O no longer runs inside the business write
-  transaction, and a rolled-back business transaction never produces a
-  Telegram message or a `telegram_delivery_attempt` row. There is still
-  no async worker pool, no retry, and no outbox.
+- **Synchronous AFTER_COMMIT side effect** *(Phase 164 + Phase 168)*.
+  Intake and workflow services publish a `TelegramCardDispatchRequested`
+  application event inside their `@Transactional` scope; a
+  `@TransactionalEventListener(phase = AFTER_COMMIT)` listener delegates
+  to `TelegramCardDispatchRetryingService`, which performs render →
+  outbound → delivery_attempt persistence on the same thread, *after*
+  the surrounding transaction commits. **Phase 168** moved
+  `@Transactional(propagation = REQUIRES_NEW)` from the listener method
+  *down* to `JpaTelegramDeliveryAttemptPersistence.save(...)` so the
+  per-attempt persistence still commits in an independent short
+  transaction (Phase 164 mini-fix invariant preserved), but the listener
+  method itself is non-transactional — Telegram HTTP I/O **and** retry
+  backoff sleeps run completely outside any DB transaction. Hikari
+  connection occupancy stays at zero between retry attempts and during
+  HTTP round trips. A rolled-back business transaction still never
+  produces a Telegram message or a `telegram_delivery_attempt` row. No
+  async worker pool, no scheduler, no outbox.
 - **Pre-persist exception observability gap.** A `RuntimeException`
   thrown *before* `JpaTelegramDeliveryAttemptPersistence.save(attempt)`
   succeeds will not produce a `telegram_delivery_attempt` row. The
@@ -391,8 +406,18 @@ When `failure_code = UNKNOWN_ERROR` and
 ### 10.4 Attempts show `RATE_LIMIT`
 
 - The bot has exceeded Telegram's send-rate limits.
-- Retry is **not** implemented yet (see section 9). Reduce burst rate
-  upstream until automated retry / backoff lands in a future phase.
+- Phase 168 retry is active by default: the platform automatically
+  re-attempts the send up to `app.telegram.retry.max-attempts` times
+  with capped exponential backoff. Each retry creates its own
+  append-only `telegram_delivery_attempt` row, so a successful retry
+  shows up as a `DELIVERED` row immediately after the `RATE_LIMIT`
+  rows.
+- If repeated `RATE_LIMIT` rows persist with no terminal `DELIVERED`,
+  the burst rate is exceeding what backoff can absorb. Reduce upstream
+  send rate, or temporarily widen `max-attempts` /
+  `max-backoff-ms` per environment, or set
+  `app.telegram.retry.enabled=false` to surface throttling immediately
+  without retry masking.
 
 ### 10.5 Attempts show `NETWORK_ERROR`
 

@@ -555,9 +555,14 @@ the attempt row carries `failure_code = "UNKNOWN_ERROR"` and
 
 ### 10.7 Attempts show `failure_code = RATE_LIMIT`
 
-- Telegram HTTP 429. Retry is not implemented yet
-  (see [Section 11](#11-known-limitations-intentionally-not-solved-here)).
-- Reduce burst rate; future phases will add backoff.
+- Telegram HTTP 429. Phase 168 retry is active by default — the platform
+  automatically re-attempts the send up to `app.telegram.retry.max-attempts`
+  times with capped exponential backoff. Each retry creates its own
+  append-only attempt row, so look for a subsequent `DELIVERED` row to
+  confirm the retry succeeded.
+- If `RATE_LIMIT` rows persist without a terminal `DELIVERED`, reduce
+  burst rate upstream or widen `max-attempts` / `max-backoff-ms` for
+  this environment.
 
 ### 10.8 Attempts show `failure_code = NETWORK_ERROR`
 
@@ -583,8 +588,15 @@ Section 10.
 These gaps are recognized and deferred to later phases. Operators should
 not be surprised by them during the demo.
 
-- **No retry / backoff.** `RATE_LIMIT` and `NETWORK_ERROR` outcomes are
-  recorded once and never retried.
+- **Bounded synchronous retry / backoff** *(Phase 168)*. `RATE_LIMIT`
+  and `NETWORK_ERROR` outcomes are retried in-process by
+  `TelegramCardDispatchRetryingService` on the AFTER_COMMIT thread with
+  capped exponential backoff (defaults: `max-attempts=3`,
+  `initial-backoff-ms=500`, `max-backoff-ms=5000`, `multiplier=2.0`).
+  `INVALID_REQUEST` and `UNKNOWN_ERROR` are not retried. Each attempt
+  is a separate `telegram_delivery_attempt` row. There is still no
+  async worker, no scheduler, and no outbox — the retry layer is purely
+  in-thread.
 - **No inbound webhook / `callback_query` handling.** Inline buttons may
   be rendered, but their presses are not received by the backend.
 - **No `parse_mode` / Markdown / HTML rendering.** All outbound text is
