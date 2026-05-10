@@ -87,8 +87,9 @@ names automatically (e.g. `TELEGRAM_BOT_TOKEN` → `app.telegram.bot-token`).
 - Do **not** set `TELEGRAM_BOT_TOKEN`.
 - The application loads `StubTelegramOutboundGateway`.
 - Every dispatch attempt produces a controlled `FAILED` outcome with
-  `failure_code = TELEGRAM_GATEWAY_NOT_IMPLEMENTED`. The application boots
-  and the rest of the platform behaves normally.
+  `failure_code = UNKNOWN_ERROR` and
+  `failure_reason = "Telegram outbound gateway hali implement qilinmagan"`.
+  The application boots and the rest of the platform behaves normally.
 - This means observability endpoints will show *attempts*, not *deliveries*
   — which is correct for local.
 
@@ -256,12 +257,12 @@ without opening the database.
 
 | `failure_code`                       | Source / meaning                                                                                  |
 |--------------------------------------|---------------------------------------------------------------------------------------------------|
-| `TELEGRAM_GATEWAY_NOT_IMPLEMENTED`   | Stub fallback ran. Means real token is not active in this environment.                            |
 | `INVALID_REQUEST`                    | Telegram client error (4xx other than 429), `ok=false` response, or chat binding lookup failed.   |
 | `RATE_LIMIT`                         | Telegram HTTP 429. Retry is **not** implemented yet — the row records the throttling event only.  |
 | `NETWORK_ERROR`                      | Connect / read timeout, IO error, or Telegram HTTP 5xx.                                           |
-| `UNKNOWN_ERROR`                      | Unexpected exception during request build, transport, or response parsing.                        |
+| `UNKNOWN_ERROR`                      | Unexpected exception during request build, transport, or response parsing. **Also produced by `StubTelegramOutboundGateway.execute(request)` when the token is missing** — paired with `failure_reason = "Telegram outbound gateway hali implement qilinmagan"`. Stub mode is the dominant cause locally. |
 | `DISPATCH_NOT_SUPPORTED`             | Defensive — only produced if a caller invokes the deprecated `gateway.dispatch(command)` path. Production code does not use this path. |
+| `TELEGRAM_GATEWAY_NOT_IMPLEMENTED`   | **Legacy literal.** Only emitted by the deprecated `StubTelegramOutboundGateway.dispatch(command)` path. Production code never invokes that path; the active `execute(request)` path emits `UNKNOWN_ERROR` (see row above). Listed here only for completeness — if you see it in a row, a non-production caller is using the legacy path. |
 
 ### 7.5 Verifying a delivery end-to-end
 
@@ -351,8 +352,9 @@ Work through these in order:
 1. **Token missing / wrong mode.** Confirm `TELEGRAM_BOT_TOKEN` is set
    in the running environment and the application has been restarted
    since it was set. Check whether attempts show
-   `failure_code = TELEGRAM_GATEWAY_NOT_IMPLEMENTED` — that means stub
-   mode is active.
+   `failure_code = UNKNOWN_ERROR` with
+   `failure_reason = "Telegram outbound gateway hali implement qilinmagan"`
+   — that means stub mode is active.
 2. **Routing not prepared.** Confirm the tenant has a matching routing
    rule, a chat binding, and (if topics are used) a topic binding. With
    no prepared routing, *no attempt row is written*.
@@ -367,10 +369,17 @@ Work through these in order:
    only at startup. Confirm the running process actually inherits the
    new env value.
 
-### 10.2 Attempts show `TELEGRAM_GATEWAY_NOT_IMPLEMENTED`
+### 10.2 Attempts show `UNKNOWN_ERROR` with stub reason
+
+When `failure_code = UNKNOWN_ERROR` and
+`failure_reason = "Telegram outbound gateway hali implement qilinmagan"`:
 
 - Stub fallback is running. Real token is not active in this
   environment. See section 4 ("Demo / staging / production").
+
+> The legacy literal `TELEGRAM_GATEWAY_NOT_IMPLEMENTED` is only emitted
+> by the deprecated `dispatch(command)` path of the stub bean and is not
+> produced by the active production execute-path. See section 7.4.
 
 ### 10.3 Attempts show `INVALID_REQUEST`
 
@@ -446,7 +455,8 @@ Work through these in order:
 - [ ] Unset `TELEGRAM_BOT_TOKEN` in the deployment environment.
 - [ ] Restart the application.
 - [ ] Confirm subsequent attempts record
-      `failure_code = TELEGRAM_GATEWAY_NOT_IMPLEMENTED` (stub mode is
-      active again).
+      `failure_code = UNKNOWN_ERROR` with
+      `failure_reason = "Telegram outbound gateway hali implement qilinmagan"`
+      (stub mode is active again).
 
 ---

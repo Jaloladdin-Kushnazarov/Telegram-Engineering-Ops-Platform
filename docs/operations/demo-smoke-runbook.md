@@ -51,7 +51,8 @@ The runbook covers **two modes**:
 - **Real mode** — `TELEGRAM_BOT_TOKEN` is set; cards are sent to Telegram
   and `delivery_outcome = DELIVERED`.
 - **Stub mode** — `TELEGRAM_BOT_TOKEN` is unset; the stub gateway records
-  controlled `FAILED` attempts (`failure_code = TELEGRAM_GATEWAY_NOT_IMPLEMENTED`).
+  controlled `FAILED` attempts (`failure_code = UNKNOWN_ERROR`,
+  `failure_reason = "Telegram outbound gateway hali implement qilinmagan"`).
   Useful when you don't want to send real traffic during a dry run.
 
 Both modes exercise the same intake / workflow / observability path.
@@ -220,7 +221,7 @@ Any standards-compliant JWT signing tool works — popular options:
 
   ```bash
   pip install pyjwt
-  python -c "import jwt, time; print(jwt.encode({'sub':'11111111-1111-1111-1111-111111111111','telegram_user_id':123456789,'iat':int(time.time()),'exp':int(time.time())+3600}, '$APP_SECURITY_JWT_HMAC_SECRET', algorithm='HS256'))"
+  python3 -c "import jwt, time; print(jwt.encode({'sub':'11111111-1111-1111-1111-111111111111','telegram_user_id':123456789,'iat':int(time.time()),'exp':int(time.time())+3600}, '$APP_SECURITY_JWT_HMAC_SECRET', algorithm='HS256'))"
   ```
 
 Save the encoded token to a shell variable for reuse:
@@ -243,9 +244,13 @@ Bootstrap does **not** seed `chat_binding`, `topic_binding`, or
 created through the admin API. The ADMIN role granted by bootstrap
 already includes `TENANT_CONFIG_WRITE`, so the demo JWT is authorized.
 
-In a third terminal, run the four `curl` commands below. Substitute
-`$TENANT_ID` with the tenant UUID returned in the bootstrap log
-(`tenantId=...`) — or look it up via the details endpoint.
+In a third terminal, run the four `curl` commands below. Copy
+`$TENANT_ID` from the bootstrap startup log line
+`Bootstrap admin initialization completed: tenantId=<uuid>, ...`
+(or from the `BOOTSTRAP_COMPLETED` audit row in the database). The platform
+intentionally does not expose a public list-tenants or
+find-tenant-by-slug endpoint — the bootstrap log is the authoritative
+discovery path for the freshly seeded tenant id.
 
 ```bash
 export DEMO_BASE='http://localhost:8080'
@@ -281,7 +286,7 @@ CHAT_BINDING=$(curl -s -X POST \
         "bindingType": "NOTIFICATION_GROUP"
       }')
 echo "$CHAT_BINDING"
-export CHAT_BINDING_ID=$(echo "$CHAT_BINDING" | python -c "import sys,json; print(json.load(sys.stdin)['chatBindingId'])")
+export CHAT_BINDING_ID=$(echo "$CHAT_BINDING" | python3 -c "import sys,json; print(json.load(sys.stdin)['chatBindingId'])")
 echo "CHAT_BINDING_ID=$CHAT_BINDING_ID"
 ```
 
@@ -310,7 +315,7 @@ TOPIC_BINDING=$(curl -s -X POST \
         \"purpose\": \"Bug intake notifications\"
       }")
 echo "$TOPIC_BINDING"
-export TOPIC_BINDING_ID=$(echo "$TOPIC_BINDING" | python -c "import sys,json; print(json.load(sys.stdin)['topicBindingId'])")
+export TOPIC_BINDING_ID=$(echo "$TOPIC_BINDING" | python3 -c "import sys,json; print(json.load(sys.stdin)['topicBindingId'])")
 echo "TOPIC_BINDING_ID=$TOPIC_BINDING_ID"
 ```
 
@@ -371,8 +376,8 @@ INTAKE=$(curl -s -X POST \
         \"actionSource\": \"MANUAL\"
       }")
 echo "$INTAKE"
-export WORK_ITEM_ID=$(echo "$INTAKE" | python -c "import sys,json; print(json.load(sys.stdin)['workItemId'])")
-export WORK_ITEM_CODE=$(echo "$INTAKE" | python -c "import sys,json; print(json.load(sys.stdin)['workItemCode'])")
+export WORK_ITEM_ID=$(echo "$INTAKE" | python3 -c "import sys,json; print(json.load(sys.stdin)['workItemId'])")
+export WORK_ITEM_CODE=$(echo "$INTAKE" | python3 -c "import sys,json; print(json.load(sys.stdin)['workItemCode'])")
 echo "WORK_ITEM_ID=$WORK_ITEM_ID  WORK_ITEM_CODE=$WORK_ITEM_CODE"
 ```
 
@@ -398,8 +403,9 @@ render → outbound → persistence chain, and inserts a
   `delivery_outcome = DELIVERED` and `external_message_id` populated.
 - **Stub mode (no token):** no Telegram traffic; the attempt row has
   `delivery_outcome = FAILED` with
-  `failure_code = TELEGRAM_GATEWAY_NOT_IMPLEMENTED`. The intake is still
-  successful from the application's perspective.
+  `failure_code = UNKNOWN_ERROR` and
+  `failure_reason = "Telegram outbound gateway hali implement qilinmagan"`.
+  The intake is still successful from the application's perspective.
 
 ---
 
@@ -476,7 +482,8 @@ Expected (stub mode):
 
 - `latestMetrics.deliveryOutcome = "FAILED"`
 - `recentAttempts` contains two entries, each with
-  `failureCode = "TELEGRAM_GATEWAY_NOT_IMPLEMENTED"`
+  `failureCode = "UNKNOWN_ERROR"` and
+  `failureReason = "Telegram outbound gateway hali implement qilinmagan"`
 
 ### 9.2 Tenant summary
 
@@ -524,10 +531,20 @@ snapshot.
   metadata (`sourceFlow`, `tenantId`, `workItemId`, `targetStatusCode`,
   `exceptionType`) is logged.
 
-### 10.5 Attempts show `failure_code = TELEGRAM_GATEWAY_NOT_IMPLEMENTED`
+### 10.5 Attempts show `failure_code = UNKNOWN_ERROR` with stub reason
+
+When the active execute-path runs through `StubTelegramOutboundGateway`,
+the attempt row carries `failure_code = "UNKNOWN_ERROR"` and
+`failure_reason = "Telegram outbound gateway hali implement qilinmagan"`.
 
 - Stub mode is active. Either set `TELEGRAM_BOT_TOKEN` and restart the
   app, or accept stub mode for this demo run.
+
+> **Note (legacy literal):** the string `TELEGRAM_GATEWAY_NOT_IMPLEMENTED`
+> appears only inside the deprecated `TelegramOutboundGateway.dispatch(command)`
+> path of the stub bean — production code never invokes that path. If you
+> ever see it in the wild, a caller is using the legacy path; the active
+> `execute(request)` path emits `UNKNOWN_ERROR`.
 
 ### 10.6 Attempts show `failure_code = INVALID_REQUEST`
 
@@ -601,8 +618,9 @@ A complete demo run should tick every box below.
 - [ ] Intake `POST /api/intake/work-items` returns `201` with
       `routingPrepared: true`.
 - [ ] **Card #1** appears in the Telegram chat / topic (real mode), or
-      a `FAILED` attempt row exists with
-      `TELEGRAM_GATEWAY_NOT_IMPLEMENTED` (stub mode).
+      a `FAILED` attempt row exists with `failure_code = UNKNOWN_ERROR`
+      and reason "Telegram outbound gateway hali implement qilinmagan"
+      (stub mode).
 - [ ] Transition `POST /api/work-items/{id}/transitions` returns `200`
       with `currentStatusCode: "PROCESSING"`.
 - [ ] **Card #2** appears as a *new* message (not an edit of card #1)
