@@ -1,6 +1,6 @@
 package com.engops.platform.intake;
 
-import com.engops.platform.telegram.TelegramCardDispatchRetryingService;
+import com.engops.platform.telegram.TelegramCardRefreshDispatchService;
 import com.engops.platform.telegram.TelegramCardView;
 import com.engops.platform.telegram.TelegramCardViewService;
 import org.slf4j.Logger;
@@ -31,9 +31,15 @@ import org.springframework.transaction.event.TransactionalEventListener;
  *   <li>The business transaction commits (or rolls back) and is fully
  *       finalized.</li>
  *   <li>This listener runs (synchronously, in the committing thread) and
- *       delegates to {@link TelegramCardDispatchRetryingService} which
- *       performs render → dispatch → persist with bounded retry/backoff
- *       on transient failures.</li>
+ *       delegates to {@link TelegramCardRefreshDispatchService} which
+ *       implements the Phase 179 edit-first / send-as-fallback policy:
+ *       first tries {@code editMessageText} via
+ *       {@link com.engops.platform.telegram.TelegramCardRefreshService};
+ *       on edit success or benign "message is not modified" stops; on
+ *       any other outcome falls back to the existing
+ *       {@link com.engops.platform.telegram.TelegramCardDispatchRetryingService#dispatchWithRetry(TelegramCardView)}
+ *       which performs render → dispatch → persist with bounded
+ *       retry/backoff on transient failures.</li>
  * </ol>
  *
  * <p><strong>Transaction boundary (Phase 168):</strong> the listener method
@@ -77,14 +83,14 @@ public class TelegramCardDispatchEventListener {
 
     private final ProjectionAssembler projectionAssembler;
     private final TelegramCardViewService telegramCardViewService;
-    private final TelegramCardDispatchRetryingService telegramCardDispatchRetryingService;
+    private final TelegramCardRefreshDispatchService telegramCardRefreshDispatchService;
 
     public TelegramCardDispatchEventListener(ProjectionAssembler projectionAssembler,
                                               TelegramCardViewService telegramCardViewService,
-                                              TelegramCardDispatchRetryingService telegramCardDispatchRetryingService) {
+                                              TelegramCardRefreshDispatchService telegramCardRefreshDispatchService) {
         this.projectionAssembler = projectionAssembler;
         this.telegramCardViewService = telegramCardViewService;
-        this.telegramCardDispatchRetryingService = telegramCardDispatchRetryingService;
+        this.telegramCardRefreshDispatchService = telegramCardRefreshDispatchService;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -99,7 +105,13 @@ public class TelegramCardDispatchEventListener {
         try {
             ProjectionPayload payload = projectionAssembler.assemble(target);
             TelegramCardView cardView = telegramCardViewService.buildCardView(payload);
-            telegramCardDispatchRetryingService.dispatchWithRetry(cardView);
+            // Phase 179 — listener endi to'g'ridan-to'g'ri send retry'ga
+            // delegate qilmaydi. Coordinator edit-first / send-as-fallback
+            // qarorini qabul qiladi va kerak bo'lganda mavjud retry pipeline'ni
+            // o'zi chaqiradi (fallback). Listener thin bo'lib qoladi va
+            // AFTER_COMMIT + fail-soft invariantlari saqlanadi.
+            telegramCardRefreshDispatchService.dispatch(cardView,
+                    target.getTenantId(), target.getWorkItemId());
         } catch (RuntimeException ex) {
             log.warn("Telegram card dispatch failed (fail-soft) sourceFlow={} tenantId={} workItemId={} targetStatusCode={} exceptionType={}",
                     event.sourceFlow(),
