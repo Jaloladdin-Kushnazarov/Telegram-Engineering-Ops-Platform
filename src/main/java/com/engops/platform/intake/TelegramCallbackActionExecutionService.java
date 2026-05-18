@@ -5,6 +5,7 @@ import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
+import com.engops.platform.telegram.TelegramCallbackAcknowledgementService;
 import com.engops.platform.telegram.TelegramCallbackQueryRequest;
 import com.engops.platform.workflow.WorkflowTransitionService;
 import com.engops.platform.workitem.OperationalAuthorizationService;
@@ -13,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.EnumMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -118,6 +120,34 @@ public class TelegramCallbackActionExecutionService {
             "REOPEN", "BUGS");
 
     /**
+     * Phase 175 — per-outcome bounded acknowledgement text.
+     *
+     * <p>Har bir text Telegram cheklovi (<= 200 simvol) ichida. Tenant
+     * nomi, work item identifikatori, exception detail, stack — kiritilmaydi.
+     * Foydalanuvchi-ko'rinmas internal kontekst yo'q.</p>
+     */
+    private static final Map<ExecutionOutcome, String> OUTCOME_ACKNOWLEDGE_TEXT = buildOutcomeText();
+
+    private static Map<ExecutionOutcome, String> buildOutcomeText() {
+        EnumMap<ExecutionOutcome, String> map = new EnumMap<>(ExecutionOutcome.class);
+        map.put(ExecutionOutcome.EXECUTED,
+                "Action applied.");
+        map.put(ExecutionOutcome.USER_NOT_FOUND,
+                "Telegram user is not linked to a platform account.");
+        map.put(ExecutionOutcome.WORK_ITEM_NOT_FOUND,
+                "Work item was not found.");
+        map.put(ExecutionOutcome.NOT_A_MEMBER,
+                "You are not an active member of this tenant.");
+        map.put(ExecutionOutcome.PERMISSION_DENIED,
+                "You do not have permission to change this work item.");
+        map.put(ExecutionOutcome.INVALID_TRANSITION,
+                "This action is no longer valid for the current status.");
+        map.put(ExecutionOutcome.UNEXPECTED_FAILURE,
+                "Could not process the action. Please try again later.");
+        return map;
+    }
+
+    /**
      * Phase 173 execution outcomes. Har bir holat HTTP 200 javobiga
      * mos keladi; controller faqat invalid webhook secret uchun 401
      * qaytaradi.
@@ -143,16 +173,19 @@ public class TelegramCallbackActionExecutionService {
     private final WorkItemQueryService workItemQueryService;
     private final OperationalAuthorizationService operationalAuthorizationService;
     private final WorkflowTransitionService workflowTransitionService;
+    private final TelegramCallbackAcknowledgementService acknowledgementService;
 
     public TelegramCallbackActionExecutionService(
             IdentityQueryService identityQueryService,
             WorkItemQueryService workItemQueryService,
             OperationalAuthorizationService operationalAuthorizationService,
-            WorkflowTransitionService workflowTransitionService) {
+            WorkflowTransitionService workflowTransitionService,
+            TelegramCallbackAcknowledgementService acknowledgementService) {
         this.identityQueryService = identityQueryService;
         this.workItemQueryService = workItemQueryService;
         this.operationalAuthorizationService = operationalAuthorizationService;
         this.workflowTransitionService = workflowTransitionService;
+        this.acknowledgementService = acknowledgementService;
     }
 
     /**
@@ -178,14 +211,14 @@ public class TelegramCallbackActionExecutionService {
         if (telegramUserId == null) {
             logOutcome(ExecutionOutcome.USER_NOT_FOUND, callbackQuery, null, workItemId, actionCode,
                     null, null, null);
-            return ExecutionOutcome.USER_NOT_FOUND;
+            return acknowledgeAndReturn(ExecutionOutcome.USER_NOT_FOUND, callbackQuery);
         }
 
         Optional<AppUser> userOpt = identityQueryService.findUserByTelegramUserId(telegramUserId);
         if (userOpt.isEmpty()) {
             logOutcome(ExecutionOutcome.USER_NOT_FOUND, callbackQuery, telegramUserId, workItemId,
                     actionCode, null, null, null);
-            return ExecutionOutcome.USER_NOT_FOUND;
+            return acknowledgeAndReturn(ExecutionOutcome.USER_NOT_FOUND, callbackQuery);
         }
         UUID actorUserId = userOpt.get().getId();
 
@@ -193,14 +226,14 @@ public class TelegramCallbackActionExecutionService {
         if (tenantIdOpt.isEmpty()) {
             logOutcome(ExecutionOutcome.WORK_ITEM_NOT_FOUND, callbackQuery, telegramUserId,
                     workItemId, actionCode, null, null, null);
-            return ExecutionOutcome.WORK_ITEM_NOT_FOUND;
+            return acknowledgeAndReturn(ExecutionOutcome.WORK_ITEM_NOT_FOUND, callbackQuery);
         }
         UUID tenantId = tenantIdOpt.get();
 
         if (!identityQueryService.hasActiveMembership(tenantId, actorUserId)) {
             logOutcome(ExecutionOutcome.NOT_A_MEMBER, callbackQuery, telegramUserId, workItemId,
                     actionCode, tenantId, null, null);
-            return ExecutionOutcome.NOT_A_MEMBER;
+            return acknowledgeAndReturn(ExecutionOutcome.NOT_A_MEMBER, callbackQuery);
         }
 
         try {
@@ -208,7 +241,7 @@ public class TelegramCallbackActionExecutionService {
         } catch (AccessDeniedException ex) {
             logOutcome(ExecutionOutcome.PERMISSION_DENIED, callbackQuery, telegramUserId,
                     workItemId, actionCode, tenantId, null, null);
-            return ExecutionOutcome.PERMISSION_DENIED;
+            return acknowledgeAndReturn(ExecutionOutcome.PERMISSION_DENIED, callbackQuery);
         }
 
         String targetStatusCode = ACTION_TO_TARGET_STATUS.get(actionCode);
@@ -219,29 +252,59 @@ public class TelegramCallbackActionExecutionService {
             // workflow transition'ni umuman chaqirmaymiz.
             logOutcome(ExecutionOutcome.INVALID_TRANSITION, callbackQuery, telegramUserId,
                     workItemId, actionCode, tenantId, null, null);
-            return ExecutionOutcome.INVALID_TRANSITION;
+            return acknowledgeAndReturn(ExecutionOutcome.INVALID_TRANSITION, callbackQuery);
         }
 
+        ExecutionOutcome outcome;
         try {
             workflowTransitionService.transition(tenantId, workItemId, targetStatusCode,
                     actorUserId, ACTION_SOURCE, null);
             logOutcome(ExecutionOutcome.EXECUTED, callbackQuery, telegramUserId, workItemId,
                     actionCode, tenantId, targetStatusCode, null);
-            return ExecutionOutcome.EXECUTED;
+            outcome = ExecutionOutcome.EXECUTED;
         } catch (BusinessRuleException ex) {
             logOutcome(ExecutionOutcome.INVALID_TRANSITION, callbackQuery, telegramUserId,
                     workItemId, actionCode, tenantId, targetStatusCode, null);
-            return ExecutionOutcome.INVALID_TRANSITION;
+            outcome = ExecutionOutcome.INVALID_TRANSITION;
         } catch (ResourceNotFoundException ex) {
             logOutcome(ExecutionOutcome.WORK_ITEM_NOT_FOUND, callbackQuery, telegramUserId,
                     workItemId, actionCode, tenantId, targetStatusCode, null);
-            return ExecutionOutcome.WORK_ITEM_NOT_FOUND;
+            outcome = ExecutionOutcome.WORK_ITEM_NOT_FOUND;
         } catch (RuntimeException ex) {
             logOutcome(ExecutionOutcome.UNEXPECTED_FAILURE, callbackQuery, telegramUserId,
                     workItemId, actionCode, tenantId, targetStatusCode,
                     ex.getClass().getSimpleName());
-            return ExecutionOutcome.UNEXPECTED_FAILURE;
+            outcome = ExecutionOutcome.UNEXPECTED_FAILURE;
         }
+        return acknowledgeAndReturn(outcome, callbackQuery);
+    }
+
+    /**
+     * Phase 175 — har bir terminal outcome uchun best-effort
+     * acknowledgement yuboradi va outcome'ni o'zgartirmasdan qaytaradi.
+     *
+     * <p>Acknowledgement service'ning o'zi fail-soft, lekin defense-in-depth
+     * uchun shu yerda ham {@link RuntimeException} ushlanadi va swallow
+     * qilinadi — orchestrator outcome'i hech qachon acknowledgement
+     * muvaffaqiyatiga bog'lanmaydi. Workflow transition durability allaqachon
+     * o'z {@code @Transactional} commit'idan keyin kafolatlangan.</p>
+     *
+     * <p>callbackQuery null yoki callback_query.id null/blank bo'lsa,
+     * acknowledgement service ichida silent skip qilinadi.</p>
+     */
+    private ExecutionOutcome acknowledgeAndReturn(ExecutionOutcome outcome,
+                                                    TelegramCallbackQueryRequest callbackQuery) {
+        try {
+            String callbackQueryId = callbackQuery == null ? null : callbackQuery.id();
+            String text = OUTCOME_ACKNOWLEDGE_TEXT.get(outcome);
+            acknowledgementService.acknowledge(callbackQueryId, text);
+        } catch (RuntimeException ex) {
+            // Acknowledgement service o'zining fail-soft kontrakti bilan
+            // exception tashlamasligi shart — bu yo'l defense-in-depth.
+            log.warn("Telegram callback acknowledgement defensive swallow exceptionType={}",
+                    ex.getClass().getSimpleName());
+        }
+        return outcome;
     }
 
     private static Long extractTelegramUserId(TelegramCallbackQueryRequest cb) {

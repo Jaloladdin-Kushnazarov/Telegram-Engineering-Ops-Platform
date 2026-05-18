@@ -38,4 +38,11 @@ public class StubTelegramOutboundGateway implements TelegramOutboundGateway {
         return TelegramGatewayResult.failed(
                 TelegramGatewayError.UNKNOWN_ERROR, FAILURE_REASON);
     }
+
+    @Override
+    public TelegramAcknowledgeCallbackResult acknowledgeCallback(
+            TelegramAcknowledgeCallbackRequest request) {
+        return TelegramAcknowledgeCallbackResult.failed(
+                TelegramGatewayError.UNKNOWN_ERROR, FAILURE_REASON);
+    }
 }

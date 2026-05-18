@@ -34,4 +34,22 @@ public interface TelegramOutboundGateway {
      * @return gateway execution natijasi
      */
     TelegramGatewayResult execute(TelegramSendMessageRequest request);
+
+    /**
+     * Phase 175 — Telegram {@code answerCallbackQuery} chaqiruvi.
+     *
+     * <p>Inline button bosilganda operatorga vaqtinchalik toast
+     * ko'rinishida feedback qaytarish uchun ishlatiladi. Bu metod
+     * Telegram'dagi chat yoki xabar holatini o'zgartirmaydi —
+     * faqat ephemeral acknowledgement. Phase 175 da retry yo'q.</p>
+     *
+     * <p><strong>Failure semantics:</strong> implementor hech qachon
+     * exception tashlamaydi va har bir holat
+     * {@link TelegramAcknowledgeCallbackResult} bilan qaytariladi.
+     * Stub gateway fail-closed strukturali failure qaytaradi.</p>
+     *
+     * @param request acknowledgement request (callback_query id + bounded text)
+     * @return transport-level acknowledgement result
+     */
+    TelegramAcknowledgeCallbackResult acknowledgeCallback(TelegramAcknowledgeCallbackRequest request);
 }

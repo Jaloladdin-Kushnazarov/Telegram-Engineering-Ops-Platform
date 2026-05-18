@@ -179,6 +179,129 @@ public class HttpTelegramOutboundGateway implements TelegramOutboundGateway {
         }
     }
 
+    /**
+     * Phase 175 — Telegram {@code answerCallbackQuery}'ni POST qiladi.
+     *
+     * <p>Payload (omit-null):</p>
+     * <pre>
+     * {
+     *   "callback_query_id": "...",
+     *   "text": "..."
+     * }
+     * </pre>
+     *
+     * <p>Ataylab kiritilmaydi: {@code show_alert}, {@code url},
+     * {@code cache_time}, {@code parse_mode}. Default toast bilan
+     * kifoyalanadi.</p>
+     *
+     * <p>Error mapping {@link #execute(TelegramSendMessageRequest)} bilan
+     * sinxron: HTTP 200 + {@code ok=true} → SUCCESS;
+     * 200 + {@code ok=false} / 4xx (429 bundan tashqari) → REJECTED;
+     * 429 → FAILED(RATE_LIMIT); 5xx / network → FAILED(NETWORK_ERROR);
+     * kutilmagan → FAILED(UNKNOWN_ERROR). Phase 175 retry qilmaydi.</p>
+     *
+     * <p>Token URL ichida — log qilinmaydi. Exception message ichida
+     * token sub-string'i bo'lsa {@link #sanitize(String)} bilan
+     * {@code ***} ga almashtiriladi.</p>
+     */
+    @Override
+    public TelegramAcknowledgeCallbackResult acknowledgeCallback(
+            TelegramAcknowledgeCallbackRequest request) {
+        if (request == null) {
+            return TelegramAcknowledgeCallbackResult.failed(
+                    TelegramGatewayError.UNKNOWN_ERROR,
+                    "TelegramAcknowledgeCallbackRequest null");
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("callback_query_id", request.callbackQueryId());
+        payload.put("text", request.text());
+
+        String url = buildAnswerCallbackQueryUrl();
+
+        try {
+            String body = restClient.post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(String.class);
+            return mapAcknowledgeResponse(body);
+        } catch (HttpClientErrorException ex) {
+            return mapAcknowledgeClientError(ex);
+        } catch (HttpServerErrorException ex) {
+            return TelegramAcknowledgeCallbackResult.failed(TelegramGatewayError.NETWORK_ERROR,
+                    "Telegram server error: HTTP " + ex.getStatusCode().value());
+        } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            if (status == 429) {
+                return TelegramAcknowledgeCallbackResult.failed(TelegramGatewayError.RATE_LIMIT,
+                        "Telegram rate limit: HTTP 429");
+            }
+            if (status >= 500) {
+                return TelegramAcknowledgeCallbackResult.failed(TelegramGatewayError.NETWORK_ERROR,
+                        "Telegram server error: HTTP " + status);
+            }
+            return TelegramAcknowledgeCallbackResult.rejected(TelegramGatewayError.INVALID_REQUEST,
+                    "Telegram client error: HTTP " + status);
+        } catch (ResourceAccessException ex) {
+            return TelegramAcknowledgeCallbackResult.failed(TelegramGatewayError.NETWORK_ERROR,
+                    "Telegram network error: " + sanitize(ex.getMessage()));
+        } catch (RuntimeException ex) {
+            // Token-aware sanitization — log'ga ham, qaytariladigan
+            // failure xabariga ham token tushib qolmasligi shart.
+            log.warn("Telegram acknowledgeCallback unexpected error exceptionType={}",
+                    ex.getClass().getSimpleName());
+            return TelegramAcknowledgeCallbackResult.failed(TelegramGatewayError.UNKNOWN_ERROR,
+                    "Telegram unexpected: " + sanitize(ex.getMessage()));
+        }
+    }
+
+    private String buildAnswerCallbackQueryUrl() {
+        String base = properties.getApiBaseUrl();
+        if (base == null) {
+            base = "";
+        }
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + "/bot" + properties.getBotToken() + "/answerCallbackQuery";
+    }
+
+    private TelegramAcknowledgeCallbackResult mapAcknowledgeResponse(String body) {
+        if (body == null || body.isBlank()) {
+            return TelegramAcknowledgeCallbackResult.failed(TelegramGatewayError.UNKNOWN_ERROR,
+                    "Telegram empty response body");
+        }
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            boolean ok = root.path("ok").asBoolean(false);
+            if (ok) {
+                return TelegramAcknowledgeCallbackResult.success();
+            }
+            int errorCode = root.path("error_code").asInt(0);
+            String description = root.path("description").asText("rejected");
+            return TelegramAcknowledgeCallbackResult.rejected(TelegramGatewayError.INVALID_REQUEST,
+                    "Telegram error_code=" + errorCode + " description=" + sanitize(description));
+        } catch (RuntimeException ex) {
+            return TelegramAcknowledgeCallbackResult.failed(TelegramGatewayError.UNKNOWN_ERROR,
+                    "Telegram response handling failed: " + sanitize(ex.getMessage()));
+        } catch (Exception ex) {
+            return TelegramAcknowledgeCallbackResult.failed(TelegramGatewayError.UNKNOWN_ERROR,
+                    "Telegram response parse failed: " + sanitize(ex.getMessage()));
+        }
+    }
+
+    private TelegramAcknowledgeCallbackResult mapAcknowledgeClientError(HttpClientErrorException ex) {
+        int status = ex.getStatusCode().value();
+        if (status == 429) {
+            return TelegramAcknowledgeCallbackResult.failed(TelegramGatewayError.RATE_LIMIT,
+                    "Telegram rate limit: HTTP 429");
+        }
+        return TelegramAcknowledgeCallbackResult.rejected(TelegramGatewayError.INVALID_REQUEST,
+                "Telegram client error: HTTP " + status);
+    }
+
     private Map<String, Object> buildPayload(long chatId, TelegramSendMessageRequest request) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("chat_id", chatId);

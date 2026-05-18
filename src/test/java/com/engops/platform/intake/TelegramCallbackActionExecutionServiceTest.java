@@ -5,6 +5,8 @@ import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.sharedkernel.exception.ResourceNotFoundException;
+import com.engops.platform.telegram.TelegramAcknowledgeCallbackResult;
+import com.engops.platform.telegram.TelegramCallbackAcknowledgementService;
 import com.engops.platform.telegram.TelegramCallbackChatRequest;
 import com.engops.platform.telegram.TelegramCallbackMessageRequest;
 import com.engops.platform.telegram.TelegramCallbackQueryRequest;
@@ -52,13 +54,16 @@ class TelegramCallbackActionExecutionServiceTest {
             mock(OperationalAuthorizationService.class);
     private final WorkflowTransitionService workflowTransitionService =
             mock(WorkflowTransitionService.class);
+    private final TelegramCallbackAcknowledgementService acknowledgementService =
+            mock(TelegramCallbackAcknowledgementService.class);
 
     private final TelegramCallbackActionExecutionService executionService =
             new TelegramCallbackActionExecutionService(
                     identityQueryService,
                     workItemQueryService,
                     operationalAuthorizationService,
-                    workflowTransitionService);
+                    workflowTransitionService,
+                    acknowledgementService);
 
     private TelegramCallbackQueryRequest cb() {
         return new TelegramCallbackQueryRequest(
@@ -342,5 +347,170 @@ class TelegramCallbackActionExecutionServiceTest {
         executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
 
         verifyNoInteractions(workflowTransitionService);
+    }
+
+    // ===========================================================
+    // Phase 175 — acknowledgement wiring
+    // ===========================================================
+
+    @Test
+    void happyPathAcknowledgesOnceWithExecutedText() {
+        stubHappyPathUpToTransition();
+
+        executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        verify(acknowledgementService, times(1))
+                .acknowledge(eq("cb-id"), eq("Action applied."));
+    }
+
+    @Test
+    void userNotFoundAcknowledgesAndDoesNotInvokeWorkflow() {
+        when(identityQueryService.findUserByTelegramUserId(TELEGRAM_USER_ID))
+                .thenReturn(Optional.empty());
+
+        executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        verify(acknowledgementService, times(1))
+                .acknowledge(eq("cb-id"),
+                        eq("Telegram user is not linked to a platform account."));
+        verifyNoInteractions(workflowTransitionService);
+    }
+
+    @Test
+    void workItemNotFoundAcknowledgesAndDoesNotInvokeWorkflow() {
+        when(identityQueryService.findUserByTelegramUserId(TELEGRAM_USER_ID))
+                .thenReturn(Optional.of(appUser()));
+        when(workItemQueryService.findTenantIdByWorkItemId(WORK_ITEM_ID))
+                .thenReturn(Optional.empty());
+
+        executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        verify(acknowledgementService, times(1))
+                .acknowledge(eq("cb-id"), eq("Work item was not found."));
+        verifyNoInteractions(workflowTransitionService);
+    }
+
+    @Test
+    void notAMemberAcknowledgesAndDoesNotInvokeWorkflow() {
+        when(identityQueryService.findUserByTelegramUserId(TELEGRAM_USER_ID))
+                .thenReturn(Optional.of(appUser()));
+        when(workItemQueryService.findTenantIdByWorkItemId(WORK_ITEM_ID))
+                .thenReturn(Optional.of(TENANT_ID));
+        when(identityQueryService.hasActiveMembership(TENANT_ID, APP_USER_ID))
+                .thenReturn(false);
+
+        executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        verify(acknowledgementService, times(1))
+                .acknowledge(eq("cb-id"),
+                        eq("You are not an active member of this tenant."));
+        verifyNoInteractions(workflowTransitionService);
+    }
+
+    @Test
+    void permissionDeniedAcknowledgesAndDoesNotInvokeWorkflow() {
+        stubHappyPathUpToTransition();
+        doThrow(new AccessDeniedException("denied"))
+                .when(operationalAuthorizationService).authorizeTransition(TENANT_ID, APP_USER_ID);
+
+        executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        verify(acknowledgementService, times(1))
+                .acknowledge(eq("cb-id"),
+                        eq("You do not have permission to change this work item."));
+        verifyNoInteractions(workflowTransitionService);
+    }
+
+    @Test
+    void invalidTransitionAcknowledgesAndReturnsInvalidTransition() {
+        stubHappyPathUpToTransition();
+        when(workflowTransitionService.transition(
+                any(), any(), anyString(), any(), anyString(), isNull()))
+                .thenThrow(new BusinessRuleException("INVALID_TRANSITION", "not allowed"));
+
+        TelegramCallbackActionExecutionService.ExecutionOutcome outcome =
+                executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        assertThat(outcome)
+                .isEqualTo(TelegramCallbackActionExecutionService.ExecutionOutcome.INVALID_TRANSITION);
+        verify(acknowledgementService, times(1))
+                .acknowledge(eq("cb-id"),
+                        eq("This action is no longer valid for the current status."));
+    }
+
+    @Test
+    void unexpectedFailureAcknowledgesAndReturnsUnexpectedFailure() {
+        stubHappyPathUpToTransition();
+        when(workflowTransitionService.transition(
+                any(), any(), anyString(), any(), anyString(), isNull()))
+                .thenThrow(new RuntimeException("boom"));
+
+        TelegramCallbackActionExecutionService.ExecutionOutcome outcome =
+                executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        assertThat(outcome)
+                .isEqualTo(TelegramCallbackActionExecutionService.ExecutionOutcome.UNEXPECTED_FAILURE);
+        verify(acknowledgementService, times(1))
+                .acknowledge(eq("cb-id"),
+                        eq("Could not process the action. Please try again later."));
+    }
+
+    @Test
+    void unmappedActionCodeAcknowledgesAndDoesNotInvokeWorkflow() {
+        stubHappyPathUpToTransition();
+
+        executionService.execute(cb(), WORK_ITEM_ID, "UNMAPPED_BUT_ACCEPTED");
+
+        verify(acknowledgementService, times(1))
+                .acknowledge(eq("cb-id"),
+                        eq("This action is no longer valid for the current status."));
+        verifyNoInteractions(workflowTransitionService);
+    }
+
+    @Test
+    void nullFromAcknowledgesUsingInboundCallbackQueryId() {
+        // callback_query.from null bo'lsa orchestrator USER_NOT_FOUND
+        // qaytaradi, lekin callback_query.id mavjud — acknowledgement
+        // baribir yuborilishi shart.
+        executionService.execute(cbWithoutFrom(), WORK_ITEM_ID, "START_PROCESSING");
+
+        verify(acknowledgementService, times(1))
+                .acknowledge(eq("cb-id"),
+                        eq("Telegram user is not linked to a platform account."));
+    }
+
+    @Test
+    void acknowledgementServiceExceptionDoesNotChangeReturnedOutcome() {
+        // Defense-in-depth: service o'zining fail-soft kontrakti bilan
+        // exception tashlamasligi shart, lekin agar tashlasa, orchestrator
+        // outcome'i o'zgarmaydi.
+        stubHappyPathUpToTransition();
+        when(acknowledgementService.acknowledge(anyString(), anyString()))
+                .thenThrow(new RuntimeException("simulated ack failure"));
+
+        TelegramCallbackActionExecutionService.ExecutionOutcome outcome =
+                executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        assertThat(outcome)
+                .isEqualTo(TelegramCallbackActionExecutionService.ExecutionOutcome.EXECUTED);
+        // Workflow transition baribir bir marta chaqirilgan.
+        verify(workflowTransitionService, times(1)).transition(
+                eq(TENANT_ID), eq(WORK_ITEM_ID), eq("PROCESSING"),
+                eq(APP_USER_ID), eq("TELEGRAM_CALLBACK"), isNull());
+    }
+
+    @Test
+    void acknowledgementServiceFailureResultDoesNotChangeReturnedOutcome() {
+        stubHappyPathUpToTransition();
+        when(acknowledgementService.acknowledge(anyString(), anyString()))
+                .thenReturn(TelegramAcknowledgeCallbackResult.failed(
+                        com.engops.platform.telegram.TelegramGatewayError.NETWORK_ERROR,
+                        "stubbed"));
+
+        TelegramCallbackActionExecutionService.ExecutionOutcome outcome =
+                executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        assertThat(outcome)
+                .isEqualTo(TelegramCallbackActionExecutionService.ExecutionOutcome.EXECUTED);
     }
 }

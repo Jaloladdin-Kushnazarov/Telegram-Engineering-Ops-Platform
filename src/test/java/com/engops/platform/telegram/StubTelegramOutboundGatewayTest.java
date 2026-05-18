@@ -63,4 +63,19 @@ class StubTelegramOutboundGatewayTest {
                 "Telegram outbound gateway hali implement qilinmagan");
         assertThat(result.getTelegramMessageId()).isNull();
     }
+
+    @Test
+    void acknowledgeCallbackReturnsControlledFailure() {
+        TelegramAcknowledgeCallbackRequest request =
+                new TelegramAcknowledgeCallbackRequest("cb-id-1", "Action applied.");
+
+        TelegramAcknowledgeCallbackResult result = gateway.acknowledgeCallback(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramAcknowledgeCallbackResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.UNKNOWN_ERROR);
+        assertThat(result.getErrorMessage()).isEqualTo(
+                "Telegram outbound gateway hali implement qilinmagan");
+    }
 }

@@ -313,6 +313,167 @@ class HttpTelegramOutboundGatewayTest {
 
     // ========== Legacy dispatch(command) ==========
 
+    // ==========================================================
+    // Phase 175 — answerCallbackQuery
+    // ==========================================================
+
+    private static final String EXPECTED_ANSWER_URL =
+            BASE_URL + "/bot" + TEST_TOKEN + "/answerCallbackQuery";
+
+    private TelegramAcknowledgeCallbackRequest sampleAcknowledgeRequest() {
+        return new TelegramAcknowledgeCallbackRequest("cb-id-1", "Action applied.");
+    }
+
+    @Test
+    void acknowledgeCallback_okTrueResponseMapsToSuccess() {
+        server.expect(requestTo(EXPECTED_ANSWER_URL))
+                .andExpect(method(POST))
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.callback_query_id").value("cb-id-1"))
+                .andExpect(jsonPath("$.text").value("Action applied."))
+                .andExpect(jsonPath("$.show_alert").doesNotExist())
+                .andExpect(jsonPath("$.parse_mode").doesNotExist())
+                .andRespond(withSuccess("{\"ok\":true,\"result\":true}",
+                        MediaType.APPLICATION_JSON));
+
+        TelegramAcknowledgeCallbackResult result =
+                gateway.acknowledgeCallback(sampleAcknowledgeRequest());
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramAcknowledgeCallbackResult.ResultType.SUCCESS);
+        server.verify();
+    }
+
+    @Test
+    void acknowledgeCallback_okFalseResponseMapsToRejected() {
+        server.expect(requestTo(EXPECTED_ANSWER_URL))
+                .andRespond(withSuccess(
+                        "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: query is too old\"}",
+                        MediaType.APPLICATION_JSON));
+
+        TelegramAcknowledgeCallbackResult result =
+                gateway.acknowledgeCallback(sampleAcknowledgeRequest());
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramAcknowledgeCallbackResult.ResultType.REJECTED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.INVALID_REQUEST);
+        assertThat(result.getErrorMessage()).contains("error_code=400");
+        server.verify();
+    }
+
+    @Test
+    void acknowledgeCallback_http400MapsToRejected() {
+        server.expect(requestTo(EXPECTED_ANSWER_URL))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"ok\":false,\"error_code\":400}"));
+
+        TelegramAcknowledgeCallbackResult result =
+                gateway.acknowledgeCallback(sampleAcknowledgeRequest());
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramAcknowledgeCallbackResult.ResultType.REJECTED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.INVALID_REQUEST);
+        assertThat(result.getErrorMessage()).contains("HTTP 400");
+        server.verify();
+    }
+
+    @Test
+    void acknowledgeCallback_http403MapsToRejected() {
+        server.expect(requestTo(EXPECTED_ANSWER_URL))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN));
+
+        TelegramAcknowledgeCallbackResult result =
+                gateway.acknowledgeCallback(sampleAcknowledgeRequest());
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramAcknowledgeCallbackResult.ResultType.REJECTED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.INVALID_REQUEST);
+        server.verify();
+    }
+
+    @Test
+    void acknowledgeCallback_http429MapsToFailedRateLimit() {
+        server.expect(requestTo(EXPECTED_ANSWER_URL))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+
+        TelegramAcknowledgeCallbackResult result =
+                gateway.acknowledgeCallback(sampleAcknowledgeRequest());
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramAcknowledgeCallbackResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.RATE_LIMIT);
+        server.verify();
+    }
+
+    @Test
+    void acknowledgeCallback_http500MapsToFailedNetworkError() {
+        server.expect(requestTo(EXPECTED_ANSWER_URL))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+        TelegramAcknowledgeCallbackResult result =
+                gateway.acknowledgeCallback(sampleAcknowledgeRequest());
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramAcknowledgeCallbackResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.NETWORK_ERROR);
+        server.verify();
+    }
+
+    @Test
+    void acknowledgeCallback_networkExceptionMapsToFailedNetworkError() {
+        server.expect(requestTo(EXPECTED_ANSWER_URL))
+                .andRespond(withException(new java.net.SocketTimeoutException("read timed out")));
+
+        TelegramAcknowledgeCallbackResult result =
+                gateway.acknowledgeCallback(sampleAcknowledgeRequest());
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramAcknowledgeCallbackResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.NETWORK_ERROR);
+        server.verify();
+    }
+
+    @Test
+    void acknowledgeCallback_malformedResponseMapsToFailedUnknown() {
+        server.expect(requestTo(EXPECTED_ANSWER_URL))
+                .andRespond(withSuccess("not-json-at-all", MediaType.APPLICATION_JSON));
+
+        TelegramAcknowledgeCallbackResult result =
+                gateway.acknowledgeCallback(sampleAcknowledgeRequest());
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramAcknowledgeCallbackResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.UNKNOWN_ERROR);
+        server.verify();
+    }
+
+    @Test
+    void acknowledgeCallback_nullRequestMapsToFailedUnknown() {
+        TelegramAcknowledgeCallbackResult result = gateway.acknowledgeCallback(null);
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramAcknowledgeCallbackResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.UNKNOWN_ERROR);
+        // server.verify() chaqirilmaydi — HTTP chaqiruv bo'lmasligi shart.
+    }
+
+    @Test
+    void acknowledgeCallback_failureMessageDoesNotContainBotToken() {
+        String responseBodyWithToken = "{\"ok\":false,\"error_code\":400,"
+                + "\"description\":\"Token leak attempt: " + TEST_TOKEN + "\"}";
+        server.expect(requestTo(EXPECTED_ANSWER_URL))
+                .andRespond(withSuccess(responseBodyWithToken, MediaType.APPLICATION_JSON));
+
+        TelegramAcknowledgeCallbackResult result =
+                gateway.acknowledgeCallback(sampleAcknowledgeRequest());
+
+        assertThat(result.getErrorMessage()).doesNotContain(TEST_TOKEN);
+        assertThat(result.getErrorMessage()).contains("***");
+        server.verify();
+    }
+
     @Test
     void legacyDispatchReturnsDefensiveFailure() {
         TelegramDeliveryCommand command = new TelegramDeliveryCommand(
