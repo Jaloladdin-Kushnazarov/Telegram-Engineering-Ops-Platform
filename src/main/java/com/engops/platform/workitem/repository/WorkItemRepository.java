@@ -4,6 +4,7 @@ import com.engops.platform.workitem.model.WorkItem;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -17,6 +18,24 @@ import java.util.UUID;
 public interface WorkItemRepository extends JpaRepository<WorkItem, UUID> {
 
     Optional<WorkItem> findByTenantIdAndId(UUID tenantId, UUID id);
+
+    /**
+     * Phase 173 — workItemId bo'yicha faqat tenantId qaytaruvchi tor
+     * cross-tenant lookup. Telegram callback orchestration uchun ishlatiladi:
+     * inbound {@code callback_data} faqat {@code workItemId}'ni olib keladi
+     * va tenantId server-side derive qilinishi shart (callback_data hech
+     * qachon authoritative tenantId tashimaydi). Qaytarilgan tenantId
+     * keyin majburiy ravishda {@code IdentityQueryService.hasActiveMembership(...)}
+     * va {@code OperationalAuthorizationService.authorizeTransition(...)}
+     * orqali re-check qilinadi, shuning uchun bu lookup'ning o'zi
+     * cross-tenant leak xavfini keltirib chiqarmaydi — derive qilingan
+     * tenantda a'zo bo'lmagan foydalanuvchi keyingi qadamda to'siladi.
+     *
+     * <p>Ataylab faqat tenantId UUID qaytariladi (to'liq WorkItem emas) —
+     * keng cross-tenant WorkItem yuklash boundary surface'i ochilmaydi.</p>
+     */
+    @Query("select w.tenantId from WorkItem w where w.id = :workItemId")
+    Optional<UUID> findTenantIdById(@Param("workItemId") UUID workItemId);
 
     Optional<WorkItem> findByTenantIdAndWorkItemCode(UUID tenantId, String workItemCode);
 

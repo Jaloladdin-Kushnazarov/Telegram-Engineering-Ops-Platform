@@ -9,7 +9,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Phase 171 — {@link TelegramCallbackQueryService} unit testlari.
+ * Phase 171/173 — {@link TelegramCallbackQueryService} unit testlari.
  *
  * <p>Tekshiruvlar:</p>
  * <ul>
@@ -23,9 +23,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>colon yo'q yoki noto'g'ri pozitsiyada → {@code IGNORED_MALFORMED}.</li>
  *   <li>workItemId UUID emas → {@code IGNORED_MALFORMED}.</li>
  *   <li>action code katalogda yo'q → {@code IGNORED_UNKNOWN_ACTION}.</li>
- *   <li>har bir mavjud action code (5 ta) → {@code ACCEPTED}.</li>
+ *   <li>har bir mavjud action code (5 ta) → {@code ACCEPTED} va parsed
+ *       maydonlar to'ldiriladi.</li>
  *   <li>katalogdagi har bir action code 64-bayt callback_data budjetiga
  *       sig'adi (UUID 36 + ":" 1 + ACTION ≤ 27 ≤ 64).</li>
+ *   <li>Phase 173: ignored outcome'lar uchun {@code workItemId} va
+ *       {@code actionCode} natija ichida {@code null}.</li>
  * </ul>
  */
 class TelegramCallbackQueryServiceTest {
@@ -47,16 +50,20 @@ class TelegramCallbackQueryServiceTest {
 
     @Test
     void nullCallbackQueryIgnored() {
-        TelegramCallbackQueryService.CallbackOutcome outcome = service.process(null);
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_NULL_CALLBACK);
+        TelegramCallbackParseResult result = service.process(null);
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_NULL_CALLBACK);
+        assertThat(result.workItemId()).isNull();
+        assertThat(result.actionCode()).isNull();
     }
 
     // --- Null / blank data ---
 
     @Test
     void nullDataIgnored() {
-        TelegramCallbackQueryService.CallbackOutcome outcome = service.process(cb(null));
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_NULL_DATA);
+        TelegramCallbackParseResult result = service.process(cb(null));
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_NULL_DATA);
+        assertThat(result.workItemId()).isNull();
+        assertThat(result.actionCode()).isNull();
     }
 
     @Test
@@ -64,14 +71,14 @@ class TelegramCallbackQueryServiceTest {
         // Documentation note (see service Javadoc): blank/whitespace data is
         // categorized as IGNORED_NULL_DATA — same bucket as actual null,
         // simpler operator mental model.
-        TelegramCallbackQueryService.CallbackOutcome outcome = service.process(cb("   "));
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_NULL_DATA);
+        TelegramCallbackParseResult result = service.process(cb("   "));
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_NULL_DATA);
     }
 
     @Test
     void emptyDataIgnoredAsNull() {
-        TelegramCallbackQueryService.CallbackOutcome outcome = service.process(cb(""));
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_NULL_DATA);
+        TelegramCallbackParseResult result = service.process(cb(""));
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_NULL_DATA);
     }
 
     // --- Too long ---
@@ -80,44 +87,51 @@ class TelegramCallbackQueryServiceTest {
     void tooLongDataIgnored() {
         // 65 chars — Telegram'ning 64-bayt cheklovini ataylab oshirib yuboramiz.
         String tooLong = "a".repeat(65);
-        TelegramCallbackQueryService.CallbackOutcome outcome = service.process(cb(tooLong));
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_TOO_LONG);
+        TelegramCallbackParseResult result = service.process(cb(tooLong));
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_TOO_LONG);
+        assertThat(result.workItemId()).isNull();
+        assertThat(result.actionCode()).isNull();
     }
 
     // --- Malformed ---
 
     @Test
     void noColonMalformed() {
-        TelegramCallbackQueryService.CallbackOutcome outcome = service.process(cb("nocolonatall"));
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_MALFORMED);
+        TelegramCallbackParseResult result = service.process(cb("nocolonatall"));
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_MALFORMED);
     }
 
     @Test
     void leadingColonMalformed() {
-        TelegramCallbackQueryService.CallbackOutcome outcome = service.process(cb(":START_PROCESSING"));
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_MALFORMED);
+        TelegramCallbackParseResult result = service.process(cb(":START_PROCESSING"));
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_MALFORMED);
     }
 
     @Test
     void trailingColonMalformed() {
-        TelegramCallbackQueryService.CallbackOutcome outcome = service.process(cb(workItemId + ":"));
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_MALFORMED);
+        TelegramCallbackParseResult result = service.process(cb(workItemId + ":"));
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_MALFORMED);
     }
 
     @Test
     void badUuidMalformed() {
-        TelegramCallbackQueryService.CallbackOutcome outcome =
+        TelegramCallbackParseResult result =
                 service.process(cb("not-a-uuid:START_PROCESSING"));
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_MALFORMED);
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_MALFORMED);
     }
 
     // --- Unknown action ---
 
     @Test
     void unknownActionIgnored() {
-        TelegramCallbackQueryService.CallbackOutcome outcome =
+        TelegramCallbackParseResult result =
                 service.process(cb(workItemId + ":SOMETHING_NEW"));
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_UNKNOWN_ACTION);
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.IGNORED_UNKNOWN_ACTION);
+        // Phase 173: unknown action holatida ham parser parsed UUID'ni
+        // result'da ataylab ochmaydi — orchestrator hech qachon shu
+        // outcome uchun chaqirilmaydi.
+        assertThat(result.workItemId()).isNull();
+        assertThat(result.actionCode()).isNull();
     }
 
     // --- Known actions ---
@@ -131,9 +145,11 @@ class TelegramCallbackQueryServiceTest {
             "REOPEN"
     })
     void knownActionAccepted(String actionCode) {
-        TelegramCallbackQueryService.CallbackOutcome outcome =
+        TelegramCallbackParseResult result =
                 service.process(cb(workItemId + ":" + actionCode));
-        assertThat(outcome).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.ACCEPTED);
+        assertThat(result.outcome()).isEqualTo(TelegramCallbackQueryService.CallbackOutcome.ACCEPTED);
+        assertThat(result.workItemId()).isEqualTo(workItemId);
+        assertThat(result.actionCode()).isEqualTo(actionCode);
     }
 
     // --- Boundary lock: callback_data budget ---

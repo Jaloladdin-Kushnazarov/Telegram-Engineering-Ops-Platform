@@ -2,6 +2,7 @@ package com.engops.platform.telegram;
 
 import com.engops.platform.infrastructure.security.SecurityConfig;
 import com.engops.platform.infrastructure.security.SecurityWebMvcConfig;
+import com.engops.platform.intake.TelegramCallbackActionExecutionService;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -25,12 +27,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Phase 171 — {@link TelegramWebhookController} {@code @WebMvcTest} testlari.
+ * Phase 171 / Phase 173 — {@link TelegramWebhookController} {@code @WebMvcTest} testlari.
  *
  * <p>Ikki ichki test class:</p>
  * <ul>
  *   <li>{@link WithConfiguredSecret} — secret token configured holatda
- *       (asosiy happy + sad path test'lar).</li>
+ *       (asosiy happy + sad path test'lar va Phase 173 orchestrator wiring).</li>
  *   <li>{@link WithBlankSecret} — secret token bo'sh holatda (fail-closed
  *       invariantı: hech qanday so'rov o'tmaydi).</li>
  * </ul>
@@ -62,6 +64,16 @@ class TelegramWebhookControllerTest {
                 """.formatted(data);
     }
 
+    private static TelegramCallbackParseResult accepted(UUID workItemId, String actionCode) {
+        return new TelegramCallbackParseResult(
+                TelegramCallbackQueryService.CallbackOutcome.ACCEPTED, workItemId, actionCode);
+    }
+
+    private static TelegramCallbackParseResult ignored(
+            TelegramCallbackQueryService.CallbackOutcome outcome) {
+        return new TelegramCallbackParseResult(outcome, null, null);
+    }
+
     // ============================================================
     // Configured-secret holati
     // ============================================================
@@ -75,6 +87,7 @@ class TelegramWebhookControllerTest {
 
         @Autowired private MockMvc mockMvc;
         @MockBean private TelegramCallbackQueryService callbackQueryService;
+        @MockBean private TelegramCallbackActionExecutionService executionService;
 
         // --- Secret validation: missing/wrong ---
 
@@ -86,6 +99,7 @@ class TelegramWebhookControllerTest {
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
             verifyNoInteractions(callbackQueryService);
+            verifyNoInteractions(executionService);
         }
 
         @Test
@@ -97,6 +111,7 @@ class TelegramWebhookControllerTest {
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
             verifyNoInteractions(callbackQueryService);
+            verifyNoInteractions(executionService);
         }
 
         /**
@@ -113,18 +128,20 @@ class TelegramWebhookControllerTest {
                             .content("{\"update_id\":1}"))
                     .andExpect(status().isUnauthorized());
             verifyNoInteractions(callbackQueryService);
+            verifyNoInteractions(executionService);
         }
 
         @Test
         void controllerNeverInvokesServiceOnAuthFailureRegardlessOfBody() throws Exception {
             // Hatto valid callback_query payload bo'lsa ham, secret noto'g'ri
-            // bo'lsa service umuman chaqirilmasligi shart.
+            // bo'lsa parser ham, orchestrator ham umuman chaqirilmasligi shart.
             mockMvc.perform(post(WEBHOOK_PATH)
                             .header(SECRET_HEADER, "wrong")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(callbackBody(WORK_ITEM_ID + ":START_PROCESSING")))
                     .andExpect(status().isUnauthorized());
             verify(callbackQueryService, never()).process(any());
+            verifyNoInteractions(executionService);
         }
 
         // --- Valid secret routing ---
@@ -137,6 +154,7 @@ class TelegramWebhookControllerTest {
                             .content("{\"update_id\":42}"))
                     .andExpect(status().isOk());
             verifyNoInteractions(callbackQueryService);
+            verifyNoInteractions(executionService);
         }
 
         @Test
@@ -147,12 +165,15 @@ class TelegramWebhookControllerTest {
                             .content("{}"))
                     .andExpect(status().isOk());
             verifyNoInteractions(callbackQueryService);
+            verifyNoInteractions(executionService);
         }
 
         @Test
         void validSecretCallbackQueryReturns200AndDelegates() throws Exception {
             when(callbackQueryService.process(any(TelegramCallbackQueryRequest.class)))
-                    .thenReturn(TelegramCallbackQueryService.CallbackOutcome.ACCEPTED);
+                    .thenReturn(accepted(WORK_ITEM_ID, "START_PROCESSING"));
+            when(executionService.execute(any(), any(), any()))
+                    .thenReturn(TelegramCallbackActionExecutionService.ExecutionOutcome.EXECUTED);
 
             mockMvc.perform(post(WEBHOOK_PATH)
                             .header(SECRET_HEADER, CONFIGURED_SECRET)
@@ -161,13 +182,18 @@ class TelegramWebhookControllerTest {
                     .andExpect(status().isOk());
 
             verify(callbackQueryService, times(1)).process(any(TelegramCallbackQueryRequest.class));
+            verify(executionService, times(1))
+                    .execute(any(TelegramCallbackQueryRequest.class),
+                            eq(WORK_ITEM_ID), eq("START_PROCESSING"));
         }
 
         @Test
-        void validSecretCallbackUnknownActionReturns200() throws Exception {
-            // Service IGNORED_UNKNOWN_ACTION qaytarsa ham, controller 200 qaytaradi.
+        void validSecretCallbackUnknownActionReturns200AndDoesNotInvokeExecutor() throws Exception {
+            // Parser IGNORED_UNKNOWN_ACTION qaytarsa, controller 200 qaytaradi
+            // va orchestrator UMUMAN chaqirilmaydi.
             when(callbackQueryService.process(any(TelegramCallbackQueryRequest.class)))
-                    .thenReturn(TelegramCallbackQueryService.CallbackOutcome.IGNORED_UNKNOWN_ACTION);
+                    .thenReturn(ignored(
+                            TelegramCallbackQueryService.CallbackOutcome.IGNORED_UNKNOWN_ACTION));
 
             mockMvc.perform(post(WEBHOOK_PATH)
                             .header(SECRET_HEADER, CONFIGURED_SECRET)
@@ -176,12 +202,14 @@ class TelegramWebhookControllerTest {
                     .andExpect(status().isOk());
 
             verify(callbackQueryService, times(1)).process(any(TelegramCallbackQueryRequest.class));
+            verifyNoInteractions(executionService);
         }
 
         @Test
-        void validSecretCallbackMalformedDataReturns200() throws Exception {
+        void validSecretCallbackMalformedDataReturns200AndDoesNotInvokeExecutor() throws Exception {
             when(callbackQueryService.process(any(TelegramCallbackQueryRequest.class)))
-                    .thenReturn(TelegramCallbackQueryService.CallbackOutcome.IGNORED_MALFORMED);
+                    .thenReturn(ignored(
+                            TelegramCallbackQueryService.CallbackOutcome.IGNORED_MALFORMED));
 
             mockMvc.perform(post(WEBHOOK_PATH)
                             .header(SECRET_HEADER, CONFIGURED_SECRET)
@@ -190,6 +218,41 @@ class TelegramWebhookControllerTest {
                     .andExpect(status().isOk());
 
             verify(callbackQueryService, times(1)).process(any(TelegramCallbackQueryRequest.class));
+            verifyNoInteractions(executionService);
+        }
+
+        // --- Phase 173: executor business/auth outcomes still return 200 ---
+
+        @Test
+        void executorPermissionDeniedStillReturns200() throws Exception {
+            when(callbackQueryService.process(any(TelegramCallbackQueryRequest.class)))
+                    .thenReturn(accepted(WORK_ITEM_ID, "START_PROCESSING"));
+            when(executionService.execute(any(), any(), any()))
+                    .thenReturn(TelegramCallbackActionExecutionService.ExecutionOutcome.PERMISSION_DENIED);
+
+            mockMvc.perform(post(WEBHOOK_PATH)
+                            .header(SECRET_HEADER, CONFIGURED_SECRET)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(callbackBody(WORK_ITEM_ID + ":START_PROCESSING")))
+                    .andExpect(status().isOk());
+
+            verify(executionService, times(1)).execute(any(), any(), any());
+        }
+
+        @Test
+        void executorUnexpectedFailureStillReturns200() throws Exception {
+            when(callbackQueryService.process(any(TelegramCallbackQueryRequest.class)))
+                    .thenReturn(accepted(WORK_ITEM_ID, "MARK_FIXED"));
+            when(executionService.execute(any(), any(), any()))
+                    .thenReturn(TelegramCallbackActionExecutionService.ExecutionOutcome.UNEXPECTED_FAILURE);
+
+            mockMvc.perform(post(WEBHOOK_PATH)
+                            .header(SECRET_HEADER, CONFIGURED_SECRET)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(callbackBody(WORK_ITEM_ID + ":MARK_FIXED")))
+                    .andExpect(status().isOk());
+
+            verify(executionService, times(1)).execute(any(), any(), any());
         }
     }
 
@@ -209,6 +272,7 @@ class TelegramWebhookControllerTest {
 
         @Autowired private MockMvc mockMvc;
         @MockBean private TelegramCallbackQueryService callbackQueryService;
+        @MockBean private TelegramCallbackActionExecutionService executionService;
 
         @Test
         void blankConfiguredSecretRejectsEverythingWith401() throws Exception {
@@ -222,6 +286,7 @@ class TelegramWebhookControllerTest {
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
             verifyNoInteractions(callbackQueryService);
+            verifyNoInteractions(executionService);
         }
 
         @Test
@@ -231,6 +296,7 @@ class TelegramWebhookControllerTest {
                             .content("{\"update_id\":1}"))
                     .andExpect(status().isUnauthorized());
             verifyNoInteractions(callbackQueryService);
+            verifyNoInteractions(executionService);
         }
     }
 }

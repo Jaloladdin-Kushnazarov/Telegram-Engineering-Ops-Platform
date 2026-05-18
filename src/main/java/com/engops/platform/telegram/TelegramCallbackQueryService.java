@@ -101,33 +101,42 @@ public class TelegramCallbackQueryService {
      * {@link CallbackOutcome#IGNORED_NULL_CALLBACK} sifatida qaytariladi.
      * Bu controller'ga "har holatda 200 OK qaytar" kontraktni ta'minlaydi.</p>
      *
+     * <p><strong>Phase 173 — return shape:</strong> oldin enum qaytarilgan
+     * edi; endi {@link TelegramCallbackParseResult} qaytariladi va
+     * {@link CallbackOutcome#ACCEPTED} holatida {@code workItemId} +
+     * {@code actionCode} parsed maydonlari to'ldiriladi. Ignored outcomelar
+     * uchun parsed maydonlar {@code null} bo'ladi. Service hali ham
+     * <strong>parser-only</strong> — workflow transition, AppUser mapping,
+     * authorization va execution {@link TelegramCallbackActionExecutionService}
+     * tomonidan boshqariladi.</p>
+     *
      * @param callbackQuery Telegram'dan kelgan callback_query (null bo'lishi
      *                      mumkin — {@link CallbackOutcome#IGNORED_NULL_CALLBACK}
      *                      qaytariladi)
-     * @return outcome enum
+     * @return parse natijasi (outcome + ixtiyoriy parsed workItemId/actionCode)
      */
-    public CallbackOutcome process(TelegramCallbackQueryRequest callbackQuery) {
+    public TelegramCallbackParseResult process(TelegramCallbackQueryRequest callbackQuery) {
         if (callbackQuery == null) {
             log.info("Telegram callback ignored outcome={}", CallbackOutcome.IGNORED_NULL_CALLBACK);
-            return CallbackOutcome.IGNORED_NULL_CALLBACK;
+            return new TelegramCallbackParseResult(CallbackOutcome.IGNORED_NULL_CALLBACK, null, null);
         }
 
         String data = callbackQuery.data();
         if (data == null || data.isBlank()) {
             logIgnored(CallbackOutcome.IGNORED_NULL_DATA, callbackQuery, 0, null, null);
-            return CallbackOutcome.IGNORED_NULL_DATA;
+            return new TelegramCallbackParseResult(CallbackOutcome.IGNORED_NULL_DATA, null, null);
         }
 
         int dataLength = data.length();
         if (dataLength > MAX_CALLBACK_DATA_BYTES) {
             logIgnored(CallbackOutcome.IGNORED_TOO_LONG, callbackQuery, dataLength, null, null);
-            return CallbackOutcome.IGNORED_TOO_LONG;
+            return new TelegramCallbackParseResult(CallbackOutcome.IGNORED_TOO_LONG, null, null);
         }
 
         int colon = data.indexOf(':');
         if (colon <= 0 || colon == data.length() - 1) {
             logIgnored(CallbackOutcome.IGNORED_MALFORMED, callbackQuery, dataLength, null, null);
-            return CallbackOutcome.IGNORED_MALFORMED;
+            return new TelegramCallbackParseResult(CallbackOutcome.IGNORED_MALFORMED, null, null);
         }
 
         String workItemIdRaw = data.substring(0, colon);
@@ -138,18 +147,18 @@ public class TelegramCallbackQueryService {
             workItemId = UUID.fromString(workItemIdRaw);
         } catch (IllegalArgumentException ex) {
             logIgnored(CallbackOutcome.IGNORED_MALFORMED, callbackQuery, dataLength, null, null);
-            return CallbackOutcome.IGNORED_MALFORMED;
+            return new TelegramCallbackParseResult(CallbackOutcome.IGNORED_MALFORMED, null, null);
         }
 
         if (!KNOWN_ACTION_CODES.contains(actionCode)) {
             logIgnored(CallbackOutcome.IGNORED_UNKNOWN_ACTION, callbackQuery, dataLength,
                     workItemId, actionCode);
-            return CallbackOutcome.IGNORED_UNKNOWN_ACTION;
+            return new TelegramCallbackParseResult(CallbackOutcome.IGNORED_UNKNOWN_ACTION, null, null);
         }
 
-        // Phase 171: ACCEPTED — workflow transition BAJARILMAYDI.
-        // Telegram→app user identity mapping va action execution keyingi
-        // phase'da hal qilinadi.
+        // Phase 173: ACCEPTED — parser parsed workItemId + actionCode'ni
+        // natijaga qo'shadi. Workflow transition va authorization shu
+        // service'da emas, TelegramCallbackActionExecutionService'da.
         log.info("Telegram callback accepted outcome={} callbackQueryId={} telegramUserId={} chatId={} messageId={} dataLength={} workItemId={} actionCode={}",
                 CallbackOutcome.ACCEPTED,
                 callbackQuery.id(),
@@ -159,7 +168,7 @@ public class TelegramCallbackQueryService {
                 dataLength,
                 workItemId,
                 actionCode);
-        return CallbackOutcome.ACCEPTED;
+        return new TelegramCallbackParseResult(CallbackOutcome.ACCEPTED, workItemId, actionCode);
     }
 
     private void logIgnored(CallbackOutcome outcome,

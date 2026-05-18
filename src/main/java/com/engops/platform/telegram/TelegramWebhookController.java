@@ -1,6 +1,7 @@
 package com.engops.platform.telegram;
 
 import com.engops.platform.infrastructure.web.ApiErrorResponse;
+import com.engops.platform.intake.TelegramCallbackActionExecutionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -54,11 +55,21 @@ import java.security.MessageDigest;
  * {@code permitAll} bilan belgilanadi (Telegram JWT yubormaydi). JWT
  * {@code @CurrentActor} resolver bu endpoint'da ishlatilmaydi.</p>
  *
- * <p><strong>Out of scope (Phase 171):</strong> {@code answerCallbackQuery}
- * outbound chaqiruvi; {@code editMessageText}; workflow transition
- * trigger; Telegram→app user identity mapping; {@code setWebhook}
- * automation. Operator {@code setWebhook}'ni qo'lda chaqiradi
- * (telegram-outbound-gateway-runbook.md ga qarang).</p>
+ * <p><strong>Phase 173 — authorized workflow transition wiring:</strong>
+ * parser endi {@link TelegramCallbackParseResult} qaytaradi. Parser
+ * outcome {@link TelegramCallbackQueryService.CallbackOutcome#ACCEPTED}
+ * bo'lsa, controller {@link TelegramCallbackActionExecutionService}'ga
+ * delegate qiladi. Orchestrator AppUser resolve, tenantId derive, ACTIVE
+ * membership va {@code WORK_ITEM_TRANSITION} permission tekshiruvini
+ * bajaradi va keyin {@code WorkflowTransitionService.transition(...)}'ni
+ * chaqiradi. Controller {@code WorkflowTransitionService} yoki
+ * {@code OperationalAuthorizationService}'ni ataylab IMPORT QILMAYDI —
+ * thin controller invariant'ini saqlaydi.</p>
+ *
+ * <p><strong>Out of scope (Phase 171/173):</strong> {@code answerCallbackQuery}
+ * outbound chaqiruvi; {@code editMessageText}; {@code parse_mode};
+ * {@code setWebhook} automation. Operator {@code setWebhook}'ni qo'lda
+ * chaqiradi (telegram-outbound-gateway-runbook.md ga qarang).</p>
  *
  * <p><strong>Logging hygiene:</strong> token qiymati (configured yoki
  * incoming) hech qachon log qilinmaydi; full update payload log'ga
@@ -80,11 +91,14 @@ public class TelegramWebhookController {
 
     private final TelegramWebhookProperties properties;
     private final TelegramCallbackQueryService callbackQueryService;
+    private final TelegramCallbackActionExecutionService executionService;
 
     public TelegramWebhookController(TelegramWebhookProperties properties,
-                                      TelegramCallbackQueryService callbackQueryService) {
+                                      TelegramCallbackQueryService callbackQueryService,
+                                      TelegramCallbackActionExecutionService executionService) {
         this.properties = properties;
         this.callbackQueryService = callbackQueryService;
+        this.executionService = executionService;
     }
 
     @PostMapping
@@ -103,7 +117,17 @@ public class TelegramWebhookController {
             return ResponseEntity.ok().build();
         }
 
-        callbackQueryService.process(update.callbackQuery());
+        // Phase 173: parser parsed workItemId + actionCode'ni qaytaradi.
+        // ACCEPTED bo'lsa, orchestrator authorized workflow transition'ni
+        // bajaradi. Boshqa parser/business/auth outcomelar uchun ham
+        // controller har doim 200 OK qaytaradi — Telegram retry loop'larining
+        // oldini olish uchun. Faqat invalid secret 401 qaytaradi.
+        TelegramCallbackParseResult parseResult =
+                callbackQueryService.process(update.callbackQuery());
+        if (parseResult.outcome() == TelegramCallbackQueryService.CallbackOutcome.ACCEPTED) {
+            executionService.execute(update.callbackQuery(),
+                    parseResult.workItemId(), parseResult.actionCode());
+        }
         return ResponseEntity.ok().build();
     }
 

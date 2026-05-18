@@ -34,6 +34,32 @@ public class WorkItemQueryService {
         return workItemRepository.findByTenantIdAndId(tenantId, workItemId);
     }
 
+    /**
+     * Phase 173 — workItemId bo'yicha faqat tenantId qaytaruvchi tor
+     * boundary-safe lookup. Telegram callback orchestration uchun
+     * mo'ljallangan: Telegram'dan kelgan callback_data faqat
+     * {@code workItemId}'ni tashiydi va tenantId backend tomonidan
+     * derive qilinadi (callback_data hech qachon authoritative tenantId
+     * tashimaydi).
+     *
+     * <p><strong>Caller kontraktini:</strong> qaytarilgan tenantId
+     * <em>o'zi avtomatik authorization bermaydi</em>. Caller (orchestrator)
+     * shu tenant ichida foydalanuvchining ACTIVE membership'ini va
+     * tegishli permission'ni ({@code WORK_ITEM_TRANSITION}) majburiy
+     * ravishda tekshirishi shart. Tenantda a'zo bo'lmagan foydalanuvchi
+     * keyingi qadamda to'siladi, shuning uchun bu lookup'ning o'zi
+     * cross-tenant ma'lumot leak qilmaydi.</p>
+     *
+     * <p>Ataylab faqat tenantId qaytariladi (to'liq WorkItem emas) —
+     * keng cross-tenant WorkItem yuklash sirti ochilmaydi.</p>
+     *
+     * @param workItemId work item identifikatori
+     * @return tenantId mavjud bo'lsa, aks holda {@link Optional#empty()}
+     */
+    public Optional<UUID> findTenantIdByWorkItemId(UUID workItemId) {
+        return workItemRepository.findTenantIdById(workItemId);
+    }
+
     public Optional<WorkItem> findByTenantAndCode(UUID tenantId, String workItemCode) {
         return workItemRepository.findByTenantIdAndWorkItemCode(tenantId, workItemCode);
     }

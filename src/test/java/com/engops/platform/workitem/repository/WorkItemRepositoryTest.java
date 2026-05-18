@@ -372,4 +372,28 @@ class WorkItemRepositoryTest {
         assertThat(result.get(0).getWorkItemCode()).isEqualTo("BUG-3");
         assertThat(result.get(1).getWorkItemCode()).isEqualTo("BUG-2");
     }
+
+    // --- Phase 173: narrow workItemId -> tenantId lookup ---
+
+    @Test
+    void findTenantIdById_qaytaradiTenantIdMavjudWorkItemUchun() {
+        WorkItem item = workItemRepository.save(new WorkItem(tenant.getId(), "BUG-100",
+                WorkItemType.BUG, workflowDef.getId(), "Phase 173 lookup", "BUGS", null));
+
+        Optional<java.util.UUID> tenantIdOpt =
+                workItemRepository.findTenantIdById(item.getId());
+
+        assertThat(tenantIdOpt).isPresent();
+        assertThat(tenantIdOpt.get()).isEqualTo(tenant.getId());
+    }
+
+    @Test
+    void findTenantIdById_emptyMavjudBoLmaganWorkItemUchun() {
+        java.util.UUID randomMissing = java.util.UUID.randomUUID();
+
+        Optional<java.util.UUID> tenantIdOpt =
+                workItemRepository.findTenantIdById(randomMissing);
+
+        assertThat(tenantIdOpt).isEmpty();
+    }
 }
