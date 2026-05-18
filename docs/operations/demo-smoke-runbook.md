@@ -450,9 +450,39 @@ The transition transaction commits with the updated `WorkItem`, the
 `TelegramCardDispatchRequested` event (this time with
 `sourceFlow = "WORKFLOW_TRANSITION"` and
 `targetStatusCode = "PROCESSING"`). The listener fires after commit and
-sends a **new** Telegram message — `editMessageText` is intentionally
-not used (Phase 161 / Phase 164: the Telegram `message_id` is not stored
-on `WorkItem`). You should see a second card appear in the chat.
+delegates to `TelegramCardRefreshDispatchService`, which since **Phase
+179** runs an **edit-first / send-as-fallback** decision tree:
+
+1. The card view is rendered once.
+2. The coordinator queries the latest `DELIVERED` `SEND_NEW_MESSAGE`
+   row in `telegram_delivery_attempt` for `(tenantId, workItemId)` as
+   the active-card seed (Phase 177), resolves its
+   `target_chat_binding_id` to a numeric `chat_id` via
+   `TenantConfigQueryService`, and calls `editMessageText` on the
+   stored `external_message_id` (Phase 177 gateway primitive).
+3. Branches:
+   - **Edit `SUCCESS`** — the existing card updates in place. **No new
+     `telegram_delivery_attempt` row is appended** (Phase 179 does not
+     persist `EDIT_MESSAGE` attempts).
+   - **Edit `REJECTED` with description containing "message is not
+     modified"** (case-insensitive) — treated as a benign no-op; no
+     new message is sent and no new attempt row is appended.
+   - **No prior delivered card** (e.g. first send for this work item,
+     or all previous sends failed permanently) — the coordinator
+     immediately falls back to the existing send retry pipeline,
+     which appends a new `SEND_NEW_MESSAGE` attempt row.
+   - **Edit `REJECTED` for any other reason / `FAILED` (`RATE_LIMIT`,
+     `NETWORK_ERROR`, `UNKNOWN_ERROR`) / null result / refresh service
+     `RuntimeException`** — fallback to the existing
+     `TelegramCardDispatchRetryingService.dispatchWithRetry(cardView)`
+     which renders, sends, retries (`RATE_LIMIT` / `NETWORK_ERROR`),
+     and persists a `SEND_NEW_MESSAGE` attempt row per attempt.
+
+In real mode with the demo's first transition you will most often see
+the original card update in place (edit `SUCCESS`); in stub mode the
+stub gateway forces an edit failure, the coordinator falls back to
+send, and the stub send also produces a `FAILED` `SEND_NEW_MESSAGE`
+attempt row.
 
 ---
 
@@ -472,18 +502,37 @@ curl -s -H "Authorization: Bearer $DEMO_JWT" \
 
 Expected (real mode, both intake and transition routing-prepared):
 
-- `latestMetrics.deliveryOutcome = "DELIVERED"`
-- `recentAttempts` contains **two** entries, ordered most-recent-first
-- both entries have `targetChatBindingId` and `targetTopicId` populated
-- both entries have `externalMessageId` populated and no
-  `failureCode` / `failureReason`
+- `latestMetrics.deliveryOutcome = "DELIVERED"`.
+- Since **Phase 179**, the post-transition dispatch is **edit-first /
+  send-as-fallback**. A successful `editMessageText` does **not**
+  append a new `telegram_delivery_attempt` row (Phase 179 intentionally
+  does not persist `EDIT_MESSAGE` attempts). The two real-mode branches
+  the operator may observe in `recentAttempts`:
+  - **Edit-success branch** — `recentAttempts` contains **one**
+    `DELIVERED` `SEND_NEW_MESSAGE` entry from the intake send. The
+    transition's edit ran in place against this row's
+    `external_message_id`; no second row appears.
+  - **Edit-fallback branch** (no prior delivered card / edit rejected
+    / edit failed) — `recentAttempts` contains **two** entries
+    ordered most-recent-first: the intake `SEND_NEW_MESSAGE` and the
+    transition fallback `SEND_NEW_MESSAGE` from the existing send
+    retry pipeline. Both entries have `targetChatBindingId` and
+    `targetTopicId` populated; both have `externalMessageId` populated
+    and no `failureCode` / `failureReason`.
 
 Expected (stub mode):
 
-- `latestMetrics.deliveryOutcome = "FAILED"`
-- `recentAttempts` contains two entries, each with
+- `latestMetrics.deliveryOutcome = "FAILED"`.
+- Phase 179 edit-first attempts run through
+  `StubTelegramOutboundGateway`, which returns a structured failure
+  for both `editMessageText` and `sendMessage`. The coordinator
+  treats the stub edit failure as fallback-required and triggers the
+  existing send retry pipeline, which also fails through the stub —
+  producing a new `FAILED` `SEND_NEW_MESSAGE` row each time.
+- `recentAttempts` therefore typically contains entries (one per
+  routing-prepared event) with
   `failureCode = "UNKNOWN_ERROR"` and
-  `failureReason = "Telegram outbound gateway hali implement qilinmagan"`
+  `failureReason = "Telegram outbound gateway hali implement qilinmagan"`.
 
 ### 9.2 Tenant summary
 
@@ -597,20 +646,29 @@ not be surprised by them during the demo.
   is a separate `telegram_delivery_attempt` row. There is still no
   async worker, no scheduler, and no outbox — the retry layer is purely
   in-thread.
-- **Inbound webhook accepts and parses `callback_query` but does not
-  yet execute workflow transitions** *(Phase 171)*. Inline buttons
-  render and Telegram delivers presses to
+- **Authorized callback workflow execution + ephemeral toast feedback +
+  edit-first card refresh are now implemented** *(Phases 173 / 175 /
+  179)*. Inline buttons posted by the bot reach
   `POST /api/telegram/webhook`; the webhook validates the
   `X-Telegram-Bot-Api-Secret-Token` header, parses
-  `<UUID>:<ACTION_CODE>` data, and acknowledges with `200 OK`. Triggering
-  the corresponding workflow transition is deliberately deferred until
-  a Telegram→app user identity mapping is in place. See
+  `<UUID>:<ACTION_CODE>` data, resolves the Telegram user to a
+  platform `AppUser`, derives the tenant server-side from the
+  `WorkItem`, enforces ACTIVE membership and the
+  `WORK_ITEM_TRANSITION` permission, executes the workflow transition
+  via `WorkflowTransitionService`, and emits a bounded
+  `answerCallbackQuery` toast back to the operator (Phase 175). After
+  the workflow tx commits, the AFTER_COMMIT projection pipeline runs
+  the Phase 179 edit-first / send-as-fallback path. See
   [Telegram Outbound Gateway Runbook §12](telegram-outbound-gateway-runbook.md#12-inbound-webhook-phase-171)
-  for the inbound contract.
+  for the full inbound contract.
 - **No `parse_mode` / Markdown / HTML rendering.** All outbound text is
   plain text.
-- **No `editMessageText`.** Each transition sends a fresh card; old
-  cards are not updated.
+- **Telegram card refresh is edit-first / send-as-fallback** *(Phase
+  179)*. A workflow transition with a prior delivered card updates
+  that card in place via `editMessageText`; otherwise it falls back to
+  the existing send retry pipeline and appends a new card. Successful
+  edits intentionally do not persist `EDIT_MESSAGE` attempt rows in
+  this phase.
 - **No `@Async` worker, scheduler, or outbox.** Dispatch is synchronous
   AFTER_COMMIT in the committing thread (Phase 164).
 - **No web admin UI.** All configuration is via `curl` against the admin
@@ -618,6 +676,20 @@ not be surprised by them during the demo.
 - **No automatic chat / topic / routing seed.** Bootstrap intentionally
   does not provision Telegram chat ids — production safety requires
   these to come from the operator's environment, not from migrations.
+
+Still out of scope (deliberate, deferred to later bounded phases):
+
+- **No `EDIT_MESSAGE` attempt persistence.** Successful edits leave no
+  row in `telegram_delivery_attempt`; coordinator bounded logs are the
+  observability signal for now.
+- **No `telegram_active_card` projection table.** Active-card identity
+  is currently derived from the latest DELIVERED `SEND_NEW_MESSAGE`
+  attempt row (Phase 177 read model).
+- **No stale-card disable / cleanup.** Old cards remain clickable;
+  server-side authorization and the strict state-machine continue to
+  guarantee correctness regardless of which card was clicked.
+- **No `editMessageReplyMarkup` keyboard-only edits.**
+- **No generic workflow engine / BPM DSL.**
 
 ---
 
@@ -643,11 +715,26 @@ A complete demo run should tick every box below.
       (stub mode).
 - [ ] Transition `POST /api/work-items/{id}/transitions` returns `200`
       with `currentStatusCode: "PROCESSING"`.
-- [ ] **Card #2** appears as a *new* message (not an edit of card #1)
-      in the same chat / topic (real mode), or a second `FAILED` attempt
-      row exists (stub mode).
-- [ ] `GET /api/admin/delivery-observability/details?...` returns two
-      attempts in `recentAttempts`.
+- [ ] **Card refresh** observed per the Phase 179 edit-first /
+      send-as-fallback decision tree — exactly one of the following
+      branches is accepted:
+      - *Real mode, prior delivered card + edit success:* Card #1
+        updates in place; **no** new Telegram message is appended;
+        `recentAttempts` still shows only the intake
+        `SEND_NEW_MESSAGE` row.
+      - *Real mode, no prior card / edit fallback:* Card #2 appears
+        as a *new* message in the same chat / topic; the existing
+        send retry pipeline appends a `SEND_NEW_MESSAGE` attempt row.
+      - *Stub mode:* the stub edit fails, the coordinator falls back
+        to send, the stub send also fails, and a `FAILED`
+        `SEND_NEW_MESSAGE` attempt row is appended for the transition.
+- [ ] For callback-triggered transitions (Phase 173/175), an
+      `answerCallbackQuery` toast appears for the operator who clicked
+      the inline button.
+- [ ] `GET /api/admin/delivery-observability/details?...` returns the
+      expected attempt count for the branch above — **one** row in the
+      edit-success branch, **two** rows in the edit-fallback branch
+      (real mode), and a row per failed dispatch in stub mode.
 - [ ] Application logs contain no token substrings — token sanitization
       (Phase 158) is intact.
 

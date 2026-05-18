@@ -205,10 +205,37 @@ If the surrounding transaction rolls back, no event is delivered and the
 listener never runs — there is no Telegram message and no
 `telegram_delivery_attempt` row. This is by design.
 
-**Append-only.** Each transition produces a *new* `sendMessage` attempt;
-`editMessageText` is **not** used because the Telegram `message_id` is
-not stored on `WorkItem`. Existing Telegram messages are not edited or
-deleted by the platform.
+**Edit-first since Phase 179.** Transition-triggered card dispatch is
+**edit-first / send-as-fallback**. The AFTER_COMMIT listener delegates
+to `TelegramCardRefreshDispatchService`, which:
+
+1. Renders the card view once via `TelegramMessageRenderer`.
+2. Calls `TelegramCardRefreshService.refresh(tenantId, workItemId,
+   text, keyboard)`, which uses the latest `DELIVERED`
+   `SEND_NEW_MESSAGE` attempt row (Phase 177 active-card seed) to
+   identify the prior card's `chat_binding_id` + `external_message_id`,
+   resolves the numeric `chat_id` via `TenantConfigQueryService`, and
+   issues `editMessageText` through the existing gateway.
+3. If edit returns `SUCCESS` — or `REJECTED` with description
+   containing `"message is not modified"` (case-insensitive) — the
+   coordinator stops. **No new `telegram_delivery_attempt` row is
+   appended**; Phase 179 intentionally does not persist
+   `EDIT_MESSAGE` attempts.
+4. For any other `REJECTED`, any `FAILED`
+   (`RATE_LIMIT` / `NETWORK_ERROR` / `UNKNOWN_ERROR`), a `null`
+   result, or a refresh-service `RuntimeException`, the coordinator
+   falls back to the existing `TelegramCardDispatchRetryingService`
+   send pipeline, which renders, sends, retries on
+   `RATE_LIMIT` / `NETWORK_ERROR`, and appends `SEND_NEW_MESSAGE`
+   attempt rows exactly as before Phase 179.
+
+Successful edits therefore leave no new attempt row but update the
+operator-visible card in place. Failed edits self-heal through the
+fallback send and look identical to the pre-Phase-179 behavior in
+`telegram_delivery_attempt`. The Phase 177 query
+`findLatestDeliveredSendMessage` continues to anchor on
+`SEND_NEW_MESSAGE` rows only, so the active-card seed stays stable
+across N successful edits.
 
 ---
 
@@ -274,8 +301,33 @@ without opening the database.
    and confirm `latestMetrics.deliveryOutcome = DELIVERED` and at least
    one entry under `recentAttempts`.
 4. Transition the work item via the workflow API.
-5. Confirm a *new* card appears in Telegram (not an edit of the previous
-   one) and a *new* attempt row appears in the details view.
+5. Verify exactly one of the following Phase 179 edit-first /
+   send-as-fallback branches:
+   - **(a) Edit-success branch (real mode, prior delivered card
+     present).** The existing Telegram card updates in place — the
+     same message in the chat shows the new status and the new inline
+     keyboard. **No** new `telegram_delivery_attempt` row is appended
+     (Phase 179 intentionally does not persist `EDIT_MESSAGE`
+     attempts), so the details endpoint's `recentAttempts` count is
+     unchanged and `latestMetrics` still points at the most recent
+     `SEND_NEW_MESSAGE` row from the intake step. The successful edit
+     is observable through the operator-visible card update and via
+     the bounded `TelegramCardRefreshDispatchService` coordinator log
+     (`outcomeCategory=EDITED` or `outcomeCategory=NOT_MODIFIED`), not
+     through a new attempt row.
+   - **(b) Edit-fallback / no-prior-card branch (real mode).** Either
+     no prior delivered card exists (e.g. the intake send failed
+     permanently) or the edit attempt rejected / failed for any
+     reason. The coordinator falls back to the existing send retry
+     pipeline; a *new* card appears in Telegram and a new
+     `SEND_NEW_MESSAGE` attempt row appears under `recentAttempts`
+     with `delivery_outcome = DELIVERED` and `external_message_id`
+     populated.
+   - **(c) Stub mode.** Both the stub edit and the stub fallback send
+     return structured failures. One or more new
+     `SEND_NEW_MESSAGE` rows appear under `recentAttempts` with
+     `failure_code = UNKNOWN_ERROR` and the stub failure_reason. No
+     real Telegram traffic is generated.
 
 ---
 
@@ -322,23 +374,38 @@ recognized gaps and are scheduled for later phases.
   `telegram_delivery_attempt` row, so the full retry timeline is visible
   via the existing observability endpoints. No async worker pool, no
   scheduler, no outbox.
-- **Inbound webhook accepts and parses `callback_query` but does not yet
-  trigger workflow transitions** *(Phase 171)*. The platform exposes
-  `POST /api/telegram/webhook` (see [Section 12](#12-inbound-webhook-phase-171)).
-  Inline-button presses are validated, parsed, and acknowledged with
-  `200 OK`; bounded log entries record `outcome`, `callbackQueryId`,
-  `telegramUserId`, `chatId`, `messageId`, `dataLength`, and (on
-  ACCEPTED) `workItemId` and `actionCode`. Workflow execution from
-  button presses is intentionally deferred: it requires a Telegram→app
-  user identity mapping (so that the resolved actor can pass the
-  existing `WORK_ITEM_TRANSITION` permission check), and that mapping
-  is its own bounded phase. Today, callback acknowledgement is the
-  end of the chain.
+- **Inbound webhook + authorized callback workflow execution + bounded
+  toast feedback are wired** *(Phases 171 / 173 / 175)*. The platform
+  exposes `POST /api/telegram/webhook` (see
+  [Section 12](#12-inbound-webhook-phase-171)). Inline-button presses
+  are validated, parsed, and acknowledged with `200 OK`; bounded log
+  entries record `outcome`, `callbackQueryId`, `telegramUserId`,
+  `chatId`, `messageId`, `dataLength`, and (on ACCEPTED) `workItemId`
+  and `actionCode`. Since **Phase 173**, an ACCEPTED parser outcome
+  resolves the Telegram user to a platform `AppUser`, derives the
+  tenant server-side from the `WorkItem` (Phase 173 read), enforces
+  ACTIVE membership and the `WORK_ITEM_TRANSITION` permission, and
+  invokes `WorkflowTransitionService.transition(...)` with
+  `actionSource = "TELEGRAM_CALLBACK"`. Since **Phase 175**, every
+  terminal `ExecutionOutcome` is followed by a bounded
+  `answerCallbackQuery` toast (best-effort, fail-soft) — the
+  acknowledgement is **additional UX feedback**, not the end of the
+  business chain. Webhook HTTP behavior is preserved: only invalid
+  secret returns `401`; all other parser / business / auth / execution
+  / acknowledgement outcomes return `200 OK` so Telegram does not
+  retry-loop.
 - **No `parse_mode` / Markdown / HTML rendering.** All outbound text is
   plain text. Special characters are sent as-is.
-- **No `editMessageText`.** Each transition sends a *new* message
-  because the Telegram `message_id` is not stored on `WorkItem`. Old
-  cards are not updated, deleted, or superseded by the bot.
+- **Edit-first / send-as-fallback card refresh** *(Phase 179)*.
+  Transition-triggered card dispatch first attempts
+  `editMessageText` on the latest `DELIVERED` `SEND_NEW_MESSAGE` row
+  (Phase 177 active-card seed) and only falls back to the existing
+  send retry pipeline when no prior card exists or the edit rejects /
+  fails. Successful edits update the operator-visible card in place
+  and intentionally do **not** persist `EDIT_MESSAGE` attempts —
+  observability for edits is provided by bounded coordinator logs.
+  See [Section 6.2 — Workflow transition flow](#62-workflow-transition-flow-phase-164-after_commit-dispatch)
+  for the full decision tree.
 - **Synchronous AFTER_COMMIT side effect** *(Phase 164 + Phase 168)*.
   Intake and workflow services publish a `TelegramCardDispatchRequested`
   application event inside their `@Transactional` scope; a
@@ -476,10 +543,24 @@ When `failure_code = UNKNOWN_ERROR` and
 - [ ] Submit a test intake for the configured tenant.
 - [ ] Confirm a card appears in the target chat / topic.
 - [ ] Transition the test work item.
-- [ ] Confirm a new card (not an edit) appears.
+- [ ] Confirm one of the Phase 179 edit-first / send-as-fallback
+      branches:
+      - **(a) Edit-success branch:** the existing card updates in
+        place. No new Telegram message is appended.
+      - **(b) Edit-fallback branch:** a new card appears via the
+        existing send retry pipeline (no prior delivered card, or
+        edit rejected / failed).
 - [ ] Open
       `GET /api/admin/delivery-observability/details?tenantId=...&workItemCode=...`
-      and confirm `latestMetrics.deliveryOutcome = DELIVERED`.
+      and confirm `latestMetrics.deliveryOutcome = DELIVERED`, and
+      that `recentAttempts` matches the observed branch:
+      - **(a) Edit-success:** `recentAttempts` count is unchanged
+        from after the intake step — successful edits are not
+        persisted as `EDIT_MESSAGE` rows in this phase.
+      - **(b) Edit-fallback:** `recentAttempts` contains an
+        additional `SEND_NEW_MESSAGE` row for the transition with
+        `delivery_outcome = DELIVERED` and `external_message_id`
+        populated.
 - [ ] Tail the application log for the test window and confirm no token
       substring appears.
 
@@ -571,11 +652,21 @@ an operator-driven, one-shot deployment step.
    Returning a 4xx for permanent client errors (e.g. malformed data)
    would cause Telegram to retry indefinitely. Returning 5xx is
    reserved for unexpected server errors.
-6. **Workflow transition is NOT executed** in Phase 171. The callback
-   chain ends with the outcome log entry. Wiring callback → workflow
-   transition requires a Telegram→app user mapping (so the resolved
-   actor can pass the existing `WORK_ITEM_TRANSITION` permission check).
-   That mapping is its own bounded phase.
+6. **Workflow transition execution is wired since Phase 173.** For an
+   ACCEPTED parser outcome, the platform resolves the Telegram user to
+   a platform `AppUser`, derives the tenant server-side from the
+   `WorkItem`, enforces ACTIVE membership and the
+   `WORK_ITEM_TRANSITION` permission, and invokes
+   `WorkflowTransitionService.transition(...)` with
+   `actionSource = "TELEGRAM_CALLBACK"`. Phase 175 follows up with a
+   bounded `answerCallbackQuery` toast per terminal
+   `ExecutionOutcome`. The webhook controller still always returns
+   `200 OK` for any parser / business / auth / execution /
+   acknowledgement outcome — only invalid secret returns `401` — so
+   Telegram does not retry-loop on authorization or business failures.
+   After the workflow tx commits, the AFTER_COMMIT projection pipeline
+   runs the Phase 179 edit-first / send-as-fallback card refresh (see
+   [Section 6.2](#62-workflow-transition-flow-phase-164-after_commit-dispatch)).
 
 ### 12.5 HTTP status reference
 
@@ -604,14 +695,52 @@ Per-request log fields (INFO level):
 Never logged: configured token, incoming header value, full update
 payload, exception messages from auth failures.
 
-### 12.7 Out of scope (Phase 171)
+### 12.7 Scope reconciliation
 
-- `answerCallbackQuery` outbound call (Telegram clients show a transient
-  spinner if you don't answer; acceptable for MVP).
-- `editMessageText` updates to existing cards after a button press.
-- `setWebhook` automation in the application (operator runs the curl
-  command above).
-- Workflow transition execution from button presses (requires
-  Telegram→app user identity mapping — separate phase).
-- Telegram→app user identity mapping itself.
-- Audit persistence of inbound callbacks.
+The original Phase 171 webhook skeleton listed several items as "out of
+scope". Most of them have since been implemented in later bounded
+phases; the rest are still deliberately deferred.
+
+**Resolved in later phases:**
+
+- *Authorized callback workflow execution* — implemented in **Phase
+  173** via `intake.TelegramCallbackActionExecutionService`. Telegram
+  user → platform `AppUser` resolution, server-side tenant derivation,
+  ACTIVE membership check, `WORK_ITEM_TRANSITION` enforcement, and
+  the `WorkflowTransitionService.transition(...)` call are all wired.
+- *Telegram → app user identity mapping* — implemented in **Phase
+  173**. `IdentityQueryService.findUserByTelegramUserId(Long)` is the
+  authoritative read; `AppUser.telegram_user_id` is unique and
+  non-null.
+- *`answerCallbackQuery` outbound call* — implemented in **Phase 175**
+  via `TelegramCallbackAcknowledgementService`. Every terminal
+  `ExecutionOutcome` emits a bounded, fail-soft toast. The gateway
+  interface gained one new method
+  (`TelegramOutboundGateway.acknowledgeCallback(...)`).
+- *`editMessageText` updates to existing cards* — gateway primitive
+  added in **Phase 177** (`TelegramOutboundGateway.editMessageText(...)`
+  + `TelegramCardRefreshService`), wired into the AFTER_COMMIT
+  dispatch in **Phase 179** via `TelegramCardRefreshDispatchService`
+  with edit-first / send-as-fallback semantics.
+
+**Still out of scope (deliberate, deferred to later bounded phases):**
+
+- `setWebhook` automation in the application (operator runs the
+  one-off `curl` command above).
+- Audit persistence of inbound callbacks beyond the existing
+  `STATUS_TRANSITION` audit emitted by `WorkflowTransitionService`
+  for successful transitions.
+- `EDIT_MESSAGE` attempt persistence in `telegram_delivery_attempt`
+  (successful edits leave no row; coordinator bounded logs are the
+  observability signal). Adding persistence would change existing
+  `findLatestAttempt` semantics and is its own bounded phase.
+- `telegram_active_card` projection table. The Phase 177 active-card
+  seed (`findLatestDeliveredSendMessage`) remains sufficient for the
+  MVP single-routing-target case.
+- Stale-card disable / delete / cleanup — old cards stay clickable
+  and remain harmless because authorization is enforced server-side
+  regardless of which card was clicked.
+- `editMessageReplyMarkup` keyboard-only edits.
+- `parse_mode` / Markdown / HTML rendering.
+- Async worker pool / scheduler / outbox / idempotency table.
+- Generic BPM workflow engine.
