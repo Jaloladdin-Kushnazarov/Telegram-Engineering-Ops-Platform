@@ -4,6 +4,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -37,6 +38,18 @@ public class JpaTelegramDeliveryAttemptHistoryReadAccess implements TelegramDeli
                 .stream()
                 .map(this::toAttempt)
                 .toList();
+    }
+
+    @Override
+    public Optional<TelegramDeliveryAttempt> findLatestDeliveredSendMessage(
+            UUID tenantId, UUID workItemId) {
+        return repository
+                .findFirstByTenantIdAndWorkItemIdAndOperationAndDeliveryOutcomeOrderByAttemptedAtDescIdDesc(
+                        tenantId,
+                        workItemId,
+                        TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                        TelegramDeliveryResult.DeliveryOutcome.DELIVERED)
+                .map(this::toAttempt);
     }
 
     private TelegramDeliveryAttempt toAttempt(TelegramDeliveryAttemptEntity entity) {

@@ -17,6 +17,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -218,5 +219,140 @@ class JpaTelegramDeliveryAttemptHistoryReadAccessTest {
                 chatBindingId, 42L,
                 outcome, externalMessageId, failureCode, failureReason,
                 attemptedAt));
+    }
+
+    private void saveAttemptWithOperation(Tenant tenant, WorkItem workItem, UUID chatBindingId,
+                                            TelegramDeliveryOperation operation,
+                                            TelegramDeliveryResult.DeliveryOutcome outcome,
+                                            Long externalMessageId, Instant attemptedAt) {
+        attemptRepository.save(new TelegramDeliveryAttemptEntity(
+                UUID.randomUUID(), tenant.getId(), workItem.getId(),
+                operation,
+                chatBindingId, 42L,
+                outcome, externalMessageId, null, null,
+                attemptedAt));
+    }
+
+    // ==========================================================
+    // Phase 177 — findLatestDeliveredSendMessage
+    // ==========================================================
+
+    @Test
+    void latestDeliveredSendMessage_returnsNewestDeliveredSend() {
+        UUID chatBindingId = UUID.randomUUID();
+        Instant t1 = Instant.parse("2026-03-18T08:00:00Z");
+        Instant t2 = Instant.parse("2026-03-18T09:00:00Z");
+        Instant t3 = Instant.parse("2026-03-18T10:00:00Z");
+
+        saveAttempt(tenant, workItem, chatBindingId,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED, 11001L, null, null, t1);
+        saveAttempt(tenant, workItem, chatBindingId,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED, 11002L, null, null, t2);
+        saveAttempt(tenant, workItem, chatBindingId,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED, 11003L, null, null, t3);
+
+        Optional<TelegramDeliveryAttempt> result = historyReadAccess
+                .findLatestDeliveredSendMessage(tenant.getId(), workItem.getId());
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getAttemptedAt()).isEqualTo(t3);
+        assertThat(result.get().getExternalMessageId()).isEqualTo(11003L);
+    }
+
+    @Test
+    void latestDeliveredSendMessage_skipsNewerFailed() {
+        UUID chatBindingId = UUID.randomUUID();
+        Instant t1 = Instant.parse("2026-03-18T08:00:00Z");
+        Instant t2 = Instant.parse("2026-03-18T09:00:00Z");
+
+        saveAttempt(tenant, workItem, chatBindingId,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED, 22001L, null, null, t1);
+        saveAttempt(tenant, workItem, chatBindingId,
+                TelegramDeliveryResult.DeliveryOutcome.FAILED, null, "ERR", "Newer failure", t2);
+
+        Optional<TelegramDeliveryAttempt> result = historyReadAccess
+                .findLatestDeliveredSendMessage(tenant.getId(), workItem.getId());
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getAttemptedAt()).isEqualTo(t1);
+        assertThat(result.get().getExternalMessageId()).isEqualTo(22001L);
+    }
+
+    @Test
+    void latestDeliveredSendMessage_skipsNewerRejected() {
+        UUID chatBindingId = UUID.randomUUID();
+        Instant t1 = Instant.parse("2026-03-18T08:00:00Z");
+        Instant t2 = Instant.parse("2026-03-18T09:00:00Z");
+
+        saveAttempt(tenant, workItem, chatBindingId,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED, 33001L, null, null, t1);
+        saveAttempt(tenant, workItem, chatBindingId,
+                TelegramDeliveryResult.DeliveryOutcome.REJECTED, null, "REJ", "Newer reject", t2);
+
+        Optional<TelegramDeliveryAttempt> result = historyReadAccess
+                .findLatestDeliveredSendMessage(tenant.getId(), workItem.getId());
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getAttemptedAt()).isEqualTo(t1);
+        assertThat(result.get().getExternalMessageId()).isEqualTo(33001L);
+    }
+
+    @Test
+    void latestDeliveredSendMessage_skipsEditMessageRows() {
+        UUID chatBindingId = UUID.randomUUID();
+        Instant t1 = Instant.parse("2026-03-18T08:00:00Z");
+        Instant t2 = Instant.parse("2026-03-18T09:00:00Z");
+
+        saveAttemptWithOperation(tenant, workItem, chatBindingId,
+                TelegramDeliveryOperation.SEND_NEW_MESSAGE,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED, 44001L, t1);
+        // Newer EDIT_MESSAGE row — should be skipped.
+        saveAttemptWithOperation(tenant, workItem, chatBindingId,
+                TelegramDeliveryOperation.EDIT_MESSAGE,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED, 44099L, t2);
+
+        Optional<TelegramDeliveryAttempt> result = historyReadAccess
+                .findLatestDeliveredSendMessage(tenant.getId(), workItem.getId());
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getOperation())
+                .isEqualTo(TelegramDeliveryOperation.SEND_NEW_MESSAGE);
+        assertThat(result.get().getExternalMessageId()).isEqualTo(44001L);
+    }
+
+    @Test
+    void latestDeliveredSendMessage_isTenantScoped() {
+        Tenant otherTenant = tenantRepository.save(new Tenant("Iso Co", "iso-co"));
+        UUID chatBindingId = UUID.randomUUID();
+
+        saveAttempt(tenant, workItem, chatBindingId,
+                TelegramDeliveryResult.DeliveryOutcome.DELIVERED, 55001L, null, null,
+                Instant.parse("2026-03-18T10:00:00Z"));
+
+        Optional<TelegramDeliveryAttempt> result = historyReadAccess
+                .findLatestDeliveredSendMessage(otherTenant.getId(), workItem.getId());
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void latestDeliveredSendMessage_emptyWhenNoneDelivered() {
+        UUID chatBindingId = UUID.randomUUID();
+        saveAttempt(tenant, workItem, chatBindingId,
+                TelegramDeliveryResult.DeliveryOutcome.FAILED, null, "ERR", "only fail",
+                Instant.parse("2026-03-18T10:00:00Z"));
+
+        Optional<TelegramDeliveryAttempt> result = historyReadAccess
+                .findLatestDeliveredSendMessage(tenant.getId(), workItem.getId());
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void latestDeliveredSendMessage_emptyWhenNoAttempts() {
+        Optional<TelegramDeliveryAttempt> result = historyReadAccess
+                .findLatestDeliveredSendMessage(tenant.getId(), workItem.getId());
+
+        assertThat(result).isEmpty();
     }
 }

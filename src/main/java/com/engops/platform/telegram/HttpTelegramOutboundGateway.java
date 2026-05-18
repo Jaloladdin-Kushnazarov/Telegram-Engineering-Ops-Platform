@@ -257,6 +257,160 @@ public class HttpTelegramOutboundGateway implements TelegramOutboundGateway {
         }
     }
 
+    /**
+     * Phase 177 — Telegram {@code editMessageText}'ni POST qiladi.
+     *
+     * <p>Payload:</p>
+     * <pre>
+     * {
+     *   "chat_id": &lt;long&gt;,
+     *   "message_id": &lt;long&gt;,
+     *   "text": "...",
+     *   "reply_markup": {  // faqat keyboard non-empty bo'lganda
+     *     "inline_keyboard": [[{"text":"...","callback_data":"..."}]]
+     *   }
+     * }
+     * </pre>
+     *
+     * <p><strong>Ataylab kiritilmaydi:</strong> {@code parse_mode},
+     * {@code disable_web_page_preview}, {@code show_alert},
+     * {@code callback_query_id}, {@code message_thread_id}. sendMessage
+     * pattern bilan sinxron — plain text outbound.</p>
+     *
+     * <p>Error mapping {@link #execute(TelegramSendMessageRequest)} bilan
+     * to'liq mos: 200+{@code ok=true} → SUCCESS;
+     * 200+{@code ok=false} (jumladan "message is not modified") / 4xx (429
+     * bundan tashqari) → REJECTED({@link TelegramGatewayError#INVALID_REQUEST});
+     * 429 → FAILED({@link TelegramGatewayError#RATE_LIMIT});
+     * 5xx / network → FAILED({@link TelegramGatewayError#NETWORK_ERROR});
+     * kutilmagan parse/runtime → FAILED({@link TelegramGatewayError#UNKNOWN_ERROR}).
+     * Phase 177 retry qilmaydi.</p>
+     *
+     * <p>Token URL ichida — log qilinmaydi. Exception message ichida token
+     * sub-string'i bo'lsa {@link #sanitize(String)} bilan {@code ***}'ga
+     * almashtiriladi.</p>
+     */
+    @Override
+    public TelegramEditMessageTextResult editMessageText(TelegramEditMessageTextRequest request) {
+        if (request == null) {
+            return TelegramEditMessageTextResult.failed(
+                    TelegramGatewayError.UNKNOWN_ERROR,
+                    "TelegramEditMessageTextRequest null");
+        }
+
+        Map<String, Object> payload = buildEditMessageTextPayload(request);
+        String url = buildEditMessageTextUrl();
+
+        try {
+            String body = restClient.post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(String.class);
+            return mapEditMessageTextResponse(body, request.messageId());
+        } catch (HttpClientErrorException ex) {
+            return mapEditMessageTextClientError(ex);
+        } catch (HttpServerErrorException ex) {
+            return TelegramEditMessageTextResult.failed(TelegramGatewayError.NETWORK_ERROR,
+                    "Telegram server error: HTTP " + ex.getStatusCode().value());
+        } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            if (status == 429) {
+                return TelegramEditMessageTextResult.failed(TelegramGatewayError.RATE_LIMIT,
+                        "Telegram rate limit: HTTP 429");
+            }
+            if (status >= 500) {
+                return TelegramEditMessageTextResult.failed(TelegramGatewayError.NETWORK_ERROR,
+                        "Telegram server error: HTTP " + status);
+            }
+            return TelegramEditMessageTextResult.rejected(TelegramGatewayError.INVALID_REQUEST,
+                    "Telegram client error: HTTP " + status);
+        } catch (ResourceAccessException ex) {
+            return TelegramEditMessageTextResult.failed(TelegramGatewayError.NETWORK_ERROR,
+                    "Telegram network error: " + sanitize(ex.getMessage()));
+        } catch (RuntimeException ex) {
+            log.warn("Telegram editMessageText unexpected error exceptionType={}",
+                    ex.getClass().getSimpleName());
+            return TelegramEditMessageTextResult.failed(TelegramGatewayError.UNKNOWN_ERROR,
+                    "Telegram unexpected: " + sanitize(ex.getMessage()));
+        }
+    }
+
+    private Map<String, Object> buildEditMessageTextPayload(TelegramEditMessageTextRequest request) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("chat_id", request.chatId());
+        payload.put("message_id", request.messageId());
+        payload.put("text", request.text());
+        if (request.hasKeyboard()) {
+            List<List<Map<String, String>>> inlineKeyboard = new ArrayList<>();
+            for (TelegramInlineKeyboardRow row : request.keyboard()) {
+                List<Map<String, String>> rowList = new ArrayList<>();
+                for (TelegramInlineKeyboardButton btn : row.getButtons()) {
+                    Map<String, String> btnMap = new LinkedHashMap<>();
+                    btnMap.put("text", btn.getText());
+                    btnMap.put("callback_data", btn.getCallbackData());
+                    rowList.add(btnMap);
+                }
+                inlineKeyboard.add(rowList);
+            }
+            Map<String, Object> replyMarkup = new LinkedHashMap<>();
+            replyMarkup.put("inline_keyboard", inlineKeyboard);
+            payload.put("reply_markup", replyMarkup);
+        }
+        return payload;
+    }
+
+    private String buildEditMessageTextUrl() {
+        String base = properties.getApiBaseUrl();
+        if (base == null) {
+            base = "";
+        }
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + "/bot" + properties.getBotToken() + "/editMessageText";
+    }
+
+    private TelegramEditMessageTextResult mapEditMessageTextResponse(String body, Long requestedMessageId) {
+        if (body == null || body.isBlank()) {
+            return TelegramEditMessageTextResult.failed(TelegramGatewayError.UNKNOWN_ERROR,
+                    "Telegram empty response body");
+        }
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            boolean ok = root.path("ok").asBoolean(false);
+            if (ok) {
+                Long messageId = requestedMessageId;
+                JsonNode result = root.path("result");
+                if (result.isObject() && result.has("message_id")) {
+                    messageId = result.path("message_id").asLong(requestedMessageId);
+                }
+                return TelegramEditMessageTextResult.success(messageId);
+            }
+            int errorCode = root.path("error_code").asInt(0);
+            String description = root.path("description").asText("rejected");
+            return TelegramEditMessageTextResult.rejected(TelegramGatewayError.INVALID_REQUEST,
+                    "Telegram error_code=" + errorCode + " description=" + sanitize(description));
+        } catch (RuntimeException ex) {
+            return TelegramEditMessageTextResult.failed(TelegramGatewayError.UNKNOWN_ERROR,
+                    "Telegram response handling failed: " + sanitize(ex.getMessage()));
+        } catch (Exception ex) {
+            return TelegramEditMessageTextResult.failed(TelegramGatewayError.UNKNOWN_ERROR,
+                    "Telegram response parse failed: " + sanitize(ex.getMessage()));
+        }
+    }
+
+    private TelegramEditMessageTextResult mapEditMessageTextClientError(HttpClientErrorException ex) {
+        int status = ex.getStatusCode().value();
+        if (status == 429) {
+            return TelegramEditMessageTextResult.failed(TelegramGatewayError.RATE_LIMIT,
+                    "Telegram rate limit: HTTP 429");
+        }
+        return TelegramEditMessageTextResult.rejected(TelegramGatewayError.INVALID_REQUEST,
+                "Telegram client error: HTTP " + status);
+    }
+
     private String buildAnswerCallbackQueryUrl() {
         String base = properties.getApiBaseUrl();
         if (base == null) {

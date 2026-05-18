@@ -65,6 +65,22 @@ class StubTelegramOutboundGatewayTest {
     }
 
     @Test
+    void editMessageTextReturnsControlledFailure() {
+        TelegramEditMessageTextRequest request = new TelegramEditMessageTextRequest(
+                -1001234567890L, 555L, "Bug | BUG-1\nStatus: FIXED", List.of());
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.UNKNOWN_ERROR);
+        assertThat(result.getErrorMessage()).isEqualTo(
+                "Telegram outbound gateway hali implement qilinmagan");
+        assertThat(result.getTelegramMessageId()).isNull();
+    }
+
+    @Test
     void acknowledgeCallbackReturnsControlledFailure() {
         TelegramAcknowledgeCallbackRequest request =
                 new TelegramAcknowledgeCallbackRequest("cb-id-1", "Action applied.");

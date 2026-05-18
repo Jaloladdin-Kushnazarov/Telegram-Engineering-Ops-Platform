@@ -474,6 +474,244 @@ class HttpTelegramOutboundGatewayTest {
         server.verify();
     }
 
+    // ==========================================================
+    // Phase 177 — editMessageText
+    // ==========================================================
+
+    private static final String EXPECTED_EDIT_URL =
+            BASE_URL + "/bot" + TEST_TOKEN + "/editMessageText";
+
+    private TelegramEditMessageTextRequest sampleEditRequest(boolean withKeyboard) {
+        List<TelegramInlineKeyboardRow> keyboard = withKeyboard
+                ? List.of(new TelegramInlineKeyboardRow(List.of(
+                        new TelegramInlineKeyboardButton("Mark Fixed", "uuid:MARK_FIXED"))))
+                : List.of();
+        return new TelegramEditMessageTextRequest(
+                CHAT_ID, 555L, "Bug | BUG-1\nStatus: FIXED", keyboard);
+    }
+
+    @Test
+    void editMessageText_okTrueResponseMapsToSuccess() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andExpect(method(POST))
+                .andRespond(withSuccess(
+                        "{\"ok\":true,\"result\":{\"message_id\":555}}",
+                        MediaType.APPLICATION_JSON));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.SUCCESS);
+        assertThat(result.getTelegramMessageId()).isEqualTo(555L);
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_okFalseResponseMapsToRejected() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andRespond(withSuccess(
+                        "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: message can't be edited\"}",
+                        MediaType.APPLICATION_JSON));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.REJECTED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.INVALID_REQUEST);
+        assertThat(result.getErrorMessage()).contains("error_code=400");
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_messageNotModifiedMapsToRejected() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andRespond(withSuccess(
+                        "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: message is not modified\"}",
+                        MediaType.APPLICATION_JSON));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.REJECTED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.INVALID_REQUEST);
+        assertThat(result.getErrorMessage()).contains("message is not modified");
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_http400MapsToRejected() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"ok\":false,\"error_code\":400}"));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.REJECTED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.INVALID_REQUEST);
+        assertThat(result.getErrorMessage()).contains("HTTP 400");
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_http403MapsToRejected() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.REJECTED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.INVALID_REQUEST);
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_http404MapsToRejected() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.REJECTED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.INVALID_REQUEST);
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_http429MapsToFailedRateLimit() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.RATE_LIMIT);
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_http500MapsToFailedNetworkError() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.NETWORK_ERROR);
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_networkExceptionMapsToFailedNetworkError() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andRespond(withException(new java.net.SocketTimeoutException("read timed out")));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.NETWORK_ERROR);
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_malformedResponseMapsToFailedUnknown() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andRespond(withSuccess("not-json-at-all", MediaType.APPLICATION_JSON));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.UNKNOWN_ERROR);
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_nullRequestMapsToFailedUnknown() {
+        TelegramEditMessageTextResult result = gateway.editMessageText(null);
+
+        assertThat(result.getResultType())
+                .isEqualTo(TelegramEditMessageTextResult.ResultType.FAILED);
+        assertThat(result.getError()).isEqualTo(TelegramGatewayError.UNKNOWN_ERROR);
+        // HTTP chaqiruv bo'lmasligi shart — server'da hech qanday expectation yo'q.
+    }
+
+    @Test
+    void editMessageText_bodyContainsChatIdMessageIdTextAndOmitsParseMode() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andExpect(method(POST))
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.chat_id").value(CHAT_ID))
+                .andExpect(jsonPath("$.message_id").value(555))
+                .andExpect(jsonPath("$.text").value("Bug | BUG-1\nStatus: FIXED"))
+                .andExpect(jsonPath("$.parse_mode").doesNotExist())
+                .andExpect(jsonPath("$.show_alert").doesNotExist())
+                .andExpect(jsonPath("$.callback_query_id").doesNotExist())
+                .andExpect(jsonPath("$.message_thread_id").doesNotExist())
+                .andRespond(withSuccess(
+                        "{\"ok\":true,\"result\":{\"message_id\":555}}",
+                        MediaType.APPLICATION_JSON));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.isSuccess()).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_bodyContainsReplyMarkupWhenKeyboardPresent() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andExpect(jsonPath("$.reply_markup.inline_keyboard").exists())
+                .andExpect(jsonPath("$.reply_markup.inline_keyboard[0][0].text").value("Mark Fixed"))
+                .andExpect(jsonPath("$.reply_markup.inline_keyboard[0][0].callback_data")
+                        .value("uuid:MARK_FIXED"))
+                .andExpect(jsonPath("$.parse_mode").doesNotExist())
+                .andRespond(withSuccess(
+                        "{\"ok\":true,\"result\":{\"message_id\":555}}",
+                        MediaType.APPLICATION_JSON));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(true));
+
+        assertThat(result.isSuccess()).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_bodyOmitsReplyMarkupWhenKeyboardEmpty() {
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andExpect(jsonPath("$.reply_markup").doesNotExist())
+                .andExpect(jsonPath("$.parse_mode").doesNotExist())
+                .andRespond(withSuccess(
+                        "{\"ok\":true,\"result\":{\"message_id\":555}}",
+                        MediaType.APPLICATION_JSON));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.isSuccess()).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void editMessageText_failureMessageDoesNotContainBotToken() {
+        String responseBodyWithToken = "{\"ok\":false,\"error_code\":400,"
+                + "\"description\":\"Token leak attempt: " + TEST_TOKEN + "\"}";
+        server.expect(requestTo(EXPECTED_EDIT_URL))
+                .andRespond(withSuccess(responseBodyWithToken, MediaType.APPLICATION_JSON));
+
+        TelegramEditMessageTextResult result = gateway.editMessageText(sampleEditRequest(false));
+
+        assertThat(result.getErrorMessage()).doesNotContain(TEST_TOKEN);
+        assertThat(result.getErrorMessage()).contains("***");
+        server.verify();
+    }
+
     @Test
     void legacyDispatchReturnsDefensiveFailure() {
         TelegramDeliveryCommand command = new TelegramDeliveryCommand(

@@ -52,4 +52,22 @@ public interface TelegramOutboundGateway {
      * @return transport-level acknowledgement result
      */
     TelegramAcknowledgeCallbackResult acknowledgeCallback(TelegramAcknowledgeCallbackRequest request);
+
+    /**
+     * Phase 177 — Telegram {@code editMessageText} chaqiruvi.
+     *
+     * <p>Mavjud xabar matnini (va ixtiyoriy inline keyboard'ini) joyida
+     * tahrirlash uchun ishlatiladi. Hozircha bu primitiv production
+     * dispatch yo'lida wired emas — kelajakdagi card-refresh pipeline
+     * uchun foundation sifatida qo'shildi.</p>
+     *
+     * <p><strong>Failure semantics:</strong> implementor hech qachon
+     * exception tashlamaydi; har bir holat
+     * {@link TelegramEditMessageTextResult} bilan qaytariladi.
+     * Stub gateway fail-closed strukturali failure qaytaradi.</p>
+     *
+     * @param request edit request (chat_id + message_id + text + ixtiyoriy keyboard)
+     * @return transport-level edit result
+     */
+    TelegramEditMessageTextResult editMessageText(TelegramEditMessageTextRequest request);
 }
