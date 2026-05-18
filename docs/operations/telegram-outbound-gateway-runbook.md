@@ -539,6 +539,13 @@ When `failure_code = UNKNOWN_ERROR` and
 
 ### 11.2 After enabling real outbound
 
+> For a branch-by-branch step-by-step manual smoke procedure that
+> exercises every Phase 179 `OutcomeCategory` (EDITED, NOT_MODIFIED,
+> EDIT_REJECTED_FALLBACK_SEND, the diagnostic transient-failure
+> branches, stub mode, and the Phase 173/175 callback-triggered
+> path), see
+> [Demo Smoke Runbook §13 — Phase 179 manual smoke checklist](demo-smoke-runbook.md#13-phase-179-manual-smoke-checklist--real-telegram-mode).
+
 - [ ] Restart the application.
 - [ ] Submit a test intake for the configured tenant.
 - [ ] Confirm a card appears in the target chat / topic.

@@ -739,3 +739,363 @@ A complete demo run should tick every box below.
       (Phase 158) is intact.
 
 If every box is ticked, the MVP demo path is verified end-to-end.
+
+---
+
+## 13. Phase 179 manual smoke checklist — real Telegram mode
+
+This section walks an operator through verifying the **Phase 179
+edit-first / send-as-fallback** behavior on a real bot, branch by
+branch. It complements Section 12: where Section 12 verifies the
+end-to-end MVP path, this section verifies the specific Phase 179
+dispatch decisions, the **observability caveat that successful edits
+do not persist `EDIT_MESSAGE` attempt rows**, and the
+**active-card identity invariant** (the canonical card is derived from
+the latest `DELIVERED` `SEND_NEW_MESSAGE` row in
+`telegram_delivery_attempt`, never from the clicked Telegram message
+identity).
+
+> **Background invariant.** Phase 179 intentionally does not persist
+> `EDIT_MESSAGE` attempt rows. A successful edit therefore leaves
+> `telegram_delivery_attempt` unchanged — the underlying
+> `SEND_NEW_MESSAGE` row remains the active-card seed for the next
+> transition. The observable signals for a successful edit are
+> (a) the Telegram card visibly updates in place and (b) the
+> coordinator log line emitted by
+> `com.engops.platform.telegram.TelegramCardRefreshDispatchService`.
+>
+> The coordinator log shape (INFO level) is exactly:
+>
+> ```
+> Telegram card refresh dispatch outcome=<OutcomeCategory> tenantId=<uuid>
+>   workItemId=<uuid> resultType=<null|SUCCESS|REJECTED|FAILED>
+>   error=<null|RATE_LIMIT|NETWORK_ERROR|INVALID_REQUEST|UNKNOWN_ERROR>
+>   exceptionType=<null|class simple name>
+> ```
+>
+> `<OutcomeCategory>` is one of the enum values in
+> `TelegramCardRefreshDispatchService.OutcomeCategory`:
+> `SKIPPED_BAD_INPUT`, `RENDERER_THREW_SWALLOWED`, `EDITED`,
+> `NOT_MODIFIED`, `EDIT_REJECTED_FALLBACK_SEND`,
+> `EDIT_RATE_LIMIT_FALLBACK_SEND`, `EDIT_NETWORK_FALLBACK_SEND`,
+> `EDIT_FAILED_FALLBACK_SEND`, `EDIT_NULL_RESULT_FALLBACK_SEND`,
+> `REFRESH_THREW_FALLBACK_SEND`.
+
+### 13.1 Branch A — `EDITED` (happy edit-first path)
+
+This is the most common branch in real mode after Phase 179.
+
+**Preconditions:**
+
+- `TELEGRAM_BOT_TOKEN` is set; the application has been restarted.
+- Tenant routing (chat binding, topic binding, routing rule) is
+  configured per Section 6.
+- An intake has already produced a `DELIVERED` `SEND_NEW_MESSAGE` row
+  for the work item (Section 7 has been executed; Card #1 is visible
+  in the chat / topic).
+
+**Operator action:**
+
+1. Transition the same work item from `BUGS` → `PROCESSING` per
+   Section 8 (either via the admin HTTP API or, equivalently, by
+   pressing the **Start Processing** inline button — Phase 173/175
+   path).
+
+**Expected Telegram-visible result:**
+
+- **Card #1 updates in place.** Its status line / title / inline
+  keyboard reflect the new `PROCESSING` state.
+- **No new Telegram message appears.** The chat does not gain a
+  Card #2.
+
+**Expected delivery observability:**
+
+- `GET /api/admin/delivery-observability/details?tenantId=…&workItemCode=…&historyLimit=10`
+  returns:
+  - `latestMetrics.deliveryOutcome = "DELIVERED"` (unchanged).
+  - `recentAttempts` contains exactly the **one** row from the
+    intake step. The transition added no row — successful edits are
+    not persisted.
+- `latestMetrics.externalMessageId` still points at the intake card's
+  Telegram `message_id` (the edit reused that id).
+
+**Expected coordinator log line:**
+
+```
+Telegram card refresh dispatch outcome=EDITED tenantId=<tenant> workItemId=<wi>
+  resultType=SUCCESS error=null exceptionType=null
+```
+
+**Token safety check:**
+
+- Tail the application log for the test window. Confirm that no log
+  line contains:
+  - the configured `TELEGRAM_BOT_TOKEN` substring,
+  - the request URL with `/bot{token}/…`,
+  - the rendered card `text`,
+  - any inbound `callback_data` value,
+  - any raw exception message from Telegram.
+
+### 13.2 Branch B — `NOT_MODIFIED` (benign no-op, diagnostic)
+
+This branch is **hard to trigger manually** in the demo because the
+seeded MVP Bug Flow status transitions always change the rendered
+status line. Treat this section as a **diagnostic interpretation
+guide**, not a mandatory manual step.
+
+**When it occurs:**
+
+- Telegram's `editMessageText` returns
+  `{"ok":false,"description":"Bad Request: message is not modified"}`
+  (or any description containing `"message is not modified"`
+  case-insensitively). This happens when the new card text and inline
+  keyboard are byte-equivalent to the current Telegram message
+  content.
+
+**Expected behavior:**
+
+- **No new Telegram message is sent.** The coordinator treats this as
+  a benign no-op (the card already shows the desired state).
+- **No new attempt row** is added to `telegram_delivery_attempt`.
+- The coordinator log line is:
+
+  ```
+  Telegram card refresh dispatch outcome=NOT_MODIFIED tenantId=<tenant>
+    workItemId=<wi> resultType=REJECTED error=INVALID_REQUEST exceptionType=null
+  ```
+
+**Why this branch is safe:**
+
+- Suppressing the fallback send avoids appending a duplicate-looking
+  card to the chat for a re-rendered identical projection.
+- Authorization and the strict state-machine remain authoritative
+  (Phase 173); a button press that produced `NOT_MODIFIED` did so
+  *after* the transition committed successfully — the UX is
+  consistent with the persisted state.
+
+**Token safety check:** same as Branch A.
+
+### 13.3 Branch C — `EDIT_REJECTED_FALLBACK_SEND` (fallback send after edit failure)
+
+This is the most useful manually-triggered failure branch. It proves
+that the system self-heals when the active-card seed is no longer
+editable.
+
+**Preconditions:**
+
+- Same as Branch A (real mode; routing configured; intake card
+  delivered).
+
+**Operator action:**
+
+1. In the Telegram client, **manually delete Card #1** (long-press →
+   Delete for everyone, or use a bot-admin workflow your environment
+   allows).
+2. Transition the work item from `BUGS` → `PROCESSING` (admin HTTP
+   API or inline button).
+
+**Expected Telegram-visible result:**
+
+- The edit attempt fails because the message no longer exists
+  Telegram-side. The coordinator falls back to the existing send
+  retry pipeline.
+- **A new card (Card #2) appears** in the same chat / topic.
+
+**Expected delivery observability:**
+
+- `GET /api/admin/delivery-observability/details?...` now returns:
+  - `recentAttempts` contains **two** `SEND_NEW_MESSAGE` rows:
+    the original intake row and the new fallback-send row from the
+    transition.
+  - `latestMetrics.deliveryOutcome = "DELIVERED"` and
+    `latestMetrics.externalMessageId` points at the new fallback-send
+    message id.
+
+**Expected coordinator log line:**
+
+```
+Telegram card refresh dispatch outcome=EDIT_REJECTED_FALLBACK_SEND
+  tenantId=<tenant> workItemId=<wi>
+  resultType=REJECTED error=INVALID_REQUEST exceptionType=null
+```
+
+**Why the active-card seed remains stable:**
+
+- The new fallback-send adds a `DELIVERED` `SEND_NEW_MESSAGE` row.
+- `findLatestDeliveredSendMessage(tenantId, workItemId)` (Phase 177)
+  now returns this newer row, so the **next** transition's edit-first
+  attempt will target the new card. No drift, no orphan seeds.
+
+**Token safety check:** same as Branch A.
+
+### 13.4 Branch D — diagnostic transient failures (`EDIT_RATE_LIMIT_FALLBACK_SEND` / `EDIT_NETWORK_FALLBACK_SEND` / `EDIT_FAILED_FALLBACK_SEND` / `EDIT_NULL_RESULT_FALLBACK_SEND` / `REFRESH_THREW_FALLBACK_SEND`)
+
+This branch is **not a mandatory manual demo step.** Do not force
+Telegram-side rate limits or network failures during a demo run.
+Treat the table below as a diagnostic interpretation guide for log
+analysis after the fact.
+
+| Coordinator log `outcome` | What happened | Operator-visible result |
+|---|---|---|
+| `EDIT_RATE_LIMIT_FALLBACK_SEND` | Telegram returned HTTP 429 on the edit | Coordinator fell back to send; the existing `TelegramCardDispatchRetryingService` then handles its own RATE_LIMIT retry policy on the fallback send. Operator may see one or more SEND attempt rows. |
+| `EDIT_NETWORK_FALLBACK_SEND` | Telegram returned 5xx, timeout, or connection error on the edit | Same fallback behavior; SEND retry pipeline owns retries. |
+| `EDIT_FAILED_FALLBACK_SEND` | Telegram returned `UNKNOWN_ERROR` (parse failure, unexpected runtime, or `INVALID_REQUEST` classified as `FAILED`) on the edit | Fallback send; SEND retry pipeline applies its existing policy. |
+| `EDIT_NULL_RESULT_FALLBACK_SEND` | Edit gateway returned a `null` result (defensive) | Fallback send. |
+| `REFRESH_THREW_FALLBACK_SEND` | `TelegramCardRefreshService.refresh(...)` threw an unexpected `RuntimeException` | Fallback send; the refresh service's own internal exception was swallowed by the coordinator (`exceptionType` log field is populated with the class simple name). |
+
+In all five sub-cases:
+
+- The coordinator does **not** retry the edit. Single-shot edit only.
+- The fallback `TelegramCardDispatchRetryingService.dispatchWithRetry(cardView)`
+  uses the same retry/backoff policy it has had since Phase 168 for
+  `RATE_LIMIT` and `NETWORK_ERROR`. Each retry persists its own
+  `SEND_NEW_MESSAGE` attempt row.
+- The webhook HTTP behavior is unchanged: 401 only for invalid
+  secret; everything else returns 200 so Telegram does not retry-loop.
+
+**Token safety check:** confirm that, even on failure paths, no log
+line carries the bot token, the URL with token, the rendered text,
+or callback_data.
+
+### 13.5 Branch E — stub mode
+
+This branch lets operators run the smoke flow without sending real
+Telegram traffic. It is also useful in CI / pre-prod where the bot
+token is intentionally absent.
+
+**Preconditions:**
+
+- `TELEGRAM_BOT_TOKEN` is **unset** (or blank).
+- The application has been restarted.
+- `StubTelegramOutboundGateway` is therefore the active
+  `TelegramOutboundGateway` bean.
+
+**Operator action:**
+
+1. Submit an intake per Section 7.
+2. Transition the work item per Section 8.
+
+**Expected behavior:**
+
+- The stub `editMessageText` returns a structured failure with
+  `failure_code = UNKNOWN_ERROR` and
+  `failure_reason = "Telegram outbound gateway hali implement qilinmagan"`.
+- The coordinator falls back to the existing send pipeline.
+- The stub `sendMessage` also returns a structured failure.
+- **No real Telegram traffic is generated.**
+
+**Expected delivery observability:**
+
+- `recentAttempts` contains one `FAILED` `SEND_NEW_MESSAGE` row per
+  dispatch event (intake produces one, transition produces one).
+  Each row has:
+  - `delivery_outcome = "FAILED"`,
+  - `failure_code = "UNKNOWN_ERROR"`,
+  - `failure_reason = "Telegram outbound gateway hali implement qilinmagan"`.
+- The intake's row is added by the existing intake → send retry
+  pipeline. The transition's row is added by the coordinator's
+  fallback send branch (the stub edit failed first).
+
+**Expected coordinator log lines** (one per dispatch event):
+
+```
+Telegram card refresh dispatch outcome=EDIT_FAILED_FALLBACK_SEND
+  tenantId=<tenant> workItemId=<wi>
+  resultType=FAILED error=UNKNOWN_ERROR exceptionType=null
+```
+
+**Token safety check:**
+
+- No token exists in stub mode, so token leakage cannot occur from
+  the gateway. The bounded log shape must nevertheless show no
+  rendered text, no callback_data, and no exception messages.
+
+### 13.6 Branch F — callback-triggered transition (Phase 173 / 175 path)
+
+This branch verifies that the **operator-clicked card identity is
+not used as the active-card identity for refresh.** Authorization
+comes from Phases 173/175; the canonical card is DB-derived (Phase
+177).
+
+**Preconditions:**
+
+- Real Telegram mode (Branch A preconditions).
+- The intake card (Card #1) is visible in the chat and carries the
+  inline keyboard rendered by `TelegramActionAssembler`.
+
+**Operator action:**
+
+1. In the Telegram chat, **press the "Start Processing" inline
+   button** on Card #1. This produces a `callback_query` to
+   `POST /api/telegram/webhook`.
+
+**Expected webhook behavior (Phase 171 / 173 / 175):**
+
+- The webhook validates `X-Telegram-Bot-Api-Secret-Token` and
+  returns `200 OK` for the callback (always, by design).
+- `TelegramCallbackQueryService` parses
+  `<UUID workItemId>:<ACTION_CODE>` data.
+- `intake.TelegramCallbackActionExecutionService` resolves the
+  Telegram user to a platform `AppUser`, derives the tenant
+  server-side from the `WorkItem`, enforces ACTIVE membership and
+  `WORK_ITEM_TRANSITION` permission, and invokes
+  `WorkflowTransitionService.transition(...)` with
+  `actionSource = "TELEGRAM_CALLBACK"`.
+- `TelegramCallbackAcknowledgementService` (Phase 175) emits a
+  bounded `answerCallbackQuery` toast back to the operator —
+  e.g. *"Action applied."* for `EXECUTED`. The toast appears in the
+  Telegram client briefly.
+
+**Expected after-commit behavior (Phase 179):**
+
+- The AFTER_COMMIT listener fires the coordinator. The coordinator
+  resolves the active-card seed from
+  `findLatestDeliveredSendMessage(tenantId, workItemId)` — **not**
+  from `callback_query.message.chat.id` or
+  `callback_query.message.messageId`. The clicked-card identity is
+  never treated as authoritative.
+- In real mode with the prior intake send delivered, the coordinator
+  edits the canonical latest card (which is the intake card in this
+  demo). Branch A's observability invariants apply: card updates in
+  place, no new row.
+
+**Why this is safe:**
+
+- A confused operator who scrolls back and clicks an **old** card
+  cannot trick the platform into editing the wrong card. The
+  workflow transition still runs server-side under Phase 173
+  authorization; the refresh still targets the canonical latest
+  delivered card; the click identity influences only the
+  `answerCallbackQuery` toast destination (which Telegram routes
+  back to the clicker, not the chat).
+
+**Token safety check:** same as Branch A.
+
+### 13.7 Phase 179 smoke success checklist
+
+A complete Phase 179 manual smoke run should tick the following boxes
+for **at least Branches A, C, E, and F**. Branches B and D are
+diagnostic and are not required for a green smoke run.
+
+- [ ] **Branch A (`EDITED`)** — original card updates in place; no
+      new Telegram message; `recentAttempts` count unchanged after
+      transition; coordinator log shows `outcome=EDITED`.
+- [ ] **Branch C (`EDIT_REJECTED_FALLBACK_SEND`)** — Card #1 deleted
+      Telegram-side; transition produces Card #2 via fallback send;
+      new `SEND_NEW_MESSAGE` row appears in `recentAttempts`;
+      coordinator log shows
+      `outcome=EDIT_REJECTED_FALLBACK_SEND`.
+- [ ] **Branch E (stub mode)** — token unset; no real Telegram
+      traffic; one `FAILED` `SEND_NEW_MESSAGE` row per dispatch
+      event; coordinator log shows `outcome=EDIT_FAILED_FALLBACK_SEND`.
+- [ ] **Branch F (callback-triggered)** — `answerCallbackQuery` toast
+      appears; clicked-card identity is **not** used as active-card
+      identity; refresh targets the canonical latest delivered SEND;
+      Branch A observability invariants apply.
+- [ ] Application log contains no bot-token substring, no
+      `/bot{token}/…` URL, no rendered card text, no
+      `callback_data` value, no raw Telegram exception message.
+
+If every required box ticks, the Phase 179 edit-first /
+send-as-fallback path is verified end-to-end on real Telegram and in
+stub mode.
