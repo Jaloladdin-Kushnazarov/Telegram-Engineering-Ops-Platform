@@ -1,0 +1,63 @@
+# Phase 187 — Docker build context exclusions
+#
+# This file ONLY filters what the docker daemon sees during `docker build`.
+# It does not delete any files on disk. Keeping the context small speeds up
+# the build, isolates cache layers, and prevents host secrets / IDE state
+# from accidentally ending up in the image.
+
+# --- VCS ---------------------------------------------------------------------
+.git
+.gitignore
+.gitattributes
+.github
+
+# --- IDE / editor noise ------------------------------------------------------
+.idea
+.vscode
+*.iml
+*.ipr
+*.iws
+.vimrc
+.editorconfig
+
+# --- OS noise ----------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# --- Build outputs (image rebuilds from source in the build stage) -----------
+target
+**/target
+*.class
+
+# --- Logs (never copy into image) --------------------------------------------
+*.log
+logs
+
+# --- Local env / secrets (never bake into image) -----------------------------
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+*.crt
+secrets
+
+# --- Maven local cache (image uses ./mvnw to resolve) ------------------------
+.m2
+
+# --- Claude / agent scratch (excluded from build context only) ---------------
+.claude
+.claude_session_*.md
+AGENTS.md
+CLAUDE.md
+
+# --- Docs and operator-facing files (not needed inside the runtime image) ----
+docs
+README.md
+
+# --- Docker artefacts themselves --------------------------------------------
+Dockerfile
+docker-compose.yml
+docker-compose.prod.yml
+.dockerignore

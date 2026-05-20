@@ -105,6 +105,8 @@ intake → workflow transition → delivery observability), follow the
 
 For a single consolidated operator entry point ("repo cloned" → "MVP demo passed" + production-readiness MVP checklist), follow the [MVP Completion Runbook](docs/operations/mvp-completion-runbook.md).
 
+For packaging the app as a Docker image and running it on a single VM behind an operator-owned HTTPS reverse proxy, follow the [Production Deployment Runbook](docs/operations/production-deployment-runbook.md).
+
 ## Profiles
 
 | Profile | Purpose |

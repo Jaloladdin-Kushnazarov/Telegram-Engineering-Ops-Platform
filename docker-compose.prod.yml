@@ -1,0 +1,122 @@
+# =============================================================================
+# Phase 187 — Production deployment overlay
+#
+# Use ALONGSIDE the base docker-compose.yml, not instead of it:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# This overlay:
+#   * Overrides the base postgres service so credentials come from env vars
+#     and the public host port mapping is removed (Postgres stays on the
+#     internal Docker network only).
+#   * Adds the engops-platform `app` service built from the repo Dockerfile.
+#   * Wires required production env vars as ${PLACEHOLDERS}. Real secrets
+#     come from the operator's `.env` file or secret manager — NEVER from
+#     this file.
+#
+# Required env vars (operator must export or place in a `.env` next to the
+# compose files):
+#
+#   POSTGRES_USER                       Postgres role name (matches DATABASE_USERNAME)
+#   POSTGRES_PASSWORD                   Postgres password   (matches DATABASE_PASSWORD)
+#   DATABASE_USERNAME                   JDBC username (same as POSTGRES_USER)
+#   DATABASE_PASSWORD                   JDBC password (same as POSTGRES_PASSWORD)
+#   TELEGRAM_BOT_TOKEN                  real Bot API token (leave blank → stub fallback)
+#   TELEGRAM_WEBHOOK_SECRET_TOKEN       strong random secret for inbound webhook
+#   APP_SECURITY_JWT_*                  exactly ONE of HMAC_SECRET / ISSUER_URI / JWK_SET_URI
+#
+# Optional (first-run only):
+#
+#   APP_BOOTSTRAP_ADMIN_ENABLED=true plus APP_BOOTSTRAP_ADMIN_TENANT_NAME,
+#   _TENANT_SLUG, _APP_USER_ID, _TELEGRAM_USER_ID, _DISPLAY_NAME,
+#   _USERNAME, _TENANT_TIMEZONE, APP_BOOTSTRAP_WORKFLOW_ENABLED
+#
+# Full env-var reference: docs/operations/production-deployment-runbook.md §6.
+# =============================================================================
+
+services:
+
+  postgres:
+    # Inherit image, container_name, healthcheck, and volume from the base
+    # file. Only the env block and the public port mapping are overridden.
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-engops}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required for prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required for prod}
+    # Empty list replaces the base mapping ["5432:5432"]. Postgres is only
+    # reachable on the internal docker network; use `docker compose exec
+    # postgres psql ...` for ops access.
+    ports: []
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: engops-platform:${APP_IMAGE_TAG:-latest}
+    container_name: engops-platform-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # --- Spring profile ---
+      SPRING_PROFILES_ACTIVE: prod
+
+      # --- Datasource ---
+      # Default points at the postgres service on the docker network. Override
+      # if the operator wants the app to connect to an external Postgres.
+      DATABASE_URL: ${DATABASE_URL:-jdbc:postgresql://postgres:5432/engops}
+      DATABASE_USERNAME: ${DATABASE_USERNAME:?DATABASE_USERNAME is required for prod}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required for prod}
+
+      # --- JWT decoder (operator MUST set exactly one of the three) ---
+      APP_SECURITY_JWT_HMAC_SECRET: ${APP_SECURITY_JWT_HMAC_SECRET:-}
+      APP_SECURITY_JWT_ISSUER_URI: ${APP_SECURITY_JWT_ISSUER_URI:-}
+      APP_SECURITY_JWT_JWK_SET_URI: ${APP_SECURITY_JWT_JWK_SET_URI:-}
+
+      # --- Telegram outbound gateway ---
+      # Blank bot token deliberately activates the StubTelegramOutboundGateway
+      # (Phase 158 mutually-exclusive condition). Set a real token to enable
+      # real outbound calls.
+      APP_TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      APP_TELEGRAM_API_BASE_URL: ${TELEGRAM_API_BASE_URL:-https://api.telegram.org}
+      APP_TELEGRAM_CONNECT_TIMEOUT_MS: ${TELEGRAM_CONNECT_TIMEOUT_MS:-5000}
+      APP_TELEGRAM_READ_TIMEOUT_MS: ${TELEGRAM_READ_TIMEOUT_MS:-10000}
+
+      # --- Telegram inbound webhook ---
+      # Blank → fail-closed (every webhook request rejected with 401 envelope).
+      APP_TELEGRAM_WEBHOOK_SECRET_TOKEN: ${TELEGRAM_WEBHOOK_SECRET_TOKEN:-}
+
+      # --- Bootstrap admin (first run only — disable after success) ---
+      APP_BOOTSTRAP_ADMIN_ENABLED: ${APP_BOOTSTRAP_ADMIN_ENABLED:-false}
+      APP_BOOTSTRAP_ADMIN_TENANT_NAME: ${APP_BOOTSTRAP_ADMIN_TENANT_NAME:-}
+      APP_BOOTSTRAP_ADMIN_TENANT_SLUG: ${APP_BOOTSTRAP_ADMIN_TENANT_SLUG:-}
+      APP_BOOTSTRAP_ADMIN_TENANT_TIMEZONE: ${APP_BOOTSTRAP_ADMIN_TENANT_TIMEZONE:-UTC}
+      APP_BOOTSTRAP_ADMIN_APP_USER_ID: ${APP_BOOTSTRAP_ADMIN_APP_USER_ID:-}
+      APP_BOOTSTRAP_ADMIN_TELEGRAM_USER_ID: ${APP_BOOTSTRAP_ADMIN_TELEGRAM_USER_ID:-}
+      APP_BOOTSTRAP_ADMIN_DISPLAY_NAME: ${APP_BOOTSTRAP_ADMIN_DISPLAY_NAME:-}
+      APP_BOOTSTRAP_ADMIN_USERNAME: ${APP_BOOTSTRAP_ADMIN_USERNAME:-}
+
+      # --- Bootstrap workflow seed (Phase 156 MVP Bug Flow) ---
+      APP_BOOTSTRAP_WORKFLOW_ENABLED: ${APP_BOOTSTRAP_WORKFLOW_ENABLED:-false}
+
+      # --- JVM tuning ---
+      # Default keeps the JVM well inside the container memory limit.
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70.0}
+
+    # Operator-controlled host port. TLS termination is performed by an
+    # external reverse proxy — never by this compose file (see runbook §2).
+    ports:
+      - "${APP_HOST_PORT:-8080}:8080"
+
+    restart: unless-stopped
+
+    healthcheck:
+      # Mirrors the Dockerfile HEALTHCHECK, but at compose level so
+      # `depends_on: condition: service_healthy` works if other services
+      # ever need to wait on the app.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 4
