@@ -1,5 +1,7 @@
 package com.engops.platform.telegram;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -120,16 +122,22 @@ public class TelegramCardRefreshDispatchService {
         REFRESH_THREW_FALLBACK_SEND
     }
 
+    /** Phase 189 — coordinator outcome counter nomi (low-cardinality). */
+    static final String REFRESH_OUTCOMES_METER = "engops.telegram.card.refresh.outcomes";
+
     private final TelegramMessageRenderer renderer;
     private final TelegramCardRefreshService refreshService;
     private final TelegramCardDispatchRetryingService retryingService;
+    private final MeterRegistry meterRegistry;
 
     public TelegramCardRefreshDispatchService(TelegramMessageRenderer renderer,
                                                 TelegramCardRefreshService refreshService,
-                                                TelegramCardDispatchRetryingService retryingService) {
+                                                TelegramCardDispatchRetryingService retryingService,
+                                                MeterRegistry meterRegistry) {
         this.renderer = renderer;
         this.refreshService = refreshService;
         this.retryingService = retryingService;
+        this.meterRegistry = meterRegistry;
     }
 
     /**
@@ -226,6 +234,12 @@ public class TelegramCardRefreshDispatchService {
      * Bounded log: faqat xavfsiz metadata. Rendered text, exception
      * message, token, full URL, callback_data — hech qachon log'ga
      * chiqarilmaydi.
+     *
+     * <p>Phase 189: bu yo'lda {@code engops.telegram.card.refresh.outcomes}
+     * counter ham bir martagina increment qilinadi. Tag faqat
+     * {@link OutcomeCategory#name() outcome} — tenantId, workItemId,
+     * exceptionType counter tag'iga TUSHMAYDI (low-cardinality
+     * cheklov).</p>
      */
     private void logOutcome(OutcomeCategory outcomeCategory,
                              UUID tenantId,
@@ -242,5 +256,16 @@ public class TelegramCardRefreshDispatchService {
                 result == null ? null : result.getResultType(),
                 result == null || result.getError() == null ? null : result.getError().name(),
                 exceptionType);
+        recordOutcomeCounter(outcomeCategory);
+    }
+
+    private void recordOutcomeCounter(OutcomeCategory outcomeCategory) {
+        if (meterRegistry == null || outcomeCategory == null) {
+            return;
+        }
+        Counter.builder(REFRESH_OUTCOMES_METER)
+                .tag("outcome", outcomeCategory.name())
+                .register(meterRegistry)
+                .increment();
     }
 }

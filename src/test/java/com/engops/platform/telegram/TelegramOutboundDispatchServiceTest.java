@@ -1,9 +1,10 @@
 package com.engops.platform.telegram;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -26,6 +27,9 @@ import static org.mockito.Mockito.when;
  * - null guard
  * - null gateway result fail-fast
  * - InOrder: assembler keyin gateway
+ *
+ * Phase 189: SimpleMeterRegistry orqali send attempt counter
+ * increment'lari tasdiqlanadi.
  */
 @ExtendWith(MockitoExtension.class)
 class TelegramOutboundDispatchServiceTest {
@@ -36,8 +40,24 @@ class TelegramOutboundDispatchServiceTest {
     @Mock
     private TelegramSendMessageRequestAssembler assembler;
 
-    @InjectMocks
+    private SimpleMeterRegistry meterRegistry;
     private TelegramOutboundDispatchService dispatchService;
+
+    @BeforeEach
+    void initService() {
+        meterRegistry = new SimpleMeterRegistry();
+        dispatchService = new TelegramOutboundDispatchService(gateway, assembler, meterRegistry);
+    }
+
+    private double sendCount(String outcome, String error) {
+        return meterRegistry.find(TelegramOutboundDispatchService.SEND_ATTEMPTS_METER)
+                .tag("outcome", outcome)
+                .tag("error", error)
+                .counters()
+                .stream()
+                .mapToDouble(io.micrometer.core.instrument.Counter::count)
+                .sum();
+    }
 
     @Test
     void successGatewayResultMappedToDelivered() {
@@ -160,5 +180,77 @@ class TelegramOutboundDispatchServiceTest {
                 command.getTargetTopicId(),
                 command.getText(),
                 command.getKeyboard());
+    }
+
+    // ===== Phase 189 — Micrometer counter assertions =====
+
+    @Test
+    void phase189DeliveredIncrementsSendAttemptsCounterWithErrorNone() {
+        TelegramDeliveryCommand command = buildCommand();
+        TelegramSendMessageRequest request = buildRequest(command);
+        when(assembler.assemble(command)).thenReturn(request);
+        when(gateway.execute(request)).thenReturn(TelegramGatewayResult.success(98765L));
+
+        dispatchService.dispatch(command);
+
+        assertThat(sendCount("DELIVERED", "NONE")).isEqualTo(1.0);
+        assertThat(sendCount("FAILED", "NETWORK_ERROR")).isZero();
+    }
+
+    @Test
+    void phase189FailedNetworkErrorIncrementsSendAttemptsCounter() {
+        TelegramDeliveryCommand command = buildCommand();
+        TelegramSendMessageRequest request = buildRequest(command);
+        when(assembler.assemble(command)).thenReturn(request);
+        when(gateway.execute(request)).thenReturn(TelegramGatewayResult.failed(
+                TelegramGatewayError.NETWORK_ERROR, "Connection timeout"));
+
+        dispatchService.dispatch(command);
+
+        assertThat(sendCount("FAILED", "NETWORK_ERROR")).isEqualTo(1.0);
+        assertThat(sendCount("DELIVERED", "NONE")).isZero();
+    }
+
+    @Test
+    void phase189RejectedInvalidRequestIncrementsSendAttemptsCounter() {
+        TelegramDeliveryCommand command = buildCommand();
+        TelegramSendMessageRequest request = buildRequest(command);
+        when(assembler.assemble(command)).thenReturn(request);
+        when(gateway.execute(request)).thenReturn(TelegramGatewayResult.rejected(
+                TelegramGatewayError.INVALID_REQUEST, "Chat not found"));
+
+        dispatchService.dispatch(command);
+
+        assertThat(sendCount("REJECTED", "INVALID_REQUEST")).isEqualTo(1.0);
+    }
+
+    @Test
+    void phase189MiniFixGatewayRuntimeExceptionIncrementsExceptionUnknownErrorCounter() {
+        TelegramDeliveryCommand command = buildCommand();
+        TelegramSendMessageRequest request = buildRequest(command);
+        when(assembler.assemble(command)).thenReturn(request);
+        when(gateway.execute(request)).thenThrow(new RuntimeException("simulated gateway bug"));
+
+        assertThatThrownBy(() -> dispatchService.dispatch(command))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("simulated gateway bug");
+
+        assertThat(sendCount("EXCEPTION", "UNKNOWN_ERROR")).isEqualTo(1.0);
+        assertThat(sendCount("EXCEPTION", "NONE")).isZero();
+    }
+
+    @Test
+    void phase189MiniFixNullGatewayResultIncrementsExceptionUnknownErrorCounter() {
+        TelegramDeliveryCommand command = buildCommand();
+        TelegramSendMessageRequest request = buildRequest(command);
+        when(assembler.assemble(command)).thenReturn(request);
+        when(gateway.execute(request)).thenReturn(null);
+
+        assertThatThrownBy(() -> dispatchService.dispatch(command))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("null qaytardi");
+
+        assertThat(sendCount("EXCEPTION", "UNKNOWN_ERROR")).isEqualTo(1.0);
+        assertThat(sendCount("EXCEPTION", "NONE")).isZero();
     }
 }

@@ -11,6 +11,8 @@ import com.engops.platform.telegram.TelegramCallbackQueryRequest;
 import com.engops.platform.workflow.WorkflowTransitionService;
 import com.engops.platform.workitem.OperationalAuthorizationService;
 import com.engops.platform.workitem.WorkItemQueryService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -126,6 +128,11 @@ public class TelegramCallbackActionExecutionService {
     static final String DENIED_ENTITY_TYPE = "WORK_ITEM";
 
     /**
+     * Phase 189 — callback execution outcome counter nomi (low-cardinality).
+     */
+    static final String CALLBACK_OUTCOMES_METER = "engops.telegram.callback.execution.outcomes";
+
+    /**
      * Action code → target status code mapping (MVP bug flow).
      *
      * <p>Bu mapping {@code TelegramActionAssembler} (outbound) va
@@ -197,6 +204,7 @@ public class TelegramCallbackActionExecutionService {
     private final WorkflowTransitionService workflowTransitionService;
     private final TelegramCallbackAcknowledgementService acknowledgementService;
     private final AuditService auditService;
+    private final MeterRegistry meterRegistry;
 
     public TelegramCallbackActionExecutionService(
             IdentityQueryService identityQueryService,
@@ -204,13 +212,15 @@ public class TelegramCallbackActionExecutionService {
             OperationalAuthorizationService operationalAuthorizationService,
             WorkflowTransitionService workflowTransitionService,
             TelegramCallbackAcknowledgementService acknowledgementService,
-            AuditService auditService) {
+            AuditService auditService,
+            MeterRegistry meterRegistry) {
         this.identityQueryService = identityQueryService;
         this.workItemQueryService = workItemQueryService;
         this.operationalAuthorizationService = operationalAuthorizationService;
         this.workflowTransitionService = workflowTransitionService;
         this.acknowledgementService = acknowledgementService;
         this.auditService = auditService;
+        this.meterRegistry = meterRegistry;
     }
 
     /**
@@ -409,6 +419,10 @@ public class TelegramCallbackActionExecutionService {
      */
     private ExecutionOutcome acknowledgeAndReturn(ExecutionOutcome outcome,
                                                     TelegramCallbackQueryRequest callbackQuery) {
+        // Phase 189: terminal outcome metric increment'i acknowledgement va
+        // controller return'idan oldin yoziladi. Counter har bir execute()
+        // chaqiruvi uchun bir martagina hisoblanadi.
+        recordOutcomeCounter(outcome);
         try {
             String callbackQueryId = callbackQuery == null ? null : callbackQuery.id();
             String text = OUTCOME_ACKNOWLEDGE_TEXT.get(outcome);
@@ -420,6 +434,23 @@ public class TelegramCallbackActionExecutionService {
                     ex.getClass().getSimpleName());
         }
         return outcome;
+    }
+
+    /**
+     * Phase 189 — callback execution outcome uchun bitta counter increment.
+     *
+     * <p>Faqat {@link ExecutionOutcome#name()} tag sifatida ishlatiladi.
+     * tenantId, workItemId, telegramUserId, actionCode, callbackQueryId —
+     * hech qaysisi tag bo'la olmaydi (low-cardinality cheklov).</p>
+     */
+    private void recordOutcomeCounter(ExecutionOutcome outcome) {
+        if (meterRegistry == null || outcome == null) {
+            return;
+        }
+        Counter.builder(CALLBACK_OUTCOMES_METER)
+                .tag("outcome", outcome.name())
+                .register(meterRegistry)
+                .increment();
     }
 
     private static Long extractTelegramUserId(TelegramCallbackQueryRequest cb) {

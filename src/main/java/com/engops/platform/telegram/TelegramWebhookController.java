@@ -66,14 +66,31 @@ import java.security.MessageDigest;
  * {@code OperationalAuthorizationService}'ni ataylab IMPORT QILMAYDI —
  * thin controller invariant'ini saqlaydi.</p>
  *
- * <p><strong>Out of scope (Phase 171/173):</strong> {@code answerCallbackQuery}
- * outbound chaqiruvi; {@code editMessageText}; {@code parse_mode};
- * {@code setWebhook} automation. Operator {@code setWebhook}'ni qo'lda
- * chaqiradi (telegram-outbound-gateway-runbook.md ga qarang).</p>
+ * <p><strong>Historical scope note:</strong> Phase 171/173 doirasidan
+ * tashqarida bo'lgan {@code answerCallbackQuery} va {@code editMessageText}
+ * keyinroq Phase 175/177/179 da joriy etildi. {@code parse_mode} va
+ * {@code setWebhook} automation hozir ham mahsulot doirasidan tashqarida
+ * — operator {@code setWebhook}'ni qo'lda chaqiradi (
+ * {@code telegram-outbound-gateway-runbook.md} ga qarang). Bu controller
+ * thin bo'lib qoladi va outbound operatsiyalarni o'zi bajarmaydi.</p>
  *
  * <p><strong>Logging hygiene:</strong> token qiymati (configured yoki
  * incoming) hech qachon log qilinmaydi; full update payload log'ga
  * chiqarilmaydi; faqat bounded metadata yoziladi.</p>
+ *
+ * <p><strong>Phase 189 — webhook rejection audit (intentionally
+ * deferred).</strong> Operatorlar webhook secret rejection'ini audit
+ * qatori orqali kuzatish iltimosini ko'targan. Joriy
+ * {@code audit_event} schema'da {@code entity_id} {@code NOT NULL}
+ * va loyihada nil UUID pattern ishlatilmaydi. Yangi migration qo'shish
+ * Phase 189 doirasidan tashqari. Shu sababdan
+ * {@code TELEGRAM_WEBHOOK_REJECTED} audit qatori ataylab
+ * <strong>YOZILMAYDI</strong>; rejection signal'i shu klassdagi
+ * bounded {@code log.warn(...)} qatori orqali qoladi (rejection sababi:
+ * MISSING_SECRET_CONFIG / MISSING_HEADER / INVALID_HEADER). Audit
+ * darajasidagi rejection trail keyingi phase'da schema constraint
+ * yumshatilganda yoki schema-safe nil UUID convention joriy etilganda
+ * qo'shiladi (Phase 190+ nomzodi).</p>
  */
 @RestController
 @RequestMapping("/api/telegram/webhook")
@@ -88,6 +105,21 @@ public class TelegramWebhookController {
     static final String SECRET_TOKEN_HEADER = "X-Telegram-Bot-Api-Secret-Token";
 
     static final String UNAUTHORIZED_ERROR_CODE = "UNAUTHORIZED";
+
+    /**
+     * Phase 189 — webhook rejection sabablari bounded log uchun.
+     * Bu enum audit qatoriga aylanmaydi (yuqoridagi class-level javadoc'ga
+     * qarang) — faqat bounded {@code log.warn(...)} ichida tag sifatida
+     * ishlatiladi.
+     */
+    enum WebhookRejectionReason {
+        /** Configured secret token bo'sh — fail-closed. */
+        MISSING_SECRET_CONFIG,
+        /** So'rovda {@code X-Telegram-Bot-Api-Secret-Token} header yo'q. */
+        MISSING_HEADER,
+        /** Header mavjud, lekin configured qiymat bilan teng emas. */
+        INVALID_HEADER
+    }
 
     private final TelegramWebhookProperties properties;
     private final TelegramCallbackQueryService callbackQueryService;
@@ -107,7 +139,11 @@ public class TelegramWebhookController {
             @RequestBody(required = false) TelegramUpdateRequest update,
             HttpServletRequest httpRequest) {
 
-        if (!secretMatches(incomingSecret)) {
+        WebhookRejectionReason rejectionReason = classifyRejection(incomingSecret);
+        if (rejectionReason != null) {
+            log.warn("Telegram webhook rejected reason={} hasCallbackQuery={}",
+                    rejectionReason,
+                    update == null ? "null" : Boolean.toString(update.callbackQuery() != null));
             return unauthorized(httpRequest);
         }
 
@@ -132,22 +168,27 @@ public class TelegramWebhookController {
     }
 
     /**
-     * Constant-time secret tasdiqlash. {@code configured} bo'sh bo'lsa
-     * yoki {@code incoming} null bo'lsa, {@code false}. Token qiymatlari
-     * hech qaerga log qilinmaydi.
+     * Phase 189 — webhook secret tekshirish va rejection sababini aniqlash.
+     *
+     * <p>Match holatda {@code null} qaytaradi. Aks holda bounded
+     * {@link WebhookRejectionReason} qaytaradi: configured secret bo'sh
+     * bo'lsa {@code MISSING_SECRET_CONFIG}, header yo'q bo'lsa
+     * {@code MISSING_HEADER}, header configured bilan teng emas bo'lsa
+     * {@code INVALID_HEADER}. Token qiymatlari (configured yoki incoming)
+     * hech qachon log'ga chiqarilmaydi.</p>
      */
-    private boolean secretMatches(String incoming) {
+    private WebhookRejectionReason classifyRejection(String incoming) {
         String configured = properties.getSecretToken();
         if (configured.isEmpty()) {
             // Fail-closed: konfiguratsiya yo'q bo'lsa hech kim o'tmaydi.
-            return false;
+            return WebhookRejectionReason.MISSING_SECRET_CONFIG;
         }
         if (incoming == null) {
-            return false;
+            return WebhookRejectionReason.MISSING_HEADER;
         }
         byte[] expected = configured.getBytes(StandardCharsets.UTF_8);
         byte[] actual = incoming.getBytes(StandardCharsets.UTF_8);
-        return MessageDigest.isEqual(expected, actual);
+        return MessageDigest.isEqual(expected, actual) ? null : WebhookRejectionReason.INVALID_HEADER;
     }
 
     private ResponseEntity<ApiErrorResponse> unauthorized(HttpServletRequest httpRequest) {

@@ -15,6 +15,7 @@ import com.engops.platform.telegram.TelegramCallbackUserRequest;
 import com.engops.platform.workflow.WorkflowTransitionService;
 import com.engops.platform.workitem.OperationalAuthorizationService;
 import com.engops.platform.workitem.WorkItemQueryService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -58,6 +59,7 @@ class TelegramCallbackActionExecutionServiceTest {
     private final TelegramCallbackAcknowledgementService acknowledgementService =
             mock(TelegramCallbackAcknowledgementService.class);
     private final AuditService auditService = mock(AuditService.class);
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     private final TelegramCallbackActionExecutionService executionService =
             new TelegramCallbackActionExecutionService(
@@ -66,7 +68,8 @@ class TelegramCallbackActionExecutionServiceTest {
                     operationalAuthorizationService,
                     workflowTransitionService,
                     acknowledgementService,
-                    auditService);
+                    auditService,
+                    meterRegistry);
 
     private TelegramCallbackQueryRequest cb() {
         return new TelegramCallbackQueryRequest(
@@ -515,5 +518,52 @@ class TelegramCallbackActionExecutionServiceTest {
 
         assertThat(outcome)
                 .isEqualTo(TelegramCallbackActionExecutionService.ExecutionOutcome.EXECUTED);
+    }
+
+    // ===== Phase 189 — Micrometer counter assertions =====
+
+    private double callbackCount(String outcome) {
+        return meterRegistry.find(TelegramCallbackActionExecutionService.CALLBACK_OUTCOMES_METER)
+                .tag("outcome", outcome)
+                .counters()
+                .stream()
+                .mapToDouble(io.micrometer.core.instrument.Counter::count)
+                .sum();
+    }
+
+    @Test
+    void phase189ExecutedIncrementsExecutedCounter() {
+        stubHappyPathUpToTransition();
+
+        executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        assertThat(callbackCount("EXECUTED")).isEqualTo(1.0);
+        assertThat(callbackCount("PERMISSION_DENIED")).isZero();
+    }
+
+    @Test
+    void phase189PermissionDeniedIncrementsPermissionDeniedCounter() {
+        stubHappyPathUpToTransition();
+        doThrow(new AccessDeniedException("denied"))
+                .when(operationalAuthorizationService).authorizeTransition(TENANT_ID, APP_USER_ID);
+
+        executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        assertThat(callbackCount("PERMISSION_DENIED")).isEqualTo(1.0);
+        assertThat(callbackCount("EXECUTED")).isZero();
+    }
+
+    @Test
+    void phase189NotAMemberIncrementsNotAMemberCounter() {
+        when(identityQueryService.findUserByTelegramUserId(TELEGRAM_USER_ID))
+                .thenReturn(Optional.of(appUser()));
+        when(workItemQueryService.findTenantIdByWorkItemId(WORK_ITEM_ID))
+                .thenReturn(Optional.of(TENANT_ID));
+        when(identityQueryService.hasActiveMembership(TENANT_ID, APP_USER_ID))
+                .thenReturn(false);
+
+        executionService.execute(cb(), WORK_ITEM_ID, "START_PROCESSING");
+
+        assertThat(callbackCount("NOT_A_MEMBER")).isEqualTo(1.0);
     }
 }

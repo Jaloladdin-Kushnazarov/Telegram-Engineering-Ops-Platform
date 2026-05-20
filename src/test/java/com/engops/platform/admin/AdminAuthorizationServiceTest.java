@@ -1,16 +1,26 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.audit.AuditService;
 import com.engops.platform.identity.IdentityQueryService;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,8 +43,23 @@ class AdminAuthorizationServiceTest {
     private static final UUID ACTOR_USER_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     private final IdentityQueryService identityQueryService = mock(IdentityQueryService.class);
+    private final AuditService auditService = mock(AuditService.class);
     private final AdminAuthorizationService authService =
-            new AdminAuthorizationService(identityQueryService);
+            new AdminAuthorizationService(identityQueryService, auditService);
+
+    private ArgumentCaptor<String> captureDeniedAuditPayload() {
+        ArgumentCaptor<String> newValueCaptor = ArgumentCaptor.forClass(String.class);
+        verify(auditService, times(1)).recordEventInNewTransaction(
+                eq(TENANT_ID),
+                eq("ADMIN_API"),
+                eq(TENANT_ID),
+                eq("ADMIN_AUTH_DENIED"),
+                any(),
+                eq("ADMIN_API"),
+                isNull(),
+                newValueCaptor.capture());
+        return newValueCaptor;
+    }
 
     // ========== authorizeRead ==========
 
@@ -125,5 +150,75 @@ class AdminAuthorizationServiceTest {
 
         assertThatCode(() -> authService.authorizeWrite(TENANT_ID, ACTOR_USER_ID))
                 .doesNotThrowAnyException();
+    }
+
+    // ===== Phase 189 — ADMIN_AUTH_DENIED audit assertions =====
+
+    @Test
+    void phase189MissingActorWritesAdminAuthDeniedAuditWithMissingActorReason() {
+        assertThatThrownBy(() -> authService.authorizeRead(TENANT_ID, null))
+                .isInstanceOf(AccessDeniedException.class);
+
+        ArgumentCaptor<String> payload = captureDeniedAuditPayload();
+        assertThat(payload.getValue())
+                .contains("\"permission\":\"TENANT_CONFIG_READ\"")
+                .contains("\"reason\":\"MISSING_ACTOR\"");
+    }
+
+    @Test
+    void phase189InactiveMembershipWritesAdminAuthDeniedAuditWithPermissionDeniedReason() {
+        // Inactive / no membership → resolvedPermissionCodes returns empty.
+        when(identityQueryService.resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID))
+                .thenReturn(Collections.emptySet());
+
+        assertThatThrownBy(() -> authService.authorizeRead(TENANT_ID, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class);
+
+        ArgumentCaptor<String> payload = captureDeniedAuditPayload();
+        assertThat(payload.getValue())
+                .contains("\"permission\":\"TENANT_CONFIG_READ\"")
+                .contains("\"reason\":\"PERMISSION_DENIED\"");
+    }
+
+    @Test
+    void phase189MembershipButMissingPermissionWritesAdminAuthDeniedAuditWithPermissionDeniedReason() {
+        when(identityQueryService.resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID))
+                .thenReturn(Set.of("SOME_OTHER_PERMISSION"));
+
+        assertThatThrownBy(() -> authService.authorizeWrite(TENANT_ID, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class);
+
+        ArgumentCaptor<String> payload = captureDeniedAuditPayload();
+        assertThat(payload.getValue())
+                .contains("\"permission\":\"TENANT_CONFIG_WRITE\"")
+                .contains("\"reason\":\"PERMISSION_DENIED\"");
+    }
+
+    @Test
+    void phase189AuditWriteFailureDoesNotChangeAuthorizationContract() {
+        when(identityQueryService.resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID))
+                .thenReturn(Collections.emptySet());
+        doThrow(new RuntimeException("simulated audit persistence failure"))
+                .when(auditService).recordEventInNewTransaction(
+                        any(), anyString(), any(), anyString(), any(), anyString(), any(), any());
+
+        // Audit fail-soft: AccessDeniedException baribir tashlanadi.
+        assertThatThrownBy(() -> authService.authorizeWrite(TENANT_ID, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("TENANT_CONFIG_WRITE");
+
+        verify(auditService, times(1)).recordEventInNewTransaction(
+                any(), anyString(), any(), anyString(), any(), anyString(), any(), any());
+    }
+
+    @Test
+    void phase189AuthorizedPathDoesNotWriteAdminAuthDeniedAudit() {
+        when(identityQueryService.resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID))
+                .thenReturn(Set.of(AdminAuthorizationService.TENANT_CONFIG_READ));
+
+        authService.authorizeRead(TENANT_ID, ACTOR_USER_ID);
+
+        verify(auditService, never()).recordEventInNewTransaction(
+                any(), anyString(), any(), anyString(), any(), anyString(), any(), any());
     }
 }

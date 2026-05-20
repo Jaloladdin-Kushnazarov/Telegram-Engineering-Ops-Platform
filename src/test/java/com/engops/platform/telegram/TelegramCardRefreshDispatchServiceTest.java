@@ -1,5 +1,6 @@
 package com.engops.platform.telegram;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -35,9 +36,19 @@ class TelegramCardRefreshDispatchServiceTest {
     private final TelegramCardRefreshService refreshService = mock(TelegramCardRefreshService.class);
     private final TelegramCardDispatchRetryingService retryingService =
             mock(TelegramCardDispatchRetryingService.class);
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     private final TelegramCardRefreshDispatchService coordinator =
-            new TelegramCardRefreshDispatchService(renderer, refreshService, retryingService);
+            new TelegramCardRefreshDispatchService(renderer, refreshService, retryingService, meterRegistry);
+
+    private double refreshCount(String outcome) {
+        return meterRegistry.find(TelegramCardRefreshDispatchService.REFRESH_OUTCOMES_METER)
+                .tag("outcome", outcome)
+                .counters()
+                .stream()
+                .mapToDouble(io.micrometer.core.instrument.Counter::count)
+                .sum();
+    }
 
     private TelegramCardView cardView() {
         return mock(TelegramCardView.class);
@@ -298,5 +309,50 @@ class TelegramCardRefreshDispatchServiceTest {
                 ArgumentCaptor.forClass(TelegramCardView.class);
         verify(retryingService, times(1)).dispatchWithRetry(cardViewCaptor.capture());
         assertThat(cardViewCaptor.getValue()).isSameAs(cv);
+    }
+
+    // ===== Phase 189 — Micrometer counter assertions =====
+
+    @Test
+    void phase189EditSuccessIncrementsEditedCounter() {
+        TelegramCardView cv = cardView();
+        stubRender(cv);
+        when(refreshService.refresh(eq(TENANT_ID), eq(WORK_ITEM_ID), any(), any()))
+                .thenReturn(TelegramEditMessageTextResult.success(555L));
+
+        coordinator.dispatch(cv, TENANT_ID, WORK_ITEM_ID);
+
+        assertThat(refreshCount("EDITED")).isEqualTo(1.0);
+        assertThat(refreshCount("EDIT_REJECTED_FALLBACK_SEND")).isZero();
+    }
+
+    @Test
+    void phase189NotModifiedIncrementsNotModifiedCounter() {
+        TelegramCardView cv = cardView();
+        stubRender(cv);
+        when(refreshService.refresh(eq(TENANT_ID), eq(WORK_ITEM_ID), any(), any()))
+                .thenReturn(TelegramEditMessageTextResult.rejected(
+                        TelegramGatewayError.INVALID_REQUEST,
+                        "Bad Request: message is not modified"));
+
+        coordinator.dispatch(cv, TENANT_ID, WORK_ITEM_ID);
+
+        assertThat(refreshCount("NOT_MODIFIED")).isEqualTo(1.0);
+        assertThat(refreshCount("EDIT_REJECTED_FALLBACK_SEND")).isZero();
+    }
+
+    @Test
+    void phase189EditRejectedFallbackIncrementsRejectedFallbackCounter() {
+        TelegramCardView cv = cardView();
+        stubRender(cv);
+        when(refreshService.refresh(eq(TENANT_ID), eq(WORK_ITEM_ID), any(), any()))
+                .thenReturn(TelegramEditMessageTextResult.rejected(
+                        TelegramGatewayError.INVALID_REQUEST,
+                        "chat not found"));
+
+        coordinator.dispatch(cv, TENANT_ID, WORK_ITEM_ID);
+
+        assertThat(refreshCount("EDIT_REJECTED_FALLBACK_SEND")).isEqualTo(1.0);
+        assertThat(refreshCount("EDITED")).isZero();
     }
 }

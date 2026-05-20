@@ -14,6 +14,7 @@ import com.engops.platform.telegram.TelegramCallbackUserRequest;
 import com.engops.platform.workflow.WorkflowTransitionService;
 import com.engops.platform.workitem.OperationalAuthorizationService;
 import com.engops.platform.workitem.WorkItemQueryService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -69,6 +70,7 @@ class TelegramCallbackActionExecutionServiceAuditTest {
     private final TelegramCallbackAcknowledgementService acknowledgementService =
             mock(TelegramCallbackAcknowledgementService.class);
     private final AuditService auditService = mock(AuditService.class);
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     private final TelegramCallbackActionExecutionService executionService =
             new TelegramCallbackActionExecutionService(
@@ -77,7 +79,8 @@ class TelegramCallbackActionExecutionServiceAuditTest {
                     operationalAuthorizationService,
                     workflowTransitionService,
                     acknowledgementService,
-                    auditService);
+                    auditService,
+                    meterRegistry);
 
     private TelegramCallbackQueryRequest cb() {
         return new TelegramCallbackQueryRequest(

@@ -111,6 +111,8 @@ For production security/ops hardening (actuator scoping, secret rotation, log re
 
 For PostgreSQL backup and restore procedures (pg_dump policy, restore drill, disaster recovery checklist), follow the [Backup / Restore Runbook](docs/operations/backup-restore-runbook.md) (Uzbek).
 
+For production observability (Micrometer counters, callback / admin denial audits, log grep playbook, minimal alert suggestions), follow the [Observability Runbook](docs/operations/observability-runbook.md) (Uzbek).
+
 ## Profiles
 
 | Profile | Purpose |
