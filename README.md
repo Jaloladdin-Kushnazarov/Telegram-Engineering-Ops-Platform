@@ -103,6 +103,8 @@ For an end-to-end MVP smoke run (env → bootstrap → JWT → tenant config →
 intake → workflow transition → delivery observability), follow the
 [Demo Smoke Runbook](docs/operations/demo-smoke-runbook.md).
 
+For a single consolidated operator entry point ("repo cloned" → "MVP demo passed" + production-readiness MVP checklist), follow the [MVP Completion Runbook](docs/operations/mvp-completion-runbook.md).
+
 ## Profiles
 
 | Profile | Purpose |

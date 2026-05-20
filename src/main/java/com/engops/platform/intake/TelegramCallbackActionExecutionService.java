@@ -1,5 +1,6 @@
 package com.engops.platform.intake;
 
+import com.engops.platform.audit.AuditService;
 import com.engops.platform.identity.IdentityQueryService;
 import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
@@ -82,9 +83,20 @@ import java.util.UUID;
  * <p><strong>Audit:</strong> muvaffaqiyatli transition uchun mavjud
  * {@code STATUS_TRANSITION} audit eventi
  * {@link WorkflowTransitionService} ichida yoziladi
- * ({@code actionSource = "TELEGRAM_CALLBACK"}). Phase 173 da yangi audit
- * turi qo'shilmaydi — denied/not-found holatlar faqat bounded log
- * sifatida qoldiriladi.</p>
+ * ({@code actionSource = "TELEGRAM_CALLBACK"}).
+ *
+ * <p>Phase 185 — denial/failure outcome'lar uchun
+ * {@code TELEGRAM_CALLBACK_DENIED} audit qatori
+ * {@link AuditService#recordEventInNewTransaction} orqali alohida
+ * {@code REQUIRES_NEW} transactionda yoziladi. Audit yozuvi quyidagi
+ * outcome'lar uchun yaratiladi: {@code NOT_A_MEMBER},
+ * {@code PERMISSION_DENIED}, {@code INVALID_TRANSITION},
+ * {@code UNEXPECTED_FAILURE}. {@code USER_NOT_FOUND} (resolved actor
+ * yo'q) va {@code WORK_ITEM_NOT_FOUND} (derived tenant yo'q) uchun
+ * audit yozilmaydi — entity_id/tenant_id majburiy maydonlarini
+ * to'ldirib bo'lmaydi. Audit yozish har qanday holatda fail-soft:
+ * persistence xatosi callback outcome'iga ta'sir qilmaydi va
+ * acknowledgement baribir chaqiriladi.</p>
  *
  * <p><strong>Logging hygiene:</strong> har bir execute chaqiruvi uchun
  * bitta bounded log yoziladi. Hech qachon log qilinmaydi: webhook secret,
@@ -102,6 +114,16 @@ public class TelegramCallbackActionExecutionService {
     private static final Logger log = LoggerFactory.getLogger(TelegramCallbackActionExecutionService.class);
 
     static final String ACTION_SOURCE = "TELEGRAM_CALLBACK";
+
+    /**
+     * Phase 185 — denial audit event'lar uchun eventType.
+     */
+    static final String DENIED_EVENT_TYPE = "TELEGRAM_CALLBACK_DENIED";
+
+    /**
+     * Phase 185 — denial audit event'lar uchun entityType.
+     */
+    static final String DENIED_ENTITY_TYPE = "WORK_ITEM";
 
     /**
      * Action code → target status code mapping (MVP bug flow).
@@ -174,18 +196,21 @@ public class TelegramCallbackActionExecutionService {
     private final OperationalAuthorizationService operationalAuthorizationService;
     private final WorkflowTransitionService workflowTransitionService;
     private final TelegramCallbackAcknowledgementService acknowledgementService;
+    private final AuditService auditService;
 
     public TelegramCallbackActionExecutionService(
             IdentityQueryService identityQueryService,
             WorkItemQueryService workItemQueryService,
             OperationalAuthorizationService operationalAuthorizationService,
             WorkflowTransitionService workflowTransitionService,
-            TelegramCallbackAcknowledgementService acknowledgementService) {
+            TelegramCallbackAcknowledgementService acknowledgementService,
+            AuditService auditService) {
         this.identityQueryService = identityQueryService;
         this.workItemQueryService = workItemQueryService;
         this.operationalAuthorizationService = operationalAuthorizationService;
         this.workflowTransitionService = workflowTransitionService;
         this.acknowledgementService = acknowledgementService;
+        this.auditService = auditService;
     }
 
     /**
@@ -233,6 +258,8 @@ public class TelegramCallbackActionExecutionService {
         if (!identityQueryService.hasActiveMembership(tenantId, actorUserId)) {
             logOutcome(ExecutionOutcome.NOT_A_MEMBER, callbackQuery, telegramUserId, workItemId,
                     actionCode, tenantId, null, null);
+            auditDenialOutcomeSafely(ExecutionOutcome.NOT_A_MEMBER, tenantId, actorUserId,
+                    workItemId, actionCode, null);
             return acknowledgeAndReturn(ExecutionOutcome.NOT_A_MEMBER, callbackQuery);
         }
 
@@ -241,6 +268,8 @@ public class TelegramCallbackActionExecutionService {
         } catch (AccessDeniedException ex) {
             logOutcome(ExecutionOutcome.PERMISSION_DENIED, callbackQuery, telegramUserId,
                     workItemId, actionCode, tenantId, null, null);
+            auditDenialOutcomeSafely(ExecutionOutcome.PERMISSION_DENIED, tenantId, actorUserId,
+                    workItemId, actionCode, null);
             return acknowledgeAndReturn(ExecutionOutcome.PERMISSION_DENIED, callbackQuery);
         }
 
@@ -252,6 +281,8 @@ public class TelegramCallbackActionExecutionService {
             // workflow transition'ni umuman chaqirmaymiz.
             logOutcome(ExecutionOutcome.INVALID_TRANSITION, callbackQuery, telegramUserId,
                     workItemId, actionCode, tenantId, null, null);
+            auditDenialOutcomeSafely(ExecutionOutcome.INVALID_TRANSITION, tenantId, actorUserId,
+                    workItemId, actionCode, null);
             return acknowledgeAndReturn(ExecutionOutcome.INVALID_TRANSITION, callbackQuery);
         }
 
@@ -265,6 +296,8 @@ public class TelegramCallbackActionExecutionService {
         } catch (BusinessRuleException ex) {
             logOutcome(ExecutionOutcome.INVALID_TRANSITION, callbackQuery, telegramUserId,
                     workItemId, actionCode, tenantId, targetStatusCode, null);
+            auditDenialOutcomeSafely(ExecutionOutcome.INVALID_TRANSITION, tenantId, actorUserId,
+                    workItemId, actionCode, targetStatusCode);
             outcome = ExecutionOutcome.INVALID_TRANSITION;
         } catch (ResourceNotFoundException ex) {
             logOutcome(ExecutionOutcome.WORK_ITEM_NOT_FOUND, callbackQuery, telegramUserId,
@@ -274,9 +307,91 @@ public class TelegramCallbackActionExecutionService {
             logOutcome(ExecutionOutcome.UNEXPECTED_FAILURE, callbackQuery, telegramUserId,
                     workItemId, actionCode, tenantId, targetStatusCode,
                     ex.getClass().getSimpleName());
+            auditDenialOutcomeSafely(ExecutionOutcome.UNEXPECTED_FAILURE, tenantId, actorUserId,
+                    workItemId, actionCode, targetStatusCode);
             outcome = ExecutionOutcome.UNEXPECTED_FAILURE;
         }
         return acknowledgeAndReturn(outcome, callbackQuery);
+    }
+
+    /**
+     * Phase 185 — denial/failure outcome'i uchun mustaqil audit qatori
+     * yozadi. Fail-soft: har qanday {@link RuntimeException} swallow
+     * qilinadi va bounded warning log'ga yoziladi; {@code execute}
+     * tomonidan qaytariladigan outcome o'zgarmaydi, acknowledgement
+     * baribir chaqiriladi.
+     *
+     * <p>Audit yozuvi {@link AuditService#recordEventInNewTransaction}
+     * orqali alohida {@code REQUIRES_NEW} transactionda saqlanadi —
+     * caller hech qanday ochiq business transaction ichida emas.</p>
+     *
+     * <p><strong>Payload tarkibi:</strong> faqat {@code outcome},
+     * {@code actionCode}, {@code targetStatusCode}. Hech qachon
+     * kiritilmaydi: raw callback_data, secret token, bot token,
+     * Telegram update payload, exception message, from.username,
+     * yoki rendered text.</p>
+     */
+    private void auditDenialOutcomeSafely(ExecutionOutcome outcome,
+                                            UUID tenantId,
+                                            UUID actorUserId,
+                                            UUID workItemId,
+                                            String actionCode,
+                                            String targetStatusCode) {
+        // Defense-in-depth — bu yo'l outcome'lar (NOT_A_MEMBER,
+        // PERMISSION_DENIED, INVALID_TRANSITION, UNEXPECTED_FAILURE) uchun
+        // hammada tenantId/actorUserId/workItemId mavjud bo'ladi. Agar
+        // kelajakda chaqiruv joyi qo'shilsa va biror qiymat null bo'lsa,
+        // audit jadvalining nullability constraint'iga (entity_id NOT NULL)
+        // hurmat qilib jim ravishda skip qilamiz va warning yozamiz.
+        if (tenantId == null || actorUserId == null || workItemId == null) {
+            log.warn("Telegram callback denial audit skip outcome={} reason=missing-ids", outcome);
+            return;
+        }
+        String payload = buildDenialAuditPayload(outcome, actionCode, targetStatusCode);
+        try {
+            auditService.recordEventInNewTransaction(tenantId,
+                    DENIED_ENTITY_TYPE,
+                    workItemId,
+                    DENIED_EVENT_TYPE,
+                    actorUserId,
+                    ACTION_SOURCE,
+                    null,
+                    payload);
+        } catch (RuntimeException ex) {
+            // Fail-soft kontrakti: audit yozish callback outcome'iga ta'sir
+            // qilmasligi shart. Exception message ataylab log'ga
+            // chiqarilmaydi (token-leak guard pattern, Phase 158/160/161
+            // bilan bir xil).
+            log.warn("Telegram callback denial audit swallowed outcome={} exceptionType={}",
+                    outcome, ex.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Denial audit qatorining {@code newValueJson} maydoni uchun
+     * bounded JSON-like payload quradi. Faqat outcome / actionCode /
+     * targetStatusCode kiritiladi.
+     */
+    static String buildDenialAuditPayload(ExecutionOutcome outcome,
+                                            String actionCode,
+                                            String targetStatusCode) {
+        return "{"
+                + "\"outcome\":" + jsonStringOrNull(outcome == null ? null : outcome.name())
+                + ",\"actionCode\":" + jsonStringOrNull(actionCode)
+                + ",\"targetStatusCode\":" + jsonStringOrNull(targetStatusCode)
+                + "}";
+    }
+
+    private static String jsonStringOrNull(String value) {
+        if (value == null) {
+            return "null";
+        }
+        // ActionCode va targetStatusCode bounded internal identifier'lar
+        // (parser KNOWN_ACTION_CODES + workflow status code katalogi).
+        // Bu escape defense-in-depth — kelajakda kengayish bo'lsa ham
+        // payload'ning JSON struktura buzilmasligini ta'minlaydi.
+        String escaped = value.replace("\\", "\\\\").replace("\"", "\\\"");
+        return "\"" + escaped + "\"";
     }
 
     /**

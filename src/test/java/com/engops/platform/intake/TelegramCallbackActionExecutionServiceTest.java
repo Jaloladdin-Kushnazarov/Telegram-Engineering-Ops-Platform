@@ -1,5 +1,6 @@
 package com.engops.platform.intake;
 
+import com.engops.platform.audit.AuditService;
 import com.engops.platform.identity.IdentityQueryService;
 import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
@@ -56,6 +57,7 @@ class TelegramCallbackActionExecutionServiceTest {
             mock(WorkflowTransitionService.class);
     private final TelegramCallbackAcknowledgementService acknowledgementService =
             mock(TelegramCallbackAcknowledgementService.class);
+    private final AuditService auditService = mock(AuditService.class);
 
     private final TelegramCallbackActionExecutionService executionService =
             new TelegramCallbackActionExecutionService(
@@ -63,7 +65,8 @@ class TelegramCallbackActionExecutionServiceTest {
                     workItemQueryService,
                     operationalAuthorizationService,
                     workflowTransitionService,
-                    acknowledgementService);
+                    acknowledgementService,
+                    auditService);
 
     private TelegramCallbackQueryRequest cb() {
         return new TelegramCallbackQueryRequest(
