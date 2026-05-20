@@ -107,6 +107,10 @@ For a single consolidated operator entry point ("repo cloned" → "MVP demo pass
 
 For packaging the app as a Docker image and running it on a single VM behind an operator-owned HTTPS reverse proxy, follow the [Production Deployment Runbook](docs/operations/production-deployment-runbook.md).
 
+For production security/ops hardening (actuator scoping, secret rotation, log redaction verification, audit checks), follow the [Production Hardening Runbook](docs/operations/production-hardening-runbook.md) (Uzbek).
+
+For PostgreSQL backup and restore procedures (pg_dump policy, restore drill, disaster recovery checklist), follow the [Backup / Restore Runbook](docs/operations/backup-restore-runbook.md) (Uzbek).
+
 ## Profiles
 
 | Profile | Purpose |
