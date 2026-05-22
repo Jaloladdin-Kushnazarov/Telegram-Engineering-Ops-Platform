@@ -1099,3 +1099,295 @@ diagnostic and are not required for a green smoke run.
 If every required box ticks, the Phase 179 edit-first /
 send-as-fallback path is verified end-to-end on real Telegram and in
 stub mode.
+
+---
+
+## 14. Phase 190 admin write smoke — owner / priority / severity
+
+This section verifies the **Phase 190** admin write surface added on
+top of the MVP demo: three POST endpoints that mutate `WorkItem`
+fields (`currentOwnerUserId`, `priorityCode`, `severityCode`)
+without touching the workflow state machine.
+
+> Endpoints covered:
+>
+> - `POST /api/admin/work-items/{workItemId}/owner`
+> - `POST /api/admin/work-items/{workItemId}/priority`
+> - `POST /api/admin/work-items/{workItemId}/severity`
+>
+> Each one is a thin REST adapter over `WorkItemCommandService` and
+> requires an authenticated actor with the appropriate operational
+> permission — `WORK_ITEM_ASSIGN` for owner; `WORK_ITEM_UPDATE` for
+> priority / severity (enforced by `OperationalAuthorizationService`,
+> fail-closed). Each successful mutation writes exactly one audit row
+> with `action_source = ADMIN_API` inside the business transaction
+> (`MANDATORY` propagation).
+
+**Preconditions:**
+
+- Sections 4 (Startup), 5 (JWT preparation), 6 (Routing configuration),
+  and 7 (Intake) have already been executed against the same demo
+  tenant.
+- `WORK_ITEM_ID`, `WORK_ITEM_CODE`, `TENANT_ID`, and `DEMO_JWT` are
+  exported from those sections.
+- An `OWNER_USER_ID` is exported — any `app_user.id` with an ACTIVE
+  membership in `TENANT_ID`. The demo's bootstrap admin user id is a
+  valid choice:
+
+  ```bash
+  export OWNER_USER_ID="$APP_BOOTSTRAP_ADMIN_APP_USER_ID"
+  ```
+
+> **Important semantic note (Phase 190).** The admin write endpoints
+> do **not** trigger a Telegram card refresh. Owner / priority /
+> severity changes are visible through the admin read API and through
+> the `audit_event` trail, but the Telegram card in the chat / topic
+> is **not** re-rendered by these admin writes. This is **intentional**
+> for Phase 190 — the only AFTER_COMMIT Telegram dispatch in the MVP
+> is workflow transition (Phase 164/179). The admin write endpoints
+> exist to give operators a backend-authoritative way to set these
+> fields; surfacing them in the rendered card is tracked as a separate
+> inspect-first phase. Do not file the missing card refresh as a bug.
+
+### 14.1 Assign owner
+
+`POST /api/admin/work-items/{workItemId}/owner`, body =
+`AssignWorkItemOwnerRequest { tenantId, ownerUserId }`. Required
+permission: `WORK_ITEM_ASSIGN`. The owner must have an ACTIVE
+membership in the tenant.
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $DEMO_JWT" \
+  -H 'Content-Type: application/json' \
+  "$DEMO_BASE/api/admin/work-items/$WORK_ITEM_ID/owner" \
+  -d "{
+        \"tenantId\": \"$TENANT_ID\",
+        \"ownerUserId\": \"$OWNER_USER_ID\"
+      }"
+```
+
+Expected:
+
+- `200 OK`.
+- Response body is `WorkItemAdminWriteResponse` with:
+  - `currentOwnerUserId` equal to `$OWNER_USER_ID`,
+  - `workItemId` equal to `$WORK_ITEM_ID`,
+  - `tenantId`, `workItemCode`, `currentStatusCode` populated,
+  - `priorityCode` / `severityCode` reflect whatever they already
+    were (this endpoint does not touch them),
+  - `updatedAt` advanced.
+- One audit row with `event_type = OWNER_ASSIGNED`,
+  `entity_type = WORK_ITEM`, `entity_id = $WORK_ITEM_ID`,
+  `action_source = ADMIN_API`. `old_value_json` is the previous
+  owner id (or `null` if previously unassigned); `new_value_json` is
+  the new owner id.
+
+### 14.2 Update priority
+
+`POST /api/admin/work-items/{workItemId}/priority`, body =
+`UpdateWorkItemPriorityRequest { tenantId, priorityCode }`. Required
+permission: `WORK_ITEM_UPDATE`. Allowed `priorityCode` values:
+`LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (bounded enum-like).
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $DEMO_JWT" \
+  -H 'Content-Type: application/json' \
+  "$DEMO_BASE/api/admin/work-items/$WORK_ITEM_ID/priority" \
+  -d "{
+        \"tenantId\": \"$TENANT_ID\",
+        \"priorityCode\": \"HIGH\"
+      }"
+```
+
+Expected:
+
+- `200 OK`.
+- Response body is `WorkItemAdminWriteResponse` with `priorityCode`
+  equal to `"HIGH"`. Other fields unchanged.
+- One audit row with `event_type = PRIORITY_CHANGED`,
+  `entity_type = WORK_ITEM`, `entity_id = $WORK_ITEM_ID`,
+  `action_source = ADMIN_API`. `old_value_json` is the previous
+  priority code (or `null`); `new_value_json = "HIGH"`.
+
+### 14.3 Update severity
+
+`POST /api/admin/work-items/{workItemId}/severity`, body =
+`UpdateWorkItemSeverityRequest { tenantId, severityCode }`. Required
+permission: `WORK_ITEM_UPDATE`. Allowed `severityCode` values:
+`LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (bounded enum-like).
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $DEMO_JWT" \
+  -H 'Content-Type: application/json' \
+  "$DEMO_BASE/api/admin/work-items/$WORK_ITEM_ID/severity" \
+  -d "{
+        \"tenantId\": \"$TENANT_ID\",
+        \"severityCode\": \"CRITICAL\"
+      }"
+```
+
+Expected:
+
+- `200 OK`.
+- Response body is `WorkItemAdminWriteResponse` with `severityCode`
+  equal to `"CRITICAL"`. Other fields unchanged.
+- One audit row with `event_type = SEVERITY_CHANGED`,
+  `entity_type = WORK_ITEM`, `entity_id = $WORK_ITEM_ID`,
+  `action_source = ADMIN_API`. `old_value_json` is the previous
+  severity code (or `null`); `new_value_json = "CRITICAL"`.
+
+### 14.4 Negative-path smoke
+
+These curls are intentionally narrow — just enough to confirm the
+fail-closed behavior. No exhaustive matrix.
+
+**A. Invalid `priorityCode` → `422 INVALID_PRIORITY_CODE`:**
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $DEMO_JWT" \
+  -H 'Content-Type: application/json' \
+  "$DEMO_BASE/api/admin/work-items/$WORK_ITEM_ID/priority" \
+  -d "{
+        \"tenantId\": \"$TENANT_ID\",
+        \"priorityCode\": \"BOGUS\"
+      }"
+```
+
+Expected: `422` with the `ApiErrorResponse` envelope and
+`code = INVALID_PRIORITY_CODE`. No `WorkItem` mutation. No audit row.
+
+**B. Invalid `severityCode` → `422 INVALID_SEVERITY_CODE`:**
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $DEMO_JWT" \
+  -H 'Content-Type: application/json' \
+  "$DEMO_BASE/api/admin/work-items/$WORK_ITEM_ID/severity" \
+  -d "{
+        \"tenantId\": \"$TENANT_ID\",
+        \"severityCode\": \"BOGUS\"
+      }"
+```
+
+Expected: `422` with `code = INVALID_SEVERITY_CODE`. No mutation, no
+audit row.
+
+**C. Missing `WORK_ITEM_UPDATE` / `WORK_ITEM_ASSIGN` permission →
+`403 ACCESS_DENIED`:**
+
+Mint a second JWT whose `sub` resolves to an actor that has an ACTIVE
+membership in the tenant but lacks `WORK_ITEM_UPDATE` (for §14.2 /
+§14.3) or `WORK_ITEM_ASSIGN` (for §14.1), and re-run the corresponding
+curl with that JWT.
+
+Expected: `403` with the `ApiErrorResponse` envelope and
+`code = ACCESS_DENIED`. No mutation, no audit row. The
+`OperationalAuthorizationService` warn log line names the missing
+permission code (`WORK_ITEM_UPDATE` or `WORK_ITEM_ASSIGN`); request
+body, JWT, and exception message are not logged.
+
+### 14.5 Audit verification
+
+After a successful §14.1 + §14.2 + §14.3 sequence, the audit table
+contains exactly three new rows for `$WORK_ITEM_ID`. Read them with
+SQL:
+
+```sql
+SELECT occurred_at, event_type, entity_type, entity_id,
+       actor_user_id, action_source,
+       old_value_json, new_value_json
+  FROM audit_event
+ WHERE entity_type = 'WORK_ITEM'
+   AND entity_id   = '<WORK_ITEM_ID>'
+   AND event_type IN ('OWNER_ASSIGNED', 'PRIORITY_CHANGED', 'SEVERITY_CHANGED')
+ ORDER BY occurred_at ASC;
+```
+
+Expected — one row per endpoint executed:
+
+| `event_type`       | `action_source` | `new_value_json`                          |
+| ------------------ | --------------- | ----------------------------------------- |
+| `OWNER_ASSIGNED`   | `ADMIN_API`     | the new owner user id                     |
+| `PRIORITY_CHANGED` | `ADMIN_API`     | `"HIGH"` (or whichever code you sent)     |
+| `SEVERITY_CHANGED` | `ADMIN_API`     | `"CRITICAL"` (or whichever code you sent) |
+
+`entity_type` is always `WORK_ITEM`. `entity_id` is the work item id.
+`actor_user_id` is the JWT `sub` (resolved via `@CurrentActor`).
+Request body, JWT, IP, and any exception messages never enter the
+audit payload.
+
+If your environment uses Docker Compose for Postgres, the same query
+through `psql`:
+
+```bash
+docker compose exec postgres \
+  psql -U "$DATABASE_USERNAME" -d engops \
+  -c "SELECT event_type, action_source, new_value_json
+        FROM audit_event
+       WHERE entity_id = '$WORK_ITEM_ID'
+         AND event_type IN ('OWNER_ASSIGNED','PRIORITY_CHANGED','SEVERITY_CHANGED')
+       ORDER BY occurred_at;"
+```
+
+### 14.6 Telegram side — what does NOT happen
+
+Re-stating the important semantic note: after a §14.1 / §14.2 / §14.3
+call, **the Telegram card is not re-rendered**. There is no new
+`telegram_delivery_attempt` row, no edit, no send, and no
+`TelegramCardRefreshDispatchService` coordinator log line for these
+admin write endpoints. Verify with the delivery observability admin
+endpoint:
+
+```bash
+curl -s -H "Authorization: Bearer $DEMO_JWT" \
+  "$DEMO_BASE/api/admin/delivery-observability/details?tenantId=$TENANT_ID&workItemCode=$WORK_ITEM_CODE&historyLimit=10"
+```
+
+Expected: `recentAttempts.length` is unchanged compared to the
+snapshot taken immediately before §14.1. Only workflow transition
+(Section 8) and intake (Section 7) trigger Telegram dispatch in the
+current phase.
+
+To verify the field changes on the read side, use the admin work-item
+read surface:
+
+```bash
+curl -s -H "Authorization: Bearer $DEMO_JWT" \
+  "$DEMO_BASE/api/admin/work-items/details/by-id?tenantId=$TENANT_ID&workItemId=$WORK_ITEM_ID"
+```
+
+Expected `WorkItemDetailsResponse` fields reflect the writes:
+
+- `currentOwnerUserId = $OWNER_USER_ID`
+- `priorityCode = "HIGH"`
+- `severityCode = "CRITICAL"`
+
+### 14.7 Phase 190 smoke success checklist
+
+A complete Phase 190 admin write smoke run ticks every box below.
+
+- [ ] §14.1 returns `200 OK` and `currentOwnerUserId` equals
+      `$OWNER_USER_ID` in the response body.
+- [ ] §14.2 returns `200 OK` and `priorityCode = "HIGH"` in the
+      response body.
+- [ ] §14.3 returns `200 OK` and `severityCode = "CRITICAL"` in the
+      response body.
+- [ ] §14.4 A returns `422 INVALID_PRIORITY_CODE`.
+- [ ] §14.4 B returns `422 INVALID_SEVERITY_CODE`.
+- [ ] §14.4 C returns `403 ACCESS_DENIED` for at least one endpoint
+      executed by a non-permitted actor.
+- [ ] §14.5 SQL returns exactly the three expected audit rows with
+      `action_source = ADMIN_API` and the expected `new_value_json`
+      payloads.
+- [ ] §14.6 confirms no new `telegram_delivery_attempt` row is
+      appended by these admin writes (Telegram card refresh is
+      intentionally out of scope for Phase 190).
+- [ ] The admin read surface (`GET .../work-items/details/by-id?...`)
+      reflects the new field values.
+
+If every box ticks, the Phase 190 admin write surface is verified
+end-to-end against the demo tenant.

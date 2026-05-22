@@ -337,6 +337,29 @@ SELECT occurred_at, tenant_id, actor_user_id, new_value_json
  ORDER BY occurred_at DESC LIMIT 20;
 ```
 
+**Phase 190 admin write success audit qatorlari.** Phase 190 admin
+write endpoint'lari (`POST /api/admin/work-items/{id}/owner` /
+`.../priority` / `.../severity`) har bir muvaffaqiyatli mutatsiya
+uchun bitta audit qatorini biznes tranzaksiyasi ichida (`MANDATORY`
+propagation, `REQUIRES_NEW` emas) yozadi:
+
+| `event_type`       | Manba metod                                              |
+| ------------------ | -------------------------------------------------------- |
+| `OWNER_ASSIGNED`   | `WorkItemCommandService.assignOwner(...)`                |
+| `PRIORITY_CHANGED` | `WorkItemCommandService.updatePriority(...)` (Phase 190) |
+| `SEVERITY_CHANGED` | `WorkItemCommandService.updateSeverity(...)` (Phase 190) |
+
+Har uchchalasi uchun `action_source = ADMIN_API`,
+`entity_type = WORK_ITEM`, `entity_id = workItemId`. `new_value_json`
+faqat bounded qiymatni saqlaydi (yangi owner UUID, yoki yangi
+priority/severity kodi — `LOW` / `MEDIUM` / `HIGH` / `CRITICAL`).
+Request body, JWT, exception message audit payload'iga **kirmaydi**.
+Operator smoke retsepti
+[`demo-smoke-runbook.md` §14](demo-smoke-runbook.md#14-phase-190-admin-write-smoke--owner--priority--severity)
+da. Bu endpoint'lar uchun denial audit qatori joriy etilmagan —
+denial yo'li mavjud `OperationalAuthorizationService` warn log liniyasi
+orqali signal beradi (Phase 190 doirasidan tashqari).
+
 ---
 
 ## 8. Log grep playbook
@@ -457,8 +480,11 @@ Hardening checklist
 Backup / restore
 [`backup-restore-runbook.md`](backup-restore-runbook.md).
 
-Keyingi tavsiya etilgan phase — **Phase 190 — Product domain
-expansion**: priority / severity / owner intake va admin write
-surface; INCIDENT / TASK workflow template'lar (V3 schema allaqachon
-maydonlarni qo'llaydi; faqat HTTP surface va bootstrap toggles
-qo'shiladi).
+Phase 192 dan keyingi keyingi-qadam yo'l-yo'rig'i so'nggi phase
+review'idan kelishi kerak. Phase 192 holatida ushbu runbook Phase 189
+observability signal'lari (uchta Micrometer counter, `ADMIN_AUTH_DENIED`
+audit qatori, `TELEGRAM_WEBHOOK_REJECTED` bounded log) hamda Phase 190
+admin-write success audit qatorlari (`OWNER_ASSIGNED`,
+`PRIORITY_CHANGED`, `SEVERITY_CHANGED` — §7 da hujjatlangan) ni qamrab
+oladi. `TELEGRAM_WEBHOOK_REJECTED` audit qatori hali ham ataylab
+DEFERRED — bounded log only (§10 ga qarang).

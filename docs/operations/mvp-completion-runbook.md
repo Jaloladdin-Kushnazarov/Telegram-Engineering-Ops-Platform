@@ -36,7 +36,14 @@ of repeating it. The deep runbooks are:
 
 ---
 
-## 2. Capability snapshot as of Phase 185
+## 2. Capability snapshot — Phase 185 foundation plus later documented additions
+
+> Phase 190 admin write surface (owner / priority / severity) is
+> already implemented and is verified through the consolidated
+> checklist in §5 plus the demo smoke recipes in
+> [`demo-smoke-runbook.md` §14](demo-smoke-runbook.md#14-phase-190-admin-write-smoke--owner--priority--severity).
+> The bullet list below remains the Phase 185 foundation; it is not
+> rewritten here to avoid duplication.
 
 What the platform can do today (verified, tested, documented):
 
@@ -231,6 +238,17 @@ queries documented in the deep runbooks.
       or click a button on a work item the actor is not a member
       of), one `TELEGRAM_CALLBACK_DENIED` audit row is written for
       the denied outcome. See §8 below.
+- [ ] **Phase 190 admin write smoke.** Run the three admin write
+      endpoints against the demo work item per
+      [`demo-smoke-runbook.md` §14](demo-smoke-runbook.md#14-phase-190-admin-write-smoke--owner--priority--severity):
+      assign owner, update priority (`HIGH`), update severity
+      (`CRITICAL`). Verify the three resulting audit rows
+      (`OWNER_ASSIGNED`, `PRIORITY_CHANGED`, `SEVERITY_CHANGED`, all
+      with `action_source = ADMIN_API`); verify at least one `403
+      ACCESS_DENIED` against a non-permitted actor and one `422`
+      with `INVALID_PRIORITY_CODE` or `INVALID_SEVERITY_CODE`. The
+      Telegram card is intentionally **not** re-rendered by these
+      admin writes (Phase 190 scope decision).
 - [ ] `GET /api/admin/delivery-observability/details?...` returns the
       expected attempt count for the executed branch.
 - [ ] Application logs contain no bot-token substring — token
