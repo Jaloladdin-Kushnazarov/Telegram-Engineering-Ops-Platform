@@ -41,6 +41,12 @@ public class TelegramRenderPayload {
     private final String headerLine;
     private final String statusLine;
 
+    // Phase 194 — optional work item attribute snapshot. Nullable.
+    // TelegramMessageRenderer renders these only when non-null and non-blank.
+    // Owner intentionally NOT carried (Phase 196 scope).
+    private final String priorityCode;
+    private final String severityCode;
+
     // Delivery readiness
     private final boolean deliveryReady;
 
@@ -54,6 +60,7 @@ public class TelegramRenderPayload {
                                   String currentStatusCode,
                                   String displayTitle, String displayTypeLabel,
                                   String headerLine, String statusLine,
+                                  String priorityCode, String severityCode,
                                   boolean deliveryReady,
                                   UUID targetChatBindingId, Long targetTopicId) {
         this.tenantId = tenantId;
@@ -66,6 +73,8 @@ public class TelegramRenderPayload {
         this.displayTypeLabel = displayTypeLabel;
         this.headerLine = headerLine;
         this.statusLine = statusLine;
+        this.priorityCode = priorityCode;
+        this.severityCode = severityCode;
         this.deliveryReady = deliveryReady;
         this.targetChatBindingId = targetChatBindingId;
         this.targetTopicId = targetTopicId;
@@ -81,6 +90,8 @@ public class TelegramRenderPayload {
     public String getDisplayTypeLabel() { return displayTypeLabel; }
     public String getHeaderLine() { return headerLine; }
     public String getStatusLine() { return statusLine; }
+    public String getPriorityCode() { return priorityCode; }
+    public String getSeverityCode() { return severityCode; }
     public boolean isDeliveryReady() { return deliveryReady; }
     public UUID getTargetChatBindingId() { return targetChatBindingId; }
     public Long getTargetTopicId() { return targetTopicId; }

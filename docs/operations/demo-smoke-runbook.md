@@ -407,6 +407,55 @@ render → outbound → persistence chain, and inserts a
   `failure_reason = "Telegram outbound gateway hali implement qilinmagan"`.
   The intake is still successful from the application's perspective.
 
+### Card text shape
+
+The card text rendered by `TelegramMessageRenderer` is plain text (no
+Markdown / HTML / `parse_mode`). The base shape is three lines:
+
+```
+Bug | BUG-1
+[BUG-1] Login screen breaks on Safari
+Status: BUGS
+```
+
+**Phase 194.** When the projected `WorkItem` carries a non-null and
+non-blank `priorityCode` or `severityCode`, the renderer appends one
+extra line per present field, in this stable order:
+
+```
+Bug | BUG-1
+[BUG-1] Login screen breaks on Safari
+Status: BUGS
+Priority: HIGH
+Severity: CRITICAL
+```
+
+Rules:
+
+- Lines are emitted **only when** the corresponding value is present
+  on the `PreparedDeliveryTarget` carried by the
+  `TelegramCardDispatchRequested` event. Both fields are nullable;
+  blank / whitespace-only strings are treated as absent.
+- If both are absent, the output is byte-for-byte the same as the
+  pre-Phase-194 three-line shape (Phase 179 `NOT_MODIFIED` safety for
+  unchanged work items).
+- The publisher captures the snapshot at the moment of intake commit
+  (Section 7) and at the moment of workflow transition commit
+  (Section 8). The Telegram renderer never re-reads the `WorkItem`.
+- **Phase 192 invariant preserved.** Phase 190 admin write endpoints
+  (`POST /api/admin/work-items/{id}/owner|priority|severity`) still
+  do **not** publish a Telegram refresh event. Changing
+  `priorityCode` / `severityCode` through the admin write API
+  updates the database, the admin read surface, and the audit trail,
+  but does **not** edit the existing Telegram card. The new values
+  appear in the card only on the **next** intake or workflow
+  transition for that work item. This is intentional for Phase 194;
+  admin-write-triggered card refresh is a separate, future-scope
+  phase.
+- Owner display is intentionally **not** rendered in Phase 194 (no
+  identity lookup in the render path). Owner rendering is tracked
+  for a later phase.
+
 ---
 
 ## 8. Transition the work item
@@ -780,6 +829,17 @@ identity).
 > `EDIT_RATE_LIMIT_FALLBACK_SEND`, `EDIT_NETWORK_FALLBACK_SEND`,
 > `EDIT_FAILED_FALLBACK_SEND`, `EDIT_NULL_RESULT_FALLBACK_SEND`,
 > `REFRESH_THREW_FALLBACK_SEND`.
+
+> **Phase 194 note on card text shape.** Since Phase 194, the rendered
+> Telegram card may contain optional `Priority: <code>` and/or
+> `Severity: <code>` lines after the status line when those fields are
+> present on the projected `WorkItem`. When both fields are absent, the
+> card text is the unchanged three-line format. The manual smoke
+> sub-branches below assume the absent-fields shape; with one or both
+> present, expected text grows by one or two trailing lines accordingly
+> and `editMessageText` continues to behave per Branch A / B / C
+> semantics (e.g. a same-status transition with the same priority and
+> severity still produces `NOT_MODIFIED`).
 
 ### 13.1 Branch A — `EDITED` (happy edit-first path)
 
@@ -1339,7 +1399,13 @@ Re-stating the important semantic note: after a §14.1 / §14.2 / §14.3
 call, **the Telegram card is not re-rendered**. There is no new
 `telegram_delivery_attempt` row, no edit, no send, and no
 `TelegramCardRefreshDispatchService` coordinator log line for these
-admin write endpoints. Verify with the delivery observability admin
+admin write endpoints. Phase 194 introduces optional `Priority:` /
+`Severity:` lines in the rendered card text (see §7 "Card text shape"),
+but those lines are populated **only** when the projected `WorkItem`
+already carries the values at the moment of intake or workflow
+transition. Admin write endpoints that set those values now still do
+not trigger a refresh — the new values surface in the card only on the
+**next** intake or workflow transition for that work item. Verify with the delivery observability admin
 endpoint:
 
 ```bash

@@ -37,6 +37,12 @@ public class ProjectionPayload {
     private final String displayTitle;
     private final String displayTypeLabel;
 
+    // Phase 194 — adapter-neutral pass-through of work item attribute snapshot.
+    // Nullable. Telegram adapter renders optional lines only when present;
+    // other adapters may ignore.
+    private final String priorityCode;
+    private final String severityCode;
+
     // Delivery readiness
     private final boolean deliveryReady;
 
@@ -49,6 +55,7 @@ public class ProjectionPayload {
                               String workItemType, String title,
                               String currentStatusCode,
                               String displayTitle, String displayTypeLabel,
+                              String priorityCode, String severityCode,
                               boolean deliveryReady,
                               UUID targetChatBindingId, Long targetTopicId) {
         this.tenantId = tenantId;
@@ -59,6 +66,8 @@ public class ProjectionPayload {
         this.currentStatusCode = currentStatusCode;
         this.displayTitle = displayTitle;
         this.displayTypeLabel = displayTypeLabel;
+        this.priorityCode = priorityCode;
+        this.severityCode = severityCode;
         this.deliveryReady = deliveryReady;
         this.targetChatBindingId = targetChatBindingId;
         this.targetTopicId = targetTopicId;
@@ -72,6 +81,8 @@ public class ProjectionPayload {
     public String getCurrentStatusCode() { return currentStatusCode; }
     public String getDisplayTitle() { return displayTitle; }
     public String getDisplayTypeLabel() { return displayTypeLabel; }
+    public String getPriorityCode() { return priorityCode; }
+    public String getSeverityCode() { return severityCode; }
     public boolean isDeliveryReady() { return deliveryReady; }
     public UUID getTargetChatBindingId() { return targetChatBindingId; }
     public Long getTargetTopicId() { return targetTopicId; }

@@ -103,6 +103,7 @@ class TelegramCardDispatchAfterCommitIntegrationTest {
                 "BUG",                              // workItemType
                 "Smoke test bug",                   // title
                 targetStatusCode != null ? targetStatusCode : "BUGS",
+                null, null,                         // Phase 194 — priority/severity absent
                 true,                               // deliveryReady
                 UUID.randomUUID(),                  // targetChatBindingId
                 42L);                               // targetTopicId

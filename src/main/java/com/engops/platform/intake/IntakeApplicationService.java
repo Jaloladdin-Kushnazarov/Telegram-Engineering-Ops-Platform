@@ -120,7 +120,13 @@ public class IntakeApplicationService {
                 command.getCreatedByUserId(),
                 command.getActionSource());
 
-        // 5. Adapter-ready result
+        // 5. Adapter-ready result.
+        // Phase 194: priority/severity attribute snapshot is captured from the
+        // freshly created WorkItem so the AFTER_COMMIT Telegram projection can
+        // render optional lines. Both are nullable — intake create today does
+        // not accept these fields, so they will be null for any work item
+        // produced via the public intake API. They become non-null only if a
+        // future caller pre-populates them on the WorkItem before publish.
         IntakeResult result = new IntakeResult(
                 workItem.getId(),
                 workItem.getWorkItemCode(),
@@ -129,6 +135,8 @@ public class IntakeApplicationService {
                 workItem.getCurrentStatusCode(),
                 workItem.getWorkflowDefinitionId(),
                 workItem.getTenantId(),
+                workItem.getPriorityCode(),
+                workItem.getSeverityCode(),
                 routing.isPrepared(),
                 routing.getMatchedRoutingRuleId(),
                 routing.getTargetTopicBindingId(),

@@ -51,6 +51,10 @@ public class TelegramRenderAssembler {
                 payload.getDisplayTypeLabel(),
                 headerLine,
                 statusLine,
+                // Phase 194 — pure pass-through; renderer decides whether to
+                // emit the optional Priority/Severity lines.
+                payload.getPriorityCode(),
+                payload.getSeverityCode(),
                 payload.isDeliveryReady(),
                 payload.getTargetChatBindingId(),
                 payload.getTargetTopicId());

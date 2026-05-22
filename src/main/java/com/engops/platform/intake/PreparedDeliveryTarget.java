@@ -32,6 +32,13 @@ public class PreparedDeliveryTarget {
     private final String title;
     private final String currentStatusCode;
 
+    // Phase 194 — work item attribute snapshot for projection rendering.
+    // Nullable; carries the publisher-side WorkItem.priorityCode / severityCode
+    // verbatim so render layer can include optional lines without re-reading
+    // the WorkItem. Owner intentionally NOT carried (Phase 196 scope).
+    private final String priorityCode;
+    private final String severityCode;
+
     // Delivery readiness
     private final boolean deliveryReady;
 
@@ -43,6 +50,7 @@ public class PreparedDeliveryTarget {
                                    UUID workItemId, String workItemCode,
                                    String workItemType, String title,
                                    String currentStatusCode,
+                                   String priorityCode, String severityCode,
                                    boolean deliveryReady,
                                    UUID targetChatBindingId, Long targetTopicId) {
         this.tenantId = tenantId;
@@ -51,6 +59,8 @@ public class PreparedDeliveryTarget {
         this.workItemType = workItemType;
         this.title = title;
         this.currentStatusCode = currentStatusCode;
+        this.priorityCode = priorityCode;
+        this.severityCode = severityCode;
         this.deliveryReady = deliveryReady;
         this.targetChatBindingId = targetChatBindingId;
         this.targetTopicId = targetTopicId;
@@ -62,6 +72,8 @@ public class PreparedDeliveryTarget {
     public String getWorkItemType() { return workItemType; }
     public String getTitle() { return title; }
     public String getCurrentStatusCode() { return currentStatusCode; }
+    public String getPriorityCode() { return priorityCode; }
+    public String getSeverityCode() { return severityCode; }
     public boolean isDeliveryReady() { return deliveryReady; }
     public UUID getTargetChatBindingId() { return targetChatBindingId; }
     public Long getTargetTopicId() { return targetTopicId; }

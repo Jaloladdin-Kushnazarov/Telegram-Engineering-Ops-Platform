@@ -540,6 +540,7 @@ class IntakeApplicationServiceTest {
         IntakeResult result = new IntakeResult(
                 workItemId, "BUG-1", "BUG", "Login xato", "BUGS",
                 workflowDefId, tenantId,
+                null, null,
                 true, routingRuleId, topicBindingId, chatBindingId, topicId);
 
         PreparedDeliveryTarget target = result.toPreparedDeliveryTarget();
@@ -550,9 +551,33 @@ class IntakeApplicationServiceTest {
         assertThat(target.getWorkItemType()).isEqualTo("BUG");
         assertThat(target.getTitle()).isEqualTo("Login xato");
         assertThat(target.getCurrentStatusCode()).isEqualTo("BUGS");
+        assertThat(target.getPriorityCode()).isNull();
+        assertThat(target.getSeverityCode()).isNull();
         assertThat(target.isDeliveryReady()).isTrue();
         assertThat(target.getTargetChatBindingId()).isEqualTo(chatBindingId);
         assertThat(target.getTargetTopicId()).isEqualTo(topicId);
+    }
+
+    /**
+     * Phase 194 — when IntakeResult carries non-null priority/severity, the
+     * derived PreparedDeliveryTarget must surface them verbatim. This is the
+     * publisher-side guarantee the Telegram renderer relies on.
+     */
+    @Test
+    void toPreparedDeliveryTargetForwardsPriorityAndSeverity() {
+        UUID workItemId = UUID.randomUUID();
+
+        IntakeResult result = new IntakeResult(
+                workItemId, "BUG-9", "BUG", "Crash", "BUGS",
+                workflowDefId, tenantId,
+                "HIGH", "CRITICAL",
+                true, UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), 99L);
+
+        PreparedDeliveryTarget target = result.toPreparedDeliveryTarget();
+
+        assertThat(target.getPriorityCode()).isEqualTo("HIGH");
+        assertThat(target.getSeverityCode()).isEqualTo("CRITICAL");
     }
 
     @Test
@@ -562,6 +587,7 @@ class IntakeApplicationServiceTest {
         IntakeResult result = new IntakeResult(
                 workItemId, "BUG-2", "BUG", "Server xato", "BUGS",
                 workflowDefId, tenantId,
+                null, null,
                 false, null, null, null, null);
 
         PreparedDeliveryTarget target = result.toPreparedDeliveryTarget();
@@ -641,9 +667,68 @@ class IntakeApplicationServiceTest {
         assertThat(target.getWorkItemType()).isEqualTo("BUG");
         assertThat(target.getTitle()).isEqualTo("Login xato");
         assertThat(target.getCurrentStatusCode()).isEqualTo("BUGS");
+        // Phase 194 — intake API does not yet accept priority/severity, so the
+        // default WorkItem produced here has null attributes.
+        assertThat(target.getPriorityCode()).isNull();
+        assertThat(target.getSeverityCode()).isNull();
         assertThat(target.isDeliveryReady()).isTrue();
         assertThat(target.getTargetChatBindingId()).isEqualTo(chatBindingId);
         assertThat(target.getTargetTopicId()).isEqualTo(topicId);
+    }
+
+    /**
+     * Phase 194: when the created WorkItem already carries non-null
+     * priorityCode and severityCode (e.g. set by a future intake field or by
+     * an integration that pre-populates them), the AFTER_COMMIT
+     * {@link TelegramCardDispatchRequested} payload must surface those values
+     * verbatim through {@link PreparedDeliveryTarget} so the Telegram renderer
+     * can emit the optional lines.
+     *
+     * <p>This test exercises the publisher-side snapshot capture in
+     * {@link IntakeApplicationService} — it does <strong>not</strong> imply
+     * intake accepts these fields on the request body today.</p>
+     */
+    @Test
+    void priorityVaSeverityWorkItemdaBolsaEventPayloadigaUzatiladi() {
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+
+        UUID routingRuleId = UUID.randomUUID();
+        UUID topicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        long topicId = 42L;
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId, chatBindingId, topicId));
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-9", WorkItemType.BUG,
+                workflowDefId, "Race condition", "BUGS", userId);
+        createdItem.setPriorityCode("HIGH");
+        createdItem.setSeverityCode("CRITICAL");
+        when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
+                eq("Race condition"), eq((String) null), eq("BUGS"), eq(userId), eq("MANUAL")))
+                .thenReturn(createdItem);
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("Race condition")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .build();
+
+        intakeService.submit(command);
+
+        ArgumentCaptor<TelegramCardDispatchRequested> eventCaptor =
+                ArgumentCaptor.forClass(TelegramCardDispatchRequested.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        PreparedDeliveryTarget target = eventCaptor.getValue().target();
+
+        assertThat(target.getPriorityCode()).isEqualTo("HIGH");
+        assertThat(target.getSeverityCode()).isEqualTo("CRITICAL");
     }
 
     /**

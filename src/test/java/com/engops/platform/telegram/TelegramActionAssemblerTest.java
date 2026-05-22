@@ -187,6 +187,7 @@ class TelegramActionAssemblerTest {
                 workItemType.substring(0, 1) + workItemType.substring(1).toLowerCase()
                         + " | " + workItemType + "-1",
                 "Status: " + currentStatusCode,
+                null, null,
                 true,
                 UUID.randomUUID(), 42L);
     }

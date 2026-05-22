@@ -55,6 +55,7 @@ class TelegramCardDispatchEventListenerTest {
         return new PreparedDeliveryTarget(
                 tenantId, workItemId, "BUG-1", "BUG", "Test bug",
                 currentStatusCode,
+                null, null,
                 true,
                 chatBindingId, 42L);
     }
@@ -63,6 +64,7 @@ class TelegramCardDispatchEventListenerTest {
         return new PreparedDeliveryTarget(
                 tenantId, workItemId, "BUG-2", "BUG", "Test bug",
                 "BUGS",
+                null, null,
                 false,
                 null, null);
     }

@@ -323,9 +323,45 @@ class WorkflowTransitionServiceTest {
         assertThat(target.getCurrentStatusCode())
                 .as("PreparedDeliveryTarget yangi statusCode'ni saqlashi shart (transitionTo'dan keyin)")
                 .isEqualTo("PROCESSING");
+        // Phase 194 — default WorkItem in this test path has no priority/severity.
+        assertThat(target.getPriorityCode()).isNull();
+        assertThat(target.getSeverityCode()).isNull();
         assertThat(target.isDeliveryReady()).isTrue();
         assertThat(target.getTargetChatBindingId()).isEqualTo(chatBindingId);
         assertThat(target.getTargetTopicId()).isEqualTo(topicId);
+    }
+
+    /**
+     * Phase 194: when the transitioned WorkItem carries non-null priorityCode
+     * and severityCode (e.g. set previously via the Phase 190 admin write
+     * surface), the AFTER_COMMIT {@link TelegramCardDispatchRequested} payload
+     * must forward them through {@link PreparedDeliveryTarget} so the
+     * Telegram renderer can append the optional lines on the refreshed card.
+     */
+    @Test
+    void priorityVaSeverityWorkItemdaBolsaEventPayloadigaUzatiladi() {
+        WorkItem workItem = createWorkItem("BUGS");
+        workItem.setPriorityCode("HIGH");
+        workItem.setSeverityCode("CRITICAL");
+        setupMocks(workItem);
+
+        UUID routingRuleId = UUID.randomUUID();
+        UUID topicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        long topicId = 42L;
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId, chatBindingId, topicId));
+
+        transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        ArgumentCaptor<TelegramCardDispatchRequested> eventCaptor =
+                ArgumentCaptor.forClass(TelegramCardDispatchRequested.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        PreparedDeliveryTarget target = eventCaptor.getValue().target();
+
+        assertThat(target.getPriorityCode()).isEqualTo("HIGH");
+        assertThat(target.getSeverityCode()).isEqualTo("CRITICAL");
     }
 
     /**

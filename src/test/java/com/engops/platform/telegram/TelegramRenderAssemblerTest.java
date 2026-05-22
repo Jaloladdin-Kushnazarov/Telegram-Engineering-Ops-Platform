@@ -32,6 +32,7 @@ class TelegramRenderAssemblerTest {
                 tenantId,
                 workItemId, "BUG-1", "BUG", "Login xato", "BUGS",
                 "[BUG-1] Login xato", "Bug",
+                null, null,
                 true,
                 chatBindingId, topicId);
 
@@ -53,6 +54,10 @@ class TelegramRenderAssemblerTest {
         assertThat(render.getHeaderLine()).isEqualTo("Bug | BUG-1");
         assertThat(render.getStatusLine()).isEqualTo("Status: BUGS");
 
+        // Phase 194 — priority/severity absent
+        assertThat(render.getPriorityCode()).isNull();
+        assertThat(render.getSeverityCode()).isNull();
+
         // Delivery target
         assertThat(render.isDeliveryReady()).isTrue();
         assertThat(render.getTargetChatBindingId()).isEqualTo(chatBindingId);
@@ -68,6 +73,7 @@ class TelegramRenderAssemblerTest {
                 tenantId,
                 workItemId, "INCIDENT-1", "INCIDENT", "DB down", "OPEN",
                 "[INCIDENT-1] DB down", "Incident",
+                null, null,
                 false,
                 null, null);
 
@@ -88,6 +94,7 @@ class TelegramRenderAssemblerTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(), "TASK-5", "TASK", "Deploy script", "TODO",
                 "[TASK-5] Deploy script", "Task",
+                null, null,
                 false,
                 null, null);
 
@@ -96,6 +103,28 @@ class TelegramRenderAssemblerTest {
         assertThat(render.getHeaderLine()).isEqualTo("Task | TASK-5");
         assertThat(render.getStatusLine()).isEqualTo("Status: TODO");
         assertThat(render.getDisplayTitle()).isEqualTo("[TASK-5] Deploy script");
+    }
+
+    /**
+     * Phase 194 — render assembler must pass priorityCode / severityCode
+     * verbatim from the projection payload to the render payload. The
+     * assembler is pure mapping; the renderer alone decides whether to
+     * emit optional lines.
+     */
+    @Test
+    void priorityAndSeverityPassedThroughFromPayload() {
+        ProjectionPayload payload = new ProjectionPayload(
+                UUID.randomUUID(),
+                UUID.randomUUID(), "BUG-3", "BUG", "Race condition", "PROCESSING",
+                "[BUG-3] Race condition", "Bug",
+                "HIGH", "CRITICAL",
+                true,
+                UUID.randomUUID(), 7L);
+
+        TelegramRenderPayload render = assembler.assemble(payload);
+
+        assertThat(render.getPriorityCode()).isEqualTo("HIGH");
+        assertThat(render.getSeverityCode()).isEqualTo("CRITICAL");
     }
 
     @Test

@@ -42,6 +42,21 @@ of repeating it. The deep runbooks are:
 > already implemented and is verified through the consolidated
 > checklist in §5 plus the demo smoke recipes in
 > [`demo-smoke-runbook.md` §14](demo-smoke-runbook.md#14-phase-190-admin-write-smoke--owner--priority--severity).
+>
+> **Phase 194.** The Telegram card text now renders optional
+> `Priority: <code>` and `Severity: <code>` lines when the projected
+> `WorkItem` carries those fields at intake commit or workflow
+> transition commit. When both fields are absent the card text remains
+> the pre-Phase-194 three-line shape (`header` / `[code] title` /
+> `Status: ...`), preserving Phase 179 `NOT_MODIFIED` behavior for
+> unchanged work items. Owner display is intentionally still deferred —
+> no identity lookup is performed by the render path. Admin-write
+> endpoints from Phase 190 continue to **not** publish a Telegram
+> refresh event; new priority / severity values appear in the card
+> only on the next intake or workflow transition for that work item.
+> See [`demo-smoke-runbook.md` §7 "Card text shape"](demo-smoke-runbook.md#card-text-shape)
+> for the exact rendered format.
+>
 > The bullet list below remains the Phase 185 foundation; it is not
 > rewritten here to avoid duplication.
 

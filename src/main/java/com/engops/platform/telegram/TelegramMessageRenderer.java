@@ -48,10 +48,36 @@ public class TelegramMessageRenderer {
                 renderPayload.getTargetTopicId());
     }
 
+    /**
+     * Phase 194 — base 3-line card text optionally followed by
+     * {@code Priority: <code>} and/or {@code Severity: <code>} lines.
+     *
+     * <p>The optional lines are appended <em>only</em> when the corresponding
+     * field on the {@link TelegramRenderPayload} is non-null and non-blank.
+     * Blank strings are treated like absent values; no empty-label line is
+     * ever rendered. When both fields are absent the output is byte-for-byte
+     * identical to the pre-Phase-194 format, preserving Phase 179
+     * NOT_MODIFIED behavior for unchanged work items.</p>
+     *
+     * <p>No Markdown or HTML — plain text only. No {@code parse_mode}.
+     * Rendered text is never logged (token-leak guard pattern).</p>
+     */
     private String buildMessageText(TelegramRenderPayload renderPayload) {
-        return renderPayload.getHeaderLine() + "\n"
-                + renderPayload.getDisplayTitle() + "\n"
-                + renderPayload.getStatusLine();
+        StringBuilder sb = new StringBuilder()
+                .append(renderPayload.getHeaderLine()).append('\n')
+                .append(renderPayload.getDisplayTitle()).append('\n')
+                .append(renderPayload.getStatusLine());
+        if (isPresent(renderPayload.getPriorityCode())) {
+            sb.append('\n').append("Priority: ").append(renderPayload.getPriorityCode());
+        }
+        if (isPresent(renderPayload.getSeverityCode())) {
+            sb.append('\n').append("Severity: ").append(renderPayload.getSeverityCode());
+        }
+        return sb.toString();
+    }
+
+    private static boolean isPresent(String value) {
+        return value != null && !value.isBlank();
     }
 
     private List<TelegramInlineKeyboardRow> buildKeyboard(List<TelegramCardAction> actions) {

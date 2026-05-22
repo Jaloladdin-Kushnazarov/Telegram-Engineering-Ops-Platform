@@ -130,6 +130,7 @@ class IntakeControllerTest {
                 "BUGS",
                 WORKFLOW_DEFINITION_ID,
                 TENANT_ID,
+                null, null,
                 true,
                 ROUTING_RULE_ID,
                 TOPIC_BINDING_ID,
@@ -178,6 +179,7 @@ class IntakeControllerTest {
                 "OPEN",
                 WORKFLOW_DEFINITION_ID,
                 TENANT_ID,
+                null, null,
                 false,
                 null, null, null, null);
 
@@ -213,6 +215,7 @@ class IntakeControllerTest {
         IntakeResult result = new IntakeResult(
                 WORK_ITEM_ID, "BUG-2", "BUG", "Title", "BUGS",
                 WORKFLOW_DEFINITION_ID, TENANT_ID,
+                null, null,
                 false, null, null, null, null);
         when(intakeApplicationService.submit(any(IntakeCommand.class))).thenReturn(result);
 

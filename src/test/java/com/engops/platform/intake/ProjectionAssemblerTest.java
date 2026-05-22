@@ -26,6 +26,7 @@ class ProjectionAssemblerTest {
         PreparedDeliveryTarget target = new PreparedDeliveryTarget(
                 tenantId,
                 workItemId, "BUG-1", "BUG", "Login xato", "BUGS",
+                null, null,
                 true,
                 chatBindingId, topicId);
 
@@ -39,6 +40,8 @@ class ProjectionAssemblerTest {
         assertThat(payload.getCurrentStatusCode()).isEqualTo("BUGS");
         assertThat(payload.getDisplayTitle()).isEqualTo("[BUG-1] Login xato");
         assertThat(payload.getDisplayTypeLabel()).isEqualTo("Bug");
+        assertThat(payload.getPriorityCode()).isNull();
+        assertThat(payload.getSeverityCode()).isNull();
         assertThat(payload.isDeliveryReady()).isTrue();
         assertThat(payload.getTargetChatBindingId()).isEqualTo(chatBindingId);
         assertThat(payload.getTargetTopicId()).isEqualTo(topicId);
@@ -52,6 +55,7 @@ class ProjectionAssemblerTest {
         PreparedDeliveryTarget target = new PreparedDeliveryTarget(
                 tenantId,
                 workItemId, "INCIDENT-1", "INCIDENT", "DB down", "OPEN",
+                null, null,
                 false,
                 null, null);
 
@@ -75,6 +79,7 @@ class ProjectionAssemblerTest {
         PreparedDeliveryTarget target = new PreparedDeliveryTarget(
                 UUID.randomUUID(),
                 UUID.randomUUID(), "TASK-5", "TASK", "Deploy script", "TODO",
+                null, null,
                 false,
                 null, null);
 
@@ -82,6 +87,45 @@ class ProjectionAssemblerTest {
 
         assertThat(payload.getDisplayTypeLabel()).isEqualTo("Task");
         assertThat(payload.getDisplayTitle()).isEqualTo("[TASK-5] Deploy script");
+    }
+
+    /**
+     * Phase 194 — assembler must pass priority and severity verbatim from the
+     * delivery target to the projection payload without transforming, defaulting,
+     * or coercing them. The renderer downstream decides whether to render.
+     */
+    @Test
+    void priorityAndSeverityPassedThroughFromTarget() {
+        PreparedDeliveryTarget target = new PreparedDeliveryTarget(
+                UUID.randomUUID(),
+                UUID.randomUUID(), "BUG-7", "BUG", "Race condition", "PROCESSING",
+                "HIGH", "CRITICAL",
+                true,
+                UUID.randomUUID(), 9L);
+
+        ProjectionPayload payload = assembler.assemble(target);
+
+        assertThat(payload.getPriorityCode()).isEqualTo("HIGH");
+        assertThat(payload.getSeverityCode()).isEqualTo("CRITICAL");
+    }
+
+    /**
+     * Phase 194 — blank/whitespace strings must propagate as-is (no
+     * normalization). Renderer alone decides whether to emit lines.
+     */
+    @Test
+    void blankPriorityAndSeverityPropagatedAsIs() {
+        PreparedDeliveryTarget target = new PreparedDeliveryTarget(
+                UUID.randomUUID(),
+                UUID.randomUUID(), "BUG-8", "BUG", "Edge case", "BUGS",
+                "   ", "",
+                true,
+                UUID.randomUUID(), 9L);
+
+        ProjectionPayload payload = assembler.assemble(target);
+
+        assertThat(payload.getPriorityCode()).isEqualTo("   ");
+        assertThat(payload.getSeverityCode()).isEqualTo("");
     }
 
     @Test

@@ -47,6 +47,10 @@ public class ProjectionAssembler {
                 target.getCurrentStatusCode(),
                 displayTitle,
                 displayTypeLabel,
+                // Phase 194 — pure pass-through; assembler must not transform
+                // or default priority/severity values.
+                target.getPriorityCode(),
+                target.getSeverityCode(),
                 target.isDeliveryReady(),
                 target.getTargetChatBindingId(),
                 target.getTargetTopicId());

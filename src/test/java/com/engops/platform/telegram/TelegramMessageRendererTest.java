@@ -33,6 +33,7 @@ class TelegramMessageRendererTest {
                 workItemId, "BUG-1", "BUG", "Login xato", "BUGS",
                 "[BUG-1] Login xato", "Bug",
                 "Bug | BUG-1", "Status: BUGS",
+                null, null,
                 true,
                 chatBindingId, 42L);
 
@@ -49,6 +50,8 @@ class TelegramMessageRendererTest {
         assertThat(message.getWorkItemId()).isEqualTo(workItemId);
         assertThat(message.getTargetChatBindingId()).isEqualTo(chatBindingId);
         assertThat(message.getTargetTopicId()).isEqualTo(42L);
+        // Phase 194 — null priority/severity must preserve the pre-Phase-194
+        // 3-line format byte-for-byte (Phase 179 NOT_MODIFIED safety).
         assertThat(message.getText()).isEqualTo(
                 "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS");
         assertThat(message.hasKeyboard()).isTrue();
@@ -72,6 +75,7 @@ class TelegramMessageRendererTest {
                 workItemId, "INCIDENT-1", "INCIDENT", "DB down", "OPEN",
                 "[INCIDENT-1] DB down", "Incident",
                 "Incident | INCIDENT-1", "Status: OPEN",
+                null, null,
                 false,
                 null, null);
 
@@ -96,6 +100,7 @@ class TelegramMessageRendererTest {
                 workItemId, "BUG-5", "BUG", "Crash on save", "TESTING",
                 "[BUG-5] Crash on save", "Bug",
                 "Bug | BUG-5", "Status: TESTING",
+                null, null,
                 true,
                 UUID.randomUUID(), 10L);
 
@@ -130,10 +135,102 @@ class TelegramMessageRendererTest {
                 .isEqualTo(workItemId + ":RETURN_TO_BUGS");
     }
 
+    // ---- Phase 194 — optional priority/severity rendering ----
+
+    /**
+     * Phase 194 — priority alone appends one extra line after status; severity
+     * is absent so no severity line is rendered.
+     */
+    @Test
+    void priorityCodePresentRendersOnePriorityLine() {
+        TelegramRenderPayload renderPayload = renderPayload("HIGH", null);
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        assertThat(message.getText()).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS\nPriority: HIGH");
+    }
+
+    /**
+     * Phase 194 — severity alone appends one extra line after status; priority
+     * is absent so no priority line is rendered.
+     */
+    @Test
+    void severityCodePresentRendersOneSeverityLine() {
+        TelegramRenderPayload renderPayload = renderPayload(null, "CRITICAL");
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        assertThat(message.getText()).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS\nSeverity: CRITICAL");
+    }
+
+    /**
+     * Phase 194 — priority and severity both present appear as two extra
+     * lines in stable order: priority first, severity second.
+     */
+    @Test
+    void priorityAndSeverityBothPresentRenderTwoLinesInOrder() {
+        TelegramRenderPayload renderPayload = renderPayload("HIGH", "CRITICAL");
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        assertThat(message.getText()).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS\nPriority: HIGH\nSeverity: CRITICAL");
+    }
+
+    /**
+     * Phase 194 — blank / whitespace-only values are treated as absent. No
+     * empty {@code Priority:} or {@code Severity:} label line is rendered.
+     * This preserves Phase 179 NOT_MODIFIED safety for work items that were
+     * never assigned a priority/severity.
+     */
+    @Test
+    void blankPriorityAndSeverityNotRendered() {
+        TelegramRenderPayload renderPayload = renderPayload("", "   ");
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        assertThat(message.getText()).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS");
+    }
+
+    /**
+     * Phase 194 — priority blank but severity present: only severity line
+     * is rendered. Defends against asymmetric blank/non-blank inputs.
+     */
+    @Test
+    void blankPriorityWithPresentSeverityRendersOnlySeverityLine() {
+        TelegramRenderPayload renderPayload = renderPayload(" ", "LOW");
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        assertThat(message.getText()).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS\nSeverity: LOW");
+    }
+
     @Test
     void nullCardViewRadEtilishi() {
         assertThatThrownBy(() -> renderer.render(null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("null bo'lishi mumkin emas");
+    }
+
+    // ---- helpers ----
+
+    /** Phase 194 — fixed BUG/BUGS payload with parameterised priority/severity. */
+    private TelegramRenderPayload renderPayload(String priorityCode, String severityCode) {
+        return new TelegramRenderPayload(
+                UUID.randomUUID(),
+                UUID.randomUUID(), "BUG-1", "BUG", "Login xato", "BUGS",
+                "[BUG-1] Login xato", "Bug",
+                "Bug | BUG-1", "Status: BUGS",
+                priorityCode, severityCode,
+                true,
+                UUID.randomUUID(), 42L);
+    }
+
+    private TelegramCardView buildCardView(TelegramRenderPayload payload) {
+        return new TelegramCardView(payload, List.of());
     }
 }

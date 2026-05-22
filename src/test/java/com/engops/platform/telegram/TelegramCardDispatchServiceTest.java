@@ -472,6 +472,7 @@ class TelegramCardDispatchServiceTest {
                 "BUG-1", "BUG", "Login xato", "BUGS",
                 "[BUG-1] Login xato", "Bug",
                 "Bug | BUG-1", "Status: BUGS",
+                null, null,
                 true,
                 UUID.randomUUID(),
                 42L);

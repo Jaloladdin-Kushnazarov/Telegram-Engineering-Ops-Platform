@@ -217,6 +217,9 @@ public class WorkflowTransitionService {
             if (!routing.isPrepared()) {
                 return;
             }
+            // Phase 194 — priority/severity attribute snapshot captured from
+            // the post-transition WorkItem so the AFTER_COMMIT Telegram card
+            // refresh can render optional lines. Both nullable.
             PreparedDeliveryTarget target = new PreparedDeliveryTarget(
                     workItem.getTenantId(),
                     workItem.getId(),
@@ -224,6 +227,8 @@ public class WorkflowTransitionService {
                     workItem.getTypeCode().name(),
                     workItem.getTitle(),
                     workItem.getCurrentStatusCode(),
+                    workItem.getPriorityCode(),
+                    workItem.getSeverityCode(),
                     true,
                     routing.getTargetChatBindingId(),
                     routing.getTargetTopicId());

@@ -47,6 +47,7 @@ class TelegramCardViewServiceTest {
                 tenantId,
                 workItemId, "BUG-1", "BUG", "Login xato", "BUGS",
                 "[BUG-1] Login xato", "Bug",
+                null, null,
                 true,
                 chatBindingId, 42L);
 
@@ -55,6 +56,7 @@ class TelegramCardViewServiceTest {
                 workItemId, "BUG-1", "BUG", "Login xato", "BUGS",
                 "[BUG-1] Login xato", "Bug",
                 "Bug | BUG-1", "Status: BUGS",
+                null, null,
                 true,
                 chatBindingId, 42L);
 
@@ -81,6 +83,7 @@ class TelegramCardViewServiceTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(), "INCIDENT-1", "INCIDENT", "DB down", "OPEN",
                 "[INCIDENT-1] DB down", "Incident",
+                null, null,
                 false,
                 null, null);
 
@@ -90,6 +93,7 @@ class TelegramCardViewServiceTest {
                 "DB down", "OPEN",
                 "[INCIDENT-1] DB down", "Incident",
                 "Incident | INCIDENT-1", "Status: OPEN",
+                null, null,
                 false,
                 null, null);
 
