@@ -122,4 +122,84 @@ class OperationalAuthorizationServiceTest {
         assertThatCode(() -> authService.authorizeTransition(TENANT_ID, ACTOR_USER_ID))
                 .doesNotThrowAnyException();
     }
+
+    // ========== authorizeUpdate (Phase 190) ==========
+
+    @Test
+    void authorizeUpdatePassesWhenWorkItemUpdatePresent() {
+        when(identityQueryService.resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID))
+                .thenReturn(Set.of(OperationalAuthorizationService.WORK_ITEM_UPDATE));
+
+        assertThatCode(() -> authService.authorizeUpdate(TENANT_ID, ACTOR_USER_ID))
+                .doesNotThrowAnyException();
+
+        verify(identityQueryService).resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void authorizeUpdateDeniedWhenPermissionSetEmpty() {
+        when(identityQueryService.resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID))
+                .thenReturn(Collections.emptySet());
+
+        assertThatThrownBy(() -> authService.authorizeUpdate(TENANT_ID, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("WORK_ITEM_UPDATE");
+    }
+
+    @Test
+    void authorizeUpdateDeniedWhenActorUserIdNull() {
+        assertThatThrownBy(() -> authService.authorizeUpdate(TENANT_ID, null))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Actor");
+    }
+
+    @Test
+    void authorizeUpdateDeniedWhenOnlyAssignPermissionPresent() {
+        when(identityQueryService.resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID))
+                .thenReturn(Set.of(OperationalAuthorizationService.WORK_ITEM_ASSIGN));
+
+        assertThatThrownBy(() -> authService.authorizeUpdate(TENANT_ID, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("WORK_ITEM_UPDATE");
+    }
+
+    // ========== authorizeAssignOwner (Phase 190) ==========
+
+    @Test
+    void authorizeAssignOwnerPassesWhenWorkItemAssignPresent() {
+        when(identityQueryService.resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID))
+                .thenReturn(Set.of(OperationalAuthorizationService.WORK_ITEM_ASSIGN));
+
+        assertThatCode(() -> authService.authorizeAssignOwner(TENANT_ID, ACTOR_USER_ID))
+                .doesNotThrowAnyException();
+
+        verify(identityQueryService).resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID);
+    }
+
+    @Test
+    void authorizeAssignOwnerDeniedWhenPermissionSetEmpty() {
+        when(identityQueryService.resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID))
+                .thenReturn(Collections.emptySet());
+
+        assertThatThrownBy(() -> authService.authorizeAssignOwner(TENANT_ID, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("WORK_ITEM_ASSIGN");
+    }
+
+    @Test
+    void authorizeAssignOwnerDeniedWhenActorUserIdNull() {
+        assertThatThrownBy(() -> authService.authorizeAssignOwner(TENANT_ID, null))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Actor");
+    }
+
+    @Test
+    void authorizeAssignOwnerDeniedWhenOnlyUpdatePermissionPresent() {
+        when(identityQueryService.resolvePermissionCodes(TENANT_ID, ACTOR_USER_ID))
+                .thenReturn(Set.of(OperationalAuthorizationService.WORK_ITEM_UPDATE));
+
+        assertThatThrownBy(() -> authService.authorizeAssignOwner(TENANT_ID, ACTOR_USER_ID))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("WORK_ITEM_ASSIGN");
+    }
 }

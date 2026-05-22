@@ -232,4 +232,178 @@ class WorkItemCommandServiceTest {
         verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), eq(workItemId),
                 eq("UPDATE_ADDED"), eq(userId), eq("MANUAL"), eq(null), eq("COMMENT"));
     }
+
+    // ========== Phase 190 — updatePriority ==========
+
+    @Test
+    void priorityYangilashMuvaffaqiyatli() {
+        UUID workItemId = UUID.randomUUID();
+        WorkItem existing = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
+                workflowDefId, "Test", "BUGS", userId);
+        existing.setPriorityCode("LOW");
+
+        when(workItemRepository.findByTenantIdAndId(tenantId, workItemId))
+                .thenReturn(Optional.of(existing));
+        when(workItemRepository.save(any(WorkItem.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(workItemUpdateRepository.save(any(WorkItemUpdate.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(auditService.recordEvent(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new AuditEvent(tenantId, "WORK_ITEM", workItemId, "PRIORITY_CHANGED", userId));
+
+        WorkItem result = commandService.updatePriority(tenantId, workItemId, "HIGH",
+                userId, "ADMIN_API");
+
+        assertThat(result.getPriorityCode()).isEqualTo("HIGH");
+        assertThat(result.getUpdatedByUserId()).isEqualTo(userId);
+
+        // WorkItemUpdate yozildi (PRIORITY_CHANGE)
+        org.mockito.ArgumentCaptor<WorkItemUpdate> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(WorkItemUpdate.class);
+        verify(workItemUpdateRepository).save(updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getUpdateTypeCode()).isEqualTo(UpdateType.PRIORITY_CHANGE);
+        assertThat(updateCaptor.getValue().getBody()).isEqualTo("HIGH");
+        assertThat(updateCaptor.getValue().getAuthorUserId()).isEqualTo(userId);
+
+        // Audit qatori PRIORITY_CHANGED — old "LOW" → new "HIGH"
+        verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), eq(workItemId),
+                eq("PRIORITY_CHANGED"), eq(userId), eq("ADMIN_API"), eq("LOW"), eq("HIGH"));
+    }
+
+    @Test
+    void priorityYangilashOldNullBoladi() {
+        UUID workItemId = UUID.randomUUID();
+        WorkItem existing = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
+                workflowDefId, "Test", "BUGS", userId);
+        // priorityCode null (boshlang'ich holat)
+
+        when(workItemRepository.findByTenantIdAndId(tenantId, workItemId))
+                .thenReturn(Optional.of(existing));
+        when(workItemRepository.save(any(WorkItem.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(workItemUpdateRepository.save(any(WorkItemUpdate.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(auditService.recordEvent(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new AuditEvent(tenantId, "WORK_ITEM", workItemId, "PRIORITY_CHANGED", userId));
+
+        commandService.updatePriority(tenantId, workItemId, "CRITICAL", userId, "ADMIN_API");
+
+        verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), eq(workItemId),
+                eq("PRIORITY_CHANGED"), eq(userId), eq("ADMIN_API"), eq(null), eq("CRITICAL"));
+    }
+
+    @Test
+    void priorityYangilashNotogriQiymatRadEtilishi() {
+        UUID workItemId = UUID.randomUUID();
+        // Repository lookup chaqirilmasligi kerak — validation ilgariroq yiqilishi shart.
+
+        assertThatThrownBy(() -> commandService.updatePriority(
+                tenantId, workItemId, "URGENT", userId, "ADMIN_API"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("priorityCode");
+    }
+
+    @Test
+    void priorityYangilashBoshPriorityRadEtilishi() {
+        UUID workItemId = UUID.randomUUID();
+        assertThatThrownBy(() -> commandService.updatePriority(
+                tenantId, workItemId, "  ", userId, "ADMIN_API"))
+                .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test
+    void priorityYangilashWorkItemTopilmasaRadEtilishi() {
+        UUID workItemId = UUID.randomUUID();
+        when(workItemRepository.findByTenantIdAndId(tenantId, workItemId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> commandService.updatePriority(
+                tenantId, workItemId, "HIGH", userId, "ADMIN_API"))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.ResourceNotFoundException.class);
+    }
+
+    // ========== Phase 190 — updateSeverity ==========
+
+    @Test
+    void severityYangilashMuvaffaqiyatli() {
+        UUID workItemId = UUID.randomUUID();
+        WorkItem existing = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
+                workflowDefId, "Test", "BUGS", userId);
+        existing.setSeverityCode("LOW");
+
+        when(workItemRepository.findByTenantIdAndId(tenantId, workItemId))
+                .thenReturn(Optional.of(existing));
+        when(workItemRepository.save(any(WorkItem.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(workItemUpdateRepository.save(any(WorkItemUpdate.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(auditService.recordEvent(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new AuditEvent(tenantId, "WORK_ITEM", workItemId, "SEVERITY_CHANGED", userId));
+
+        WorkItem result = commandService.updateSeverity(tenantId, workItemId, "CRITICAL",
+                userId, "ADMIN_API");
+
+        assertThat(result.getSeverityCode()).isEqualTo("CRITICAL");
+        assertThat(result.getUpdatedByUserId()).isEqualTo(userId);
+
+        org.mockito.ArgumentCaptor<WorkItemUpdate> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(WorkItemUpdate.class);
+        verify(workItemUpdateRepository).save(updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getUpdateTypeCode()).isEqualTo(UpdateType.SEVERITY_CHANGE);
+        assertThat(updateCaptor.getValue().getBody()).isEqualTo("CRITICAL");
+        assertThat(updateCaptor.getValue().getAuthorUserId()).isEqualTo(userId);
+
+        verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), eq(workItemId),
+                eq("SEVERITY_CHANGED"), eq(userId), eq("ADMIN_API"), eq("LOW"), eq("CRITICAL"));
+    }
+
+    @Test
+    void severityYangilashNotogriQiymatRadEtilishi() {
+        UUID workItemId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> commandService.updateSeverity(
+                tenantId, workItemId, "BLOCKER", userId, "ADMIN_API"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("severityCode");
+    }
+
+    @Test
+    void severityYangilashNullQiymatRadEtilishi() {
+        UUID workItemId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> commandService.updateSeverity(
+                tenantId, workItemId, null, userId, "ADMIN_API"))
+                .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test
+    void severityYangilashWorkItemTopilmasaRadEtilishi() {
+        UUID workItemId = UUID.randomUUID();
+        when(workItemRepository.findByTenantIdAndId(tenantId, workItemId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> commandService.updateSeverity(
+                tenantId, workItemId, "HIGH", userId, "ADMIN_API"))
+                .isInstanceOf(com.engops.platform.sharedkernel.exception.ResourceNotFoundException.class);
+    }
+
+    // ========== Phase 190 — argument validation ==========
+
+    @Test
+    void updatePriorityNullTenantRadEtilishi() {
+        assertThatThrownBy(() -> commandService.updatePriority(
+                null, UUID.randomUUID(), "HIGH", userId, "ADMIN_API"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("tenantId");
+    }
+
+    @Test
+    void updatePriorityNullActorRadEtilishi() {
+        assertThatThrownBy(() -> commandService.updatePriority(
+                tenantId, UUID.randomUUID(), "HIGH", null, "ADMIN_API"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("actorUserId");
+    }
+
+    @Test
+    void updateSeverityBoshActionSourceRadEtilishi() {
+        assertThatThrownBy(() -> commandService.updateSeverity(
+                tenantId, UUID.randomUUID(), "HIGH", userId, "  "))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("actionSource");
+    }
 }

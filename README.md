@@ -113,6 +113,8 @@ For PostgreSQL backup and restore procedures (pg_dump policy, restore drill, dis
 
 For production observability (Micrometer counters, callback / admin denial audits, log grep playbook, minimal alert suggestions), follow the [Observability Runbook](docs/operations/observability-runbook.md) (Uzbek).
 
+For operator-side INCIDENT / TASK workflow creation templates (curl recipes against the tenant-config admin API, Phase 190 — INCIDENT/TASK bootstrap auto-seed is intentionally not provided), follow the [INCIDENT / TASK Workflow Template Runbook](docs/operations/incident-task-workflow-template-runbook.md) (Uzbek).
+
 ## Profiles
 
 | Profile | Purpose |

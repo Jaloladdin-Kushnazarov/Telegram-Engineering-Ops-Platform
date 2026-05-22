@@ -18,11 +18,12 @@ import java.util.UUID;
  * Permission modeli:
  * - WORK_ITEM_CREATE — intake (yangi work item yaratish) operatsiyasi uchun
  * - WORK_ITEM_TRANSITION — workflow status o'tkazish operatsiyasi uchun
+ * - WORK_ITEM_UPDATE — work item field'larini yangilash (priority/severity) uchun (Phase 190)
+ * - WORK_ITEM_ASSIGN — work item owner'ini tayinlash uchun (Phase 190)
  *
  * Permission kodlari V2 Flyway seed'da allaqachon mavjud — yangi migration
- * talab qilinmaydi. Role-permission seed bog'lanishlari operator tomonidan
- * TenantConfig API orqali yaratiladi (alohida masala, bu phase'da hal
- * qilinmaydi).
+ * talab qilinmaydi. WORK_ITEM_UPDATE / WORK_ITEM_ASSIGN seed bog'lanishlari
+ * V6'da ADMIN/ENGINEER/TESTER role'larida ham mavjud.
  *
  * Delegation: IdentityQueryService.resolvePermissionCodes() orqali
  * permission zanjirini hal qiladi:
@@ -42,6 +43,10 @@ public class OperationalAuthorizationService {
 
     public static final String WORK_ITEM_CREATE = "WORK_ITEM_CREATE";
     public static final String WORK_ITEM_TRANSITION = "WORK_ITEM_TRANSITION";
+    /** Phase 190 — work item field'larini yangilash (priority/severity) uchun. */
+    public static final String WORK_ITEM_UPDATE = "WORK_ITEM_UPDATE";
+    /** Phase 190 — work item owner'ini tayinlash uchun. */
+    public static final String WORK_ITEM_ASSIGN = "WORK_ITEM_ASSIGN";
 
     private final IdentityQueryService identityQueryService;
 
@@ -69,6 +74,29 @@ public class OperationalAuthorizationService {
      */
     public void authorizeTransition(UUID tenantId, UUID actorUserId) {
         requirePermission(tenantId, actorUserId, WORK_ITEM_TRANSITION);
+    }
+
+    /**
+     * Work item field'larini yangilash (priority/severity) uchun ruxsatni tekshiradi
+     * (Phase 190).
+     *
+     * @param tenantId tenant identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @throws AccessDeniedException ruxsat bo'lmasa
+     */
+    public void authorizeUpdate(UUID tenantId, UUID actorUserId) {
+        requirePermission(tenantId, actorUserId, WORK_ITEM_UPDATE);
+    }
+
+    /**
+     * Work item owner'ini tayinlash uchun ruxsatni tekshiradi (Phase 190).
+     *
+     * @param tenantId tenant identifikatori
+     * @param actorUserId joriy actor identifikatori
+     * @throws AccessDeniedException ruxsat bo'lmasa
+     */
+    public void authorizeAssignOwner(UUID tenantId, UUID actorUserId) {
+        requirePermission(tenantId, actorUserId, WORK_ITEM_ASSIGN);
     }
 
     private void requirePermission(UUID tenantId, UUID actorUserId, String permissionCode) {

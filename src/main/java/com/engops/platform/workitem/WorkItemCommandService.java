@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -31,6 +32,18 @@ import java.util.UUID;
 @Service
 @Transactional
 public class WorkItemCommandService {
+
+    /**
+     * Phase 190 — MVP uchun ruxsat etilgan priority kodlari (bounded enum-like).
+     * DB ustuni {@code VARCHAR(50)} ekanligi sababli schema-darajada enforce
+     * qilinmaydi; service layer fail-closed validatsiya qiladi.
+     */
+    static final Set<String> ALLOWED_PRIORITY_CODES = Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
+
+    /**
+     * Phase 190 — MVP uchun ruxsat etilgan severity kodlari (bounded enum-like).
+     */
+    static final Set<String> ALLOWED_SEVERITY_CODES = Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
 
     private final WorkItemRepository workItemRepository;
     private final WorkItemUpdateRepository workItemUpdateRepository;
@@ -131,6 +144,160 @@ public class WorkItemCommandService {
                 ownerUserId.toString());
 
         return workItem;
+    }
+
+    /**
+     * Phase 190 — work item priority kodini yangilaydi.
+     *
+     * <p>Validatsiyalar:</p>
+     * <ol>
+     *   <li>tenantId, workItemId, actorUserId, actionSource majburiy;</li>
+     *   <li>newPriorityCode {@link #ALLOWED_PRIORITY_CODES} ichida bo'lishi shart
+     *       (LOW / MEDIUM / HIGH / CRITICAL);</li>
+     *   <li>WorkItem tenant-scoped lookup orqali topilishi shart.</li>
+     * </ol>
+     *
+     * <p>Yon-ta'sirlar bitta tranzaksiya ichida:</p>
+     * <ul>
+     *   <li>{@link WorkItem#setPriorityCode(String)} chaqiriladi va
+     *       {@code updatedByUserId} actor'ga yoziladi;</li>
+     *   <li>{@code WorkItemUpdate} qator yoziladi
+     *       ({@link UpdateType#PRIORITY_CHANGE} bilan, body — yangi qiymat);</li>
+     *   <li>Audit event {@code PRIORITY_CHANGED} (MANDATORY propagation orqali
+     *       joriy biznes tranzaksiyaga qo'shiladi). {@code oldValueJson}/
+     *       {@code newValueJson} faqat bounded enum-like qiymatni saqlaydi —
+     *       request body dump qilinmaydi.</li>
+     * </ul>
+     *
+     * @param tenantId tenant identifikatori (majburiy)
+     * @param workItemId work item identifikatori (majburiy)
+     * @param newPriorityCode yangi priority kodi (LOW / MEDIUM / HIGH / CRITICAL)
+     * @param actorUserId amal bajaruvchi (majburiy)
+     * @param actionSource amal manbai (masalan {@code ADMIN_API})
+     * @return yangilangan WorkItem
+     */
+    public WorkItem updatePriority(UUID tenantId, UUID workItemId, String newPriorityCode,
+                                    UUID actorUserId, String actionSource) {
+        validateUpdateArguments(tenantId, workItemId, actorUserId, actionSource);
+        String normalizedPriority = validateBoundedCode(
+                "priorityCode", newPriorityCode, ALLOWED_PRIORITY_CODES,
+                "INVALID_PRIORITY_CODE");
+
+        WorkItem workItem = findWorkItem(tenantId, workItemId);
+
+        String previousPriority = workItem.getPriorityCode();
+        workItem.setPriorityCode(normalizedPriority);
+        workItem.setUpdatedByUserId(actorUserId);
+
+        workItem = workItemRepository.save(workItem);
+
+        workItemUpdateRepository.save(new WorkItemUpdate(
+                tenantId, workItemId, actorUserId, UpdateType.PRIORITY_CHANGE,
+                normalizedPriority));
+
+        auditService.recordEvent(tenantId, "WORK_ITEM", workItemId,
+                "PRIORITY_CHANGED", actorUserId, actionSource,
+                previousPriority,
+                normalizedPriority);
+
+        return workItem;
+    }
+
+    /**
+     * Phase 190 — work item severity kodini yangilaydi.
+     *
+     * <p>Validatsiyalar:</p>
+     * <ol>
+     *   <li>tenantId, workItemId, actorUserId, actionSource majburiy;</li>
+     *   <li>newSeverityCode {@link #ALLOWED_SEVERITY_CODES} ichida bo'lishi shart
+     *       (LOW / MEDIUM / HIGH / CRITICAL);</li>
+     *   <li>WorkItem tenant-scoped lookup orqali topilishi shart.</li>
+     * </ol>
+     *
+     * <p>Yon-ta'sirlar bitta tranzaksiya ichida:</p>
+     * <ul>
+     *   <li>{@link WorkItem#setSeverityCode(String)} chaqiriladi va
+     *       {@code updatedByUserId} actor'ga yoziladi;</li>
+     *   <li>{@code WorkItemUpdate} qator yoziladi
+     *       ({@link UpdateType#SEVERITY_CHANGE} bilan, body — yangi qiymat);</li>
+     *   <li>Audit event {@code SEVERITY_CHANGED} (MANDATORY propagation orqali
+     *       joriy biznes tranzaksiyaga qo'shiladi). {@code oldValueJson}/
+     *       {@code newValueJson} faqat bounded enum-like qiymatni saqlaydi.</li>
+     * </ul>
+     *
+     * @param tenantId tenant identifikatori (majburiy)
+     * @param workItemId work item identifikatori (majburiy)
+     * @param newSeverityCode yangi severity kodi (LOW / MEDIUM / HIGH / CRITICAL)
+     * @param actorUserId amal bajaruvchi (majburiy)
+     * @param actionSource amal manbai (masalan {@code ADMIN_API})
+     * @return yangilangan WorkItem
+     */
+    public WorkItem updateSeverity(UUID tenantId, UUID workItemId, String newSeverityCode,
+                                    UUID actorUserId, String actionSource) {
+        validateUpdateArguments(tenantId, workItemId, actorUserId, actionSource);
+        String normalizedSeverity = validateBoundedCode(
+                "severityCode", newSeverityCode, ALLOWED_SEVERITY_CODES,
+                "INVALID_SEVERITY_CODE");
+
+        WorkItem workItem = findWorkItem(tenantId, workItemId);
+
+        String previousSeverity = workItem.getSeverityCode();
+        workItem.setSeverityCode(normalizedSeverity);
+        workItem.setUpdatedByUserId(actorUserId);
+
+        workItem = workItemRepository.save(workItem);
+
+        workItemUpdateRepository.save(new WorkItemUpdate(
+                tenantId, workItemId, actorUserId, UpdateType.SEVERITY_CHANGE,
+                normalizedSeverity));
+
+        auditService.recordEvent(tenantId, "WORK_ITEM", workItemId,
+                "SEVERITY_CHANGED", actorUserId, actionSource,
+                previousSeverity,
+                normalizedSeverity);
+
+        return workItem;
+    }
+
+    /**
+     * Phase 190 — {@link #updatePriority} va {@link #updateSeverity} uchun umumiy
+     * argument validatsiya. Hech qaysi maydon null bo'lishi mumkin emas;
+     * actionSource bo'sh string ham qabul qilinmaydi.
+     */
+    private void validateUpdateArguments(UUID tenantId, UUID workItemId, UUID actorUserId,
+                                          String actionSource) {
+        if (tenantId == null) {
+            throw new BusinessRuleException("INVALID_ARGUMENT", "tenantId majburiy");
+        }
+        if (workItemId == null) {
+            throw new BusinessRuleException("INVALID_ARGUMENT", "workItemId majburiy");
+        }
+        if (actorUserId == null) {
+            throw new BusinessRuleException("INVALID_ARGUMENT", "actorUserId majburiy");
+        }
+        if (actionSource == null || actionSource.isBlank()) {
+            throw new BusinessRuleException("INVALID_ARGUMENT",
+                    "actionSource bo'sh bo'lishi mumkin emas");
+        }
+    }
+
+    /**
+     * Phase 190 — bounded enum-like kod validatsiyasi. Null/blank/noma'lum
+     * qiymatlar rad etiladi. Allowed set ichida bo'lsa, original qiymat
+     * (case-preserving) qaytariladi.
+     */
+    private String validateBoundedCode(String fieldName, String value,
+                                        Set<String> allowed, String errorCode) {
+        if (value == null || value.isBlank()) {
+            throw new BusinessRuleException(errorCode,
+                    fieldName + " bo'sh bo'lishi mumkin emas");
+        }
+        if (!allowed.contains(value)) {
+            throw new BusinessRuleException(errorCode,
+                    fieldName + " noto'g'ri: '" + value + "' (ruxsat etilganlar: "
+                            + allowed + ")");
+        }
+        return value;
     }
 
     /**
