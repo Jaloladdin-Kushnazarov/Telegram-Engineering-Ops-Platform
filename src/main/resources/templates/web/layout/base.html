@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} ?: 'Platform'">Platform</title>
+    <link rel="stylesheet" th:href="@{/web/css/app.css}">
+    <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
+    <script th:src="@{/web/js/auth.js}" defer></script>
+</head>
+<body>
+    <nav class="topnav">
+        <strong>Platform</strong>
+        <a th:href="@{/web/dashboard}">Dashboard</a>
+        <a th:href="@{/web/login}" id="login-link">Login</a>
+        <a href="#" id="logout-link" style="display:none" onclick="clearJwt();return false;">Logout</a>
+    </nav>
+    <main>
+        <th:block th:replace="~{__${contentFragment}__}">
+            <p>(content here)</p>
+        </th:block>
+    </main>
+    <footer>
+        <small>Engineering Ops Platform &middot; Phase 208</small>
+    </footer>
+</body>
+</html>

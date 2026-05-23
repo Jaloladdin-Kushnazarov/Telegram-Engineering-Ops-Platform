@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+    <div th:fragment="content">
+        <h1>Login</h1>
+        <p>JWT'ni quyiga joylashtiring va Login tugmasini bosing. JWT
+           token avval CI / API tokenidan olinishi kerak.</p>
+        <form onsubmit="handleLoginSubmit(event)">
+            <label for="jwt-input">JWT token:</label><br>
+            <textarea id="jwt-input" rows="6" cols="80" required></textarea><br>
+            <button type="submit">Login</button>
+        </form>
+        <p id="login-message" style="color:red;"></p>
+        <script>
+            function handleLoginSubmit(e) {
+                e.preventDefault();
+                const jwt = document.getElementById('jwt-input').value.trim();
+                if (!jwt) {
+                    document.getElementById('login-message').textContent =
+                        'JWT bo\'sh bo\'lishi mumkin emas';
+                    return;
+                }
+                window.setJwt(jwt);
+                window.location.href = '/web/dashboard';
+            }
+        </script>
+    </div>
+</body>
+</html>

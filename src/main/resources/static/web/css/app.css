@@ -1,0 +1,112 @@
+/* Phase 208 — minimal app stylesheet (no framework).
+   Just enough for nav, typography, simple forms, placeholder boxes.
+   Polish deferred to a future phase. */
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 Oxygen, Ubuntu, Cantarell, sans-serif;
+    margin: 0;
+    background: #f7f8fa;
+    color: #1f2937;
+    line-height: 1.5;
+}
+
+nav.topnav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1.5rem;
+    background: #1f2937;
+    color: #f9fafb;
+}
+
+nav.topnav strong {
+    font-size: 1.1rem;
+    margin-right: 1rem;
+}
+
+nav.topnav a {
+    color: #f9fafb;
+    text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+nav.topnav a:hover {
+    background: #374151;
+}
+
+main {
+    max-width: 1080px;
+    margin: 1.5rem auto;
+    padding: 0 1.5rem;
+}
+
+h1 {
+    font-size: 1.5rem;
+    margin: 0 0 1rem 0;
+}
+
+h2 {
+    font-size: 1.1rem;
+    margin: 0 0 0.5rem 0;
+}
+
+form label {
+    display: inline-block;
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+}
+
+form textarea,
+form input[type="text"] {
+    width: 100%;
+    max-width: 720px;
+    padding: 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9rem;
+}
+
+form button {
+    margin-top: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+form button:hover {
+    background: #1d4ed8;
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.placeholder-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 1rem;
+    min-height: 140px;
+}
+
+.placeholder-card h2 {
+    color: #2563eb;
+}
+
+footer {
+    text-align: center;
+    margin: 3rem 0 1.5rem;
+    color: #6b7280;
+}

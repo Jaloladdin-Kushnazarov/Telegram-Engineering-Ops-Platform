@@ -3,15 +3,18 @@ services:
     image: postgres:17-alpine
     container_name: engops-postgres
     environment:
-      POSTGRES_DB: engops
-      POSTGRES_USER: engops
-      POSTGRES_PASSWORD: engops_local
+      POSTGRES_DB: tele_ops
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "Jkushnazarov25121998"
     ports:
-      - "5432:5432"
+      # Host 5433 -> container 5432 (host machine'da postgres orphan
+      # 5432'da turibdi, sudo orqali tozalashga ruxsat yo'q; kelajakda
+      # sudo bilan tozalansa, 5432:5432 ga qaytarish mumkin).
+      - "5433:5432"
     volumes:
       - engops-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U engops"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 3s
       retries: 5
