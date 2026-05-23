@@ -133,6 +133,15 @@ What the platform can do today (verified, tested, documented):
   [`error-ingestion-runbook.md`](error-ingestion-runbook.md);
   audit-trail pattern parallels
   [`tenant-onboarding-runbook.md` §5](tenant-onboarding-runbook.md#5-audit-trail-per-successful-onboarding).
+- **Phase 205.** Read-only analytics aggregates via three GET
+  endpoints under `/api/analytics/work-items/`: `by-status`,
+  `by-type`, `by-severity`. Uniform response shape
+  (`tenantId`, `totalCount`, `buckets[]`). Deterministic bucket
+  ordering (count DESC, label ASC tie-break). `by-severity` silently
+  excludes rows with `severity_code IS NULL`. Reuses the existing
+  `TENANT_CONFIG_READ` permission (no new permission, no migration).
+  Read-only path — no audit row. Full reference:
+  [`analytics-runbook.md`](analytics-runbook.md).
 
 ---
 

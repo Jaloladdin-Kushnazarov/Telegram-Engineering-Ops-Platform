@@ -1558,3 +1558,35 @@ step succeeded.
 For the full request shape, SDK integration patterns (curl / Java /
 Python), severity derivation matrix, and verification queries, see
 [`error-ingestion-runbook.md`](error-ingestion-runbook.md).
+
+---
+
+## 17. Analytics smoke
+
+Two-step smoke checklist for the read-only analytics endpoints
+introduced in Phase 205. Operator just confirms each step succeeded.
+
+1. **REST happy path (one endpoint).** `GET
+   /api/analytics/work-items/by-status?tenantId=<TENANT_ID>` returns
+   `200 OK` with the uniform response shape:
+
+   ```bash
+   curl -s -H "Authorization: Bearer $DEMO_JWT" \
+     "$DEMO_BASE/api/analytics/work-items/by-status?tenantId=$TENANT_ID" \
+     | jq .
+   ```
+
+   The response JSON contains `tenantId` (equals the request param),
+   `totalCount` (non-negative integer), and `buckets[]` (array, may be
+   empty).
+
+2. **Bucket ordering invariant.** If `totalCount > 1` and the tenant
+   has multiple distinct statuses, verify that the bucket array is
+   sorted by **count DESC, label ASC**:
+   - `buckets[0].count >= buckets[1].count` (count DESC), and
+   - if `buckets[0].count == buckets[1].count`, then
+     `buckets[0].label <= buckets[1].label` alphabetically.
+
+For the full endpoint contract, severity NULL-exclusion semantics, SQL
+equivalents, and known limitations, see
+[`analytics-runbook.md`](analytics-runbook.md).
