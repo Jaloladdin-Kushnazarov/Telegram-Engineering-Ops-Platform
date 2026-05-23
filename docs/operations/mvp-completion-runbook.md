@@ -43,17 +43,23 @@ of repeating it. The deep runbooks are:
 > checklist in §5 plus the demo smoke recipes in
 > [`demo-smoke-runbook.md` §14](demo-smoke-runbook.md#14-phase-190-admin-write-smoke--owner--priority--severity).
 >
-> **Phase 194.** The Telegram card text now renders optional
+> **Phase 194 + 195 + 196.** The Telegram card text now renders optional
 > `Priority: <code>` and `Severity: <code>` lines when the projected
 > `WorkItem` carries those fields at intake commit or workflow
 > transition commit. When both fields are absent the card text remains
 > the pre-Phase-194 three-line shape (`header` / `[code] title` /
 > `Status: ...`), preserving Phase 179 `NOT_MODIFIED` behavior for
-> unchanged work items. Owner display is intentionally still deferred —
-> no identity lookup is performed by the render path. Admin-write
-> endpoints from Phase 190 continue to **not** publish a Telegram
-> refresh event; new priority / severity values appear in the card
-> only on the next intake or workflow transition for that work item.
+> unchanged work items. Phase 195 extends the intake API
+> (`POST /api/intake/work-items`) with optional `priorityCode` /
+> `severityCode` / `ownerUserId` fields. Phase 196 additionally renders
+> an `Owner: <displayName>` line resolved publisher-side via
+> `IdentityQueryService.findUserById(ownerUserId)`; the Telegram module
+> never imports identity (ArchUnit-enforced), and a null / blank
+> `displayName` omits the line (the raw owner UUID is never rendered).
+> Admin-write endpoints from Phase 190 continue to **not** publish a
+> Telegram refresh event; new priority / severity / owner values appear
+> in the card only on the next intake or workflow transition for that
+> work item.
 > See [`demo-smoke-runbook.md` §7 "Card text shape"](demo-smoke-runbook.md#card-text-shape)
 > for the exact rendered format.
 >
@@ -91,6 +97,11 @@ What the platform can do today (verified, tested, documented):
   audit row via `AuditService.recordEventInNewTransaction(...)`
   (REQUIRES_NEW). Successful EXECUTED path continues to use the
   existing `STATUS_TRANSITION` audit from `WorkflowTransitionService`.
+- **Phase 195 + 196.** Intake accepts optional `priorityCode` /
+  `severityCode` / `ownerUserId`; Telegram cards render `Priority:` /
+  `Severity:` / `Owner:` lines when set, with owner displayName
+  resolved publisher-side via `IdentityQueryService` (telegram module
+  remains identity-independent, ArchUnit-enforced).
 
 ---
 

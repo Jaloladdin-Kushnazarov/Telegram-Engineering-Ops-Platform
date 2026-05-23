@@ -361,6 +361,9 @@ workflowDefinitionId   UUID    optional (auto-resolved from active BUG workflow)
 initialStatusCode      String  optional (auto-resolved to BUGS for the seeded workflow)
 createdByUserId        UUID    accepted but ignored — derived from JWT @CurrentActor
 actionSource           String  required (e.g. MANUAL, TELEGRAM, API)
+priorityCode           String  optional (LOW | MEDIUM | HIGH | CRITICAL)
+severityCode           String  optional (LOW | MEDIUM | HIGH | CRITICAL)
+ownerUserId            UUID    optional (must be ACTIVE member of tenantId)
 ```
 
 ```bash
@@ -452,9 +455,31 @@ Rules:
   transition for that work item. This is intentional for Phase 194;
   admin-write-triggered card refresh is a separate, future-scope
   phase.
-- Owner display is intentionally **not** rendered in Phase 194 (no
-  identity lookup in the render path). Owner rendering is tracked
-  for a later phase.
+
+**Phase 195 + Phase 196.** Phase 195 extends the intake request body
+with optional `priorityCode` / `severityCode` / `ownerUserId` fields
+(see the table at the top of this section); Phase 196 adds the
+rendered `Owner: <displayName>` line. With all three optional fields
+populated at intake and an ACTIVE owner whose `AppUser.displayName`
+is non-blank, the card text becomes:
+
+```
+Bug | BUG-1
+[BUG-1] Login screen breaks on Safari
+Status: BUGS
+Priority: HIGH
+Severity: CRITICAL
+Owner: Bakhrom Yuldashev
+```
+
+The `Owner:` line is resolved publisher-side: the AFTER_COMMIT
+dispatch pipeline calls
+`IdentityQueryService.findUserById(ownerUserId)` and projects the
+resolved `AppUser.displayName` onto the `PreparedDeliveryTarget`. The
+Telegram module never imports the identity module (enforced by
+ArchUnit). If the owner is unset, the identity lookup returns empty,
+or the resolved `displayName` is `null` / blank, the `Owner:` line is
+omitted entirely — the raw owner UUID is never rendered.
 
 ---
 
@@ -1405,8 +1430,12 @@ but those lines are populated **only** when the projected `WorkItem`
 already carries the values at the moment of intake or workflow
 transition. Admin write endpoints that set those values now still do
 not trigger a refresh — the new values surface in the card only on the
-**next** intake or workflow transition for that work item. Verify with the delivery observability admin
-endpoint:
+**next** intake or workflow transition for that work item. Phase 196
+additionally renders an `Owner: <displayName>` line when the work item
+has a current owner with a non-blank `AppUser.displayName`; the value
+surfaces only on the **next** intake or workflow transition, not on
+the §14.1 admin write call itself. Verify with the delivery
+observability admin endpoint:
 
 ```bash
 curl -s -H "Authorization: Bearer $DEMO_JWT" \
