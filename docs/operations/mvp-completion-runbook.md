@@ -120,6 +120,19 @@ What the platform can do today (verified, tested, documented):
   WORKFLOW_DEFINITION / WORKFLOW_STATUS / WORKFLOW_TRANSITION_RULE
   (Phase 199 reuse path). Full inventory in
   [`tenant-onboarding-runbook.md` §5](tenant-onboarding-runbook.md#5-audit-trail-per-successful-onboarding).
+- **Phase 203.** SDK error ingestion via
+  `POST /api/intake/errors`. Synchronous endpoint accepts
+  `sourceService`, `errorMessage`, optional `errorStackTrace`,
+  `severityHint`, `httpStatusCode`, `environment`, and `tags`. Forces
+  `INCIDENT` `WorkItemType`; derives severity (hint > 5xx → CRITICAL >
+  4xx → HIGH > MEDIUM). Reuses the existing `WORK_ITEM_CREATE`
+  permission (no new permission, no V9 migration). Adds an
+  `ERROR_INGESTED` audit row whose payload is PII-free (only
+  `sourceService`, `severityCode`, `httpStatusCode`, `tagCount` —
+  never `errorMessage`, stack trace, or tag values). Full reference:
+  [`error-ingestion-runbook.md`](error-ingestion-runbook.md);
+  audit-trail pattern parallels
+  [`tenant-onboarding-runbook.md` §5](tenant-onboarding-runbook.md#5-audit-trail-per-successful-onboarding).
 
 ---
 

@@ -1516,3 +1516,45 @@ exact command output is not expected to be reproduced verbatim.
 For full request/response examples, the audit row inventory, and SQL
 verification queries, see
 [`tenant-onboarding-runbook.md`](tenant-onboarding-runbook.md).
+
+---
+
+## 16. Error ingestion smoke
+
+Two-step smoke checklist for the SDK error ingestion endpoint introduced
+in Phase 203 (`POST /api/intake/errors`). Operator just confirms each
+step succeeded.
+
+1. **REST happy path.** `POST /api/intake/errors` with a minimal body
+   (only the required fields — `tenantId`, `sourceService`,
+   `errorMessage`) returns `201 Created` and the response JSON has
+   `workItemType: "INCIDENT"`. Example:
+
+   ```bash
+   curl -s -X POST \
+     -H "Authorization: Bearer $DEMO_JWT" \
+     -H 'Content-Type: application/json' \
+     "$DEMO_BASE/api/intake/errors" \
+     -d '{
+           "tenantId": "'$TENANT_ID'",
+           "sourceService": "payment-api",
+           "errorMessage": "Smoke-test ingestion"
+         }' | jq .
+   ```
+
+2. **Audit row landed.** The `ERROR_INGESTED` audit query from the
+   ingestion runbook (§7.2) returns at least one row whose
+   `new_value_json` contains the `sourceService` from step 1.
+
+   ```sql
+   SELECT occurred_at, entity_id, new_value_json
+     FROM audit_event
+    WHERE tenant_id = '<TENANT_ID>'
+      AND event_type = 'ERROR_INGESTED'
+    ORDER BY occurred_at DESC
+    LIMIT 1;
+   ```
+
+For the full request shape, SDK integration patterns (curl / Java /
+Python), severity derivation matrix, and verification queries, see
+[`error-ingestion-runbook.md`](error-ingestion-runbook.md).
