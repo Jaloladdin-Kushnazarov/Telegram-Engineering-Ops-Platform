@@ -40,6 +40,12 @@ public class IntakeResult {
     private final String priorityCode;
     private final String severityCode;
 
+    // Phase 195 — owner snapshot for HTTP response echo. NOT yet rendered on
+    // the Telegram card (Phase 196 scope) — the projection pipeline does not
+    // consume this field. Surfaced through the HTTP response so the intake
+    // client can confirm the owner that was applied at create time.
+    private final UUID currentOwnerUserId;
+
     // Resolved routing target
     private final boolean routingPrepared;
     private final UUID matchedRoutingRuleId;
@@ -51,6 +57,7 @@ public class IntakeResult {
                         String title, String currentStatusCode,
                         UUID workflowDefinitionId, UUID tenantId,
                         String priorityCode, String severityCode,
+                        UUID currentOwnerUserId,
                         boolean routingPrepared, UUID matchedRoutingRuleId,
                         UUID targetTopicBindingId, UUID targetChatBindingId,
                         Long targetTopicId) {
@@ -63,6 +70,7 @@ public class IntakeResult {
         this.tenantId = tenantId;
         this.priorityCode = priorityCode;
         this.severityCode = severityCode;
+        this.currentOwnerUserId = currentOwnerUserId;
         this.routingPrepared = routingPrepared;
         this.matchedRoutingRuleId = matchedRoutingRuleId;
         this.targetTopicBindingId = targetTopicBindingId;
@@ -79,6 +87,7 @@ public class IntakeResult {
     public UUID getTenantId() { return tenantId; }
     public String getPriorityCode() { return priorityCode; }
     public String getSeverityCode() { return severityCode; }
+    public UUID getCurrentOwnerUserId() { return currentOwnerUserId; }
     public boolean isRoutingPrepared() { return routingPrepared; }
     public UUID getMatchedRoutingRuleId() { return matchedRoutingRuleId; }
     public UUID getTargetTopicBindingId() { return targetTopicBindingId; }

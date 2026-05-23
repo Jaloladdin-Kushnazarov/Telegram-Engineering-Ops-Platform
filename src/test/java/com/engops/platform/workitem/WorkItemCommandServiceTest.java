@@ -406,4 +406,196 @@ class WorkItemCommandServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("actionSource");
     }
+
+    // ========== Phase 195 — createWithAttributes ==========
+
+    /**
+     * Phase 195 helper: createWithAttributes uchun umumiy happy-path
+     * mock'larini o'rnatadi (workflow + repo save + audit save).
+     */
+    private void stubHappyPathForCreateWithAttributes(String generatedCode) {
+        WorkflowDefinition def = mockWorkflowDef("BUG", "BUGS");
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(codeGenerator.generate(tenantId, WorkItemType.BUG)).thenReturn(generatedCode);
+        when(workItemRepository.save(any(WorkItem.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(auditService.recordEvent(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new AuditEvent(tenantId, "WORK_ITEM", UUID.randomUUID(),
+                        "CREATED", userId));
+    }
+
+    /**
+     * Phase 195: barcha atribut'lar null bo'lganda ham bu yangi yo'l
+     * CREATED audit qatorini bounded JSON payload bilan yozadi
+     * (faqat {@code "code"} kaliti bilan). Eski {@link #workItemYaratish}
+     * test plain string payload ({@code "BUG-1"}) ni isbotlaydi — ikkisi
+     * ataylab byte-divergent.
+     */
+    @Test
+    void createWithAttributes_allNullAttributes_behavesLikeCreateButWritesJsonPayload() {
+        stubHappyPathForCreateWithAttributes("BUG-100");
+
+        WorkItem result = commandService.createWithAttributes(
+                tenantId, WorkItemType.BUG, workflowDefId,
+                "Plain", null, "BUGS", userId, "MANUAL",
+                null, null, null);
+
+        assertThat(result.getWorkItemCode()).isEqualTo("BUG-100");
+        assertThat(result.getPriorityCode()).isNull();
+        assertThat(result.getSeverityCode()).isNull();
+        assertThat(result.getCurrentOwnerUserId()).isNull();
+
+        verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), any(),
+                eq("CREATED"), eq(userId), eq("MANUAL"),
+                eq(null), eq("{\"code\":\"BUG-100\"}"));
+    }
+
+    @Test
+    void createWithAttributes_withPriorityOnly_setsPriorityAndAuditJsonHasPriority() {
+        stubHappyPathForCreateWithAttributes("BUG-101");
+
+        WorkItem result = commandService.createWithAttributes(
+                tenantId, WorkItemType.BUG, workflowDefId,
+                "Prio", null, "BUGS", userId, "MANUAL",
+                "HIGH", null, null);
+
+        assertThat(result.getPriorityCode()).isEqualTo("HIGH");
+        assertThat(result.getSeverityCode()).isNull();
+        assertThat(result.getCurrentOwnerUserId()).isNull();
+
+        verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), any(),
+                eq("CREATED"), eq(userId), eq("MANUAL"),
+                eq(null),
+                eq("{\"code\":\"BUG-101\",\"priority\":\"HIGH\"}"));
+    }
+
+    @Test
+    void createWithAttributes_withSeverityOnly_setsSeverityAndAuditJsonHasSeverity() {
+        stubHappyPathForCreateWithAttributes("BUG-102");
+
+        WorkItem result = commandService.createWithAttributes(
+                tenantId, WorkItemType.BUG, workflowDefId,
+                "Sev", null, "BUGS", userId, "MANUAL",
+                null, "CRITICAL", null);
+
+        assertThat(result.getSeverityCode()).isEqualTo("CRITICAL");
+        verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), any(),
+                eq("CREATED"), eq(userId), eq("MANUAL"),
+                eq(null),
+                eq("{\"code\":\"BUG-102\",\"severity\":\"CRITICAL\"}"));
+    }
+
+    @Test
+    void createWithAttributes_withOwnerOnly_setsOwnerAndAuditJsonHasOwnerUserId() {
+        UUID ownerUserId = UUID.randomUUID();
+        when(identityQueryService.hasActiveMembership(tenantId, ownerUserId)).thenReturn(true);
+        stubHappyPathForCreateWithAttributes("BUG-103");
+
+        WorkItem result = commandService.createWithAttributes(
+                tenantId, WorkItemType.BUG, workflowDefId,
+                "Owner", null, "BUGS", userId, "MANUAL",
+                null, null, ownerUserId);
+
+        assertThat(result.getCurrentOwnerUserId()).isEqualTo(ownerUserId);
+        assertThat(result.getUpdatedByUserId()).isEqualTo(userId);
+
+        verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), any(),
+                eq("CREATED"), eq(userId), eq("MANUAL"),
+                eq(null),
+                eq("{\"code\":\"BUG-103\",\"ownerUserId\":\"" + ownerUserId + "\"}"));
+    }
+
+    @Test
+    void createWithAttributes_withAllThree_workItemHasAllAndAuditJsonHasAll() {
+        UUID ownerUserId = UUID.randomUUID();
+        when(identityQueryService.hasActiveMembership(tenantId, ownerUserId)).thenReturn(true);
+        stubHappyPathForCreateWithAttributes("BUG-104");
+
+        WorkItem result = commandService.createWithAttributes(
+                tenantId, WorkItemType.BUG, workflowDefId,
+                "Full", null, "BUGS", userId, "MANUAL",
+                "HIGH", "CRITICAL", ownerUserId);
+
+        assertThat(result.getPriorityCode()).isEqualTo("HIGH");
+        assertThat(result.getSeverityCode()).isEqualTo("CRITICAL");
+        assertThat(result.getCurrentOwnerUserId()).isEqualTo(ownerUserId);
+
+        verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), any(),
+                eq("CREATED"), eq(userId), eq("MANUAL"),
+                eq(null),
+                eq("{\"code\":\"BUG-104\","
+                        + "\"priority\":\"HIGH\","
+                        + "\"severity\":\"CRITICAL\","
+                        + "\"ownerUserId\":\"" + ownerUserId + "\"}"));
+    }
+
+    @Test
+    void createWithAttributes_invalidPriorityCode_throwsBusinessRule_INVALID_PRIORITY_CODE() {
+        // Validation atributlar darajasida fail-fast — workflow lookup
+        // umuman chaqirilmasligi kerak.
+        assertThatThrownBy(() -> commandService.createWithAttributes(
+                tenantId, WorkItemType.BUG, workflowDefId,
+                "Bad", null, "BUGS", userId, "MANUAL",
+                "URGENT", null, null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("priorityCode");
+    }
+
+    @Test
+    void createWithAttributes_invalidSeverityCode_throwsBusinessRule_INVALID_SEVERITY_CODE() {
+        assertThatThrownBy(() -> commandService.createWithAttributes(
+                tenantId, WorkItemType.BUG, workflowDefId,
+                "Bad", null, "BUGS", userId, "MANUAL",
+                null, "BLOCKER", null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("severityCode");
+    }
+
+    @Test
+    void createWithAttributes_ownerNotActiveMember_throwsBusinessRule_INVALID_OWNER() {
+        UUID ownerUserId = UUID.randomUUID();
+        when(identityQueryService.hasActiveMembership(tenantId, ownerUserId)).thenReturn(false);
+
+        assertThatThrownBy(() -> commandService.createWithAttributes(
+                tenantId, WorkItemType.BUG, workflowDefId,
+                "BadOwner", null, "BUGS", userId, "MANUAL",
+                null, null, ownerUserId))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("faol a'zo emas");
+    }
+
+    /**
+     * Phase 195: bo'sh / whitespace priorityCode — validation
+     * triggerlanmaydi va WorkItem'da priority set qilinmaydi. Audit
+     * payload faqat {@code "code"} kalitiga ega.
+     */
+    @Test
+    void createWithAttributes_blankPriorityCode_treatedAsNull() {
+        stubHappyPathForCreateWithAttributes("BUG-105");
+
+        WorkItem result = commandService.createWithAttributes(
+                tenantId, WorkItemType.BUG, workflowDefId,
+                "Blank", null, "BUGS", userId, "MANUAL",
+                "   ", null, null);
+
+        assertThat(result.getPriorityCode()).isNull();
+        verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), any(),
+                eq("CREATED"), eq(userId), eq("MANUAL"),
+                eq(null), eq("{\"code\":\"BUG-105\"}"));
+    }
+
+    @Test
+    void createWithAttributes_blankSeverityCode_treatedAsNull() {
+        stubHappyPathForCreateWithAttributes("BUG-106");
+
+        WorkItem result = commandService.createWithAttributes(
+                tenantId, WorkItemType.BUG, workflowDefId,
+                "Blank", null, "BUGS", userId, "MANUAL",
+                null, "", null);
+
+        assertThat(result.getSeverityCode()).isNull();
+        verify(auditService).recordEvent(eq(tenantId), eq("WORK_ITEM"), any(),
+                eq("CREATED"), eq(userId), eq("MANUAL"),
+                eq(null), eq("{\"code\":\"BUG-106\"}"));
+    }
 }

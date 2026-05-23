@@ -25,6 +25,12 @@ public class IntakeCommand {
     private final UUID createdByUserId;
     private final String actionSource;
 
+    // Phase 195 — ixtiyoriy create-time atributlar. Hech qaysisi command darajasida
+    // majburiy emas; service layer bounded validatsiyani amalga oshiradi.
+    private final String priorityCode;
+    private final String severityCode;
+    private final UUID ownerUserId;
+
     private IntakeCommand(Builder builder) {
         this.tenantId = builder.tenantId;
         this.typeCode = builder.typeCode;
@@ -34,6 +40,9 @@ public class IntakeCommand {
         this.initialStatusCode = builder.initialStatusCode;
         this.createdByUserId = builder.createdByUserId;
         this.actionSource = builder.actionSource;
+        this.priorityCode = builder.priorityCode;
+        this.severityCode = builder.severityCode;
+        this.ownerUserId = builder.ownerUserId;
     }
 
     public UUID getTenantId() { return tenantId; }
@@ -44,6 +53,9 @@ public class IntakeCommand {
     public String getInitialStatusCode() { return initialStatusCode; }
     public UUID getCreatedByUserId() { return createdByUserId; }
     public String getActionSource() { return actionSource; }
+    public String getPriorityCode() { return priorityCode; }
+    public String getSeverityCode() { return severityCode; }
+    public UUID getOwnerUserId() { return ownerUserId; }
 
     public static Builder builder() {
         return new Builder();
@@ -58,6 +70,9 @@ public class IntakeCommand {
         private String initialStatusCode;
         private UUID createdByUserId;
         private String actionSource;
+        private String priorityCode;
+        private String severityCode;
+        private UUID ownerUserId;
 
         public Builder tenantId(UUID tenantId) { this.tenantId = tenantId; return this; }
         public Builder typeCode(WorkItemType typeCode) { this.typeCode = typeCode; return this; }
@@ -67,6 +82,9 @@ public class IntakeCommand {
         public Builder initialStatusCode(String code) { this.initialStatusCode = code; return this; }
         public Builder createdByUserId(UUID id) { this.createdByUserId = id; return this; }
         public Builder actionSource(String source) { this.actionSource = source; return this; }
+        public Builder priorityCode(String priorityCode) { this.priorityCode = priorityCode; return this; }
+        public Builder severityCode(String severityCode) { this.severityCode = severityCode; return this; }
+        public Builder ownerUserId(UUID ownerUserId) { this.ownerUserId = ownerUserId; return this; }
 
         public IntakeCommand build() {
             return new IntakeCommand(this);

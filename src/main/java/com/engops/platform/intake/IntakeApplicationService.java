@@ -109,24 +109,49 @@ public class IntakeApplicationService {
         RoutingDecision routing = routingDecisionService.resolve(
                 command.getTenantId(), command.getTypeCode().name());
 
-        // 4. WorkItemCommandService orqali yaratish (domain validatsiya u yerda bo'ladi)
-        WorkItem workItem = workItemCommandService.create(
-                command.getTenantId(),
-                command.getTypeCode(),
-                definition.getId(),
-                command.getTitle(),
-                command.getDescription(),
-                initialStatusCode,
-                command.getCreatedByUserId(),
-                command.getActionSource());
+        // 4. WorkItemCommandService orqali yaratish.
+        //    Phase 195 — conditional delegation. Agar create-time atribut'lar
+        //    berilmagan bo'lsa, mavjud {@code create(...)} chaqiriladi va
+        //    CREATED audit qatori plain string ({@code workItemCode}) bilan
+        //    yoziladi (byte-compat). Aks holda, {@code createWithAttributes(...)}
+        //    chaqiriladi va CREATED qatori bounded JSON object bilan yoziladi.
+        boolean hasAttributes = isPresent(command.getPriorityCode())
+                || isPresent(command.getSeverityCode())
+                || command.getOwnerUserId() != null;
+        WorkItem workItem;
+        if (hasAttributes) {
+            workItem = workItemCommandService.createWithAttributes(
+                    command.getTenantId(),
+                    command.getTypeCode(),
+                    definition.getId(),
+                    command.getTitle(),
+                    command.getDescription(),
+                    initialStatusCode,
+                    command.getCreatedByUserId(),
+                    command.getActionSource(),
+                    command.getPriorityCode(),
+                    command.getSeverityCode(),
+                    command.getOwnerUserId());
+        } else {
+            workItem = workItemCommandService.create(
+                    command.getTenantId(),
+                    command.getTypeCode(),
+                    definition.getId(),
+                    command.getTitle(),
+                    command.getDescription(),
+                    initialStatusCode,
+                    command.getCreatedByUserId(),
+                    command.getActionSource());
+        }
 
         // 5. Adapter-ready result.
         // Phase 194: priority/severity attribute snapshot is captured from the
         // freshly created WorkItem so the AFTER_COMMIT Telegram projection can
-        // render optional lines. Both are nullable — intake create today does
-        // not accept these fields, so they will be null for any work item
-        // produced via the public intake API. They become non-null only if a
-        // future caller pre-populates them on the WorkItem before publish.
+        // render optional lines.
+        // Phase 195: currentOwnerUserId is also echoed back so the HTTP
+        // response can confirm the owner that was applied at create time.
+        // Telegram render path does NOT consume currentOwnerUserId in this
+        // phase (Phase 196 scope).
         IntakeResult result = new IntakeResult(
                 workItem.getId(),
                 workItem.getWorkItemCode(),
@@ -137,6 +162,7 @@ public class IntakeApplicationService {
                 workItem.getTenantId(),
                 workItem.getPriorityCode(),
                 workItem.getSeverityCode(),
+                workItem.getCurrentOwnerUserId(),
                 routing.isPrepared(),
                 routing.getMatchedRoutingRuleId(),
                 routing.getTargetTopicBindingId(),
@@ -181,6 +207,16 @@ public class IntakeApplicationService {
                     result.getTenantId(), result.getWorkItemId(),
                     ex.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Phase 195 — string maydon "haqiqatan ham mavjudmi" deb tekshiradi.
+     * Null yoki bo'sh/whitespace-only qiymat yo'q deb qaraladi. Phase 194
+     * {@code TelegramMessageRenderer.isPresent} pattern bilan bir xil; bu yerda
+     * import emas, mahalliy nusxa (cross-module bog'lanmaslik uchun).
+     */
+    private static boolean isPresent(String s) {
+        return s != null && !s.isBlank();
     }
 
     /**

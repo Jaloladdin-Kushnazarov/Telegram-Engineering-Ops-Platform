@@ -20,6 +20,16 @@ import java.util.UUID;
  *                           workflow definition'dagi initial=true status avtomatik tanlanadi)
  * @param createdByUserId yaratuvchi foydalanuvchi (required)
  * @param actionSource amal manbai: MANUAL, TELEGRAM, SYSTEM va h.k. (required)
+ * @param priorityCode Phase 195 — ixtiyoriy ustuvorlik kodi (LOW / MEDIUM /
+ *                     HIGH / CRITICAL). Null yoki bo'sh string null sifatida
+ *                     qaraladi. Service layer bounded enum validatsiyasi
+ *                     authoritative.
+ * @param severityCode Phase 195 — ixtiyoriy jiddiylik kodi (LOW / MEDIUM /
+ *                     HIGH / CRITICAL). Null yoki bo'sh string null sifatida
+ *                     qaraladi.
+ * @param ownerUserId Phase 195 — ixtiyoriy boshlang'ich egasi (AppUser id).
+ *                    Null bo'lsa o'rnatilmaydi. Non-null bo'lsa, intake actor'i
+ *                    kabi shu tenantda ACTIVE membership ga ega bo'lishi shart.
  */
 public record WorkItemIntakeRequest(
         UUID tenantId,
@@ -29,4 +39,7 @@ public record WorkItemIntakeRequest(
         UUID workflowDefinitionId,
         String initialStatusCode,
         UUID createdByUserId,
-        String actionSource) {}
+        String actionSource,
+        String priorityCode,
+        String severityCode,
+        UUID ownerUserId) {}

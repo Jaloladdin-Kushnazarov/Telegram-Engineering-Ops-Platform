@@ -117,6 +117,158 @@ public class WorkItemCommandService {
     }
 
     /**
+     * Phase 195 — yangi work item yaratadi va create vaqtida ixtiyoriy
+     * boshlang'ich atributlar (priority, severity, owner)'ni o'rnatadi.
+     *
+     * <p><strong>Mavjud {@link #create} signaturesi tegmasdan saqlanadi.</strong>
+     * Bu overload yangi audit payload formati (bounded JSON object) bilan
+     * yoziladi: clienlar shu metod bilan yaratganda CREATED qatori
+     * {@code newValueJson} maydoni JSON shaklida bo'ladi, masalan:
+     * {@code {"code":"BUG-1","priority":"HIGH","severity":"CRITICAL","ownerUserId":"..."}}.
+     * Eski {@code create(...)} chaqiruvchilari yo'lida {@code newValueJson}
+     * plain string (work item code) sifatida saqlanadi (byte-compat).</p>
+     *
+     * <p><strong>Validatsiyalar tartibi (fail-fast — mutation'dan oldin):</strong></p>
+     * <ol>
+     *   <li>Agar {@code priorityCode} non-null va non-blank — Phase 190
+     *       {@link #validateBoundedCode} ({@link #ALLOWED_PRIORITY_CODES},
+     *       {@code INVALID_PRIORITY_CODE}).</li>
+     *   <li>Agar {@code severityCode} non-null va non-blank — bir xil
+     *       ({@link #ALLOWED_SEVERITY_CODES}, {@code INVALID_SEVERITY_CODE}).</li>
+     *   <li>Agar {@code ownerUserId} non-null — Phase 190
+     *       {@link #validateActiveMembership} ({@code INVALID_OWNER}).</li>
+     *   <li>Mavjud {@link #create} bilan bir xil workflow validatsiyalar:
+     *       definition tenant-safe lookup, {@code isActive()},
+     *       {@link #validateWorkflowTypeCompatibility},
+     *       {@link #validateInitialStatus}.</li>
+     * </ol>
+     *
+     * <p><strong>Permission:</strong> bu metod o'z ichida authorization
+     * tekshirmaydi — caller (intake application service'i) {@code WORK_ITEM_CREATE}
+     * ruxsatini allaqachon majburiy qilgan. Phase 190 admin write
+     * {@code WORK_ITEM_UPDATE} / {@code WORK_ITEM_ASSIGN} permission'lari bu
+     * yo'lda ataylab talab qilinmaydi — boshlang'ich atributlar create
+     * jarayonining bir qismi (post-create modifikatsiya emas).</p>
+     *
+     * <p><strong>Audit:</strong> bitta {@code CREATED} qatori yoziladi.
+     * Alohida {@code PRIORITY_CHANGED} / {@code SEVERITY_CHANGED} /
+     * {@code OWNER_ASSIGNED} qatorlari yaratilmaydi — boshlang'ich
+     * holatni atomik tarzda CREATED payload'ida saqlash kerak.</p>
+     *
+     * @param priorityCode nullable bounded code; blank null sifatida qaraladi
+     * @param severityCode nullable bounded code; blank null sifatida qaraladi
+     * @param ownerUserId nullable owner id; non-null bo'lsa ACTIVE membership
+     *                    tekshiriladi
+     */
+    public WorkItem createWithAttributes(UUID tenantId, WorkItemType typeCode,
+                                          UUID workflowDefinitionId,
+                                          String title, String description,
+                                          String initialStatusCode,
+                                          UUID createdByUserId, String actionSource,
+                                          String priorityCode, String severityCode,
+                                          UUID ownerUserId) {
+        // 1. Atribut validatsiyalari — mutation'dan oldin.
+        String normalizedPriority = null;
+        if (priorityCode != null && !priorityCode.isBlank()) {
+            normalizedPriority = validateBoundedCode(
+                    "priorityCode", priorityCode, ALLOWED_PRIORITY_CODES,
+                    "INVALID_PRIORITY_CODE");
+        }
+        String normalizedSeverity = null;
+        if (severityCode != null && !severityCode.isBlank()) {
+            normalizedSeverity = validateBoundedCode(
+                    "severityCode", severityCode, ALLOWED_SEVERITY_CODES,
+                    "INVALID_SEVERITY_CODE");
+        }
+        if (ownerUserId != null) {
+            validateActiveMembership(tenantId, ownerUserId);
+        }
+
+        // 2. Workflow / status validatsiyalari — mavjud create(...) bilan
+        //    bir xil zanjir. Refactor qilinmaydi (correctness > DRY).
+        WorkflowDefinition definition = tenantConfigQueryService
+                .findWorkflowDefinitionById(tenantId, workflowDefinitionId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "WorkflowDefinition", workflowDefinitionId));
+        if (!definition.isActive()) {
+            throw new BusinessRuleException("INACTIVE_WORKFLOW",
+                    "Workflow '" + definition.getName() + "' aktiv emas. "
+                            + "Faqat aktiv workflow bilan work item yaratish mumkin");
+        }
+        validateWorkflowTypeCompatibility(definition, typeCode);
+        validateInitialStatus(definition, initialStatusCode);
+
+        // 3. WorkItem'ni quramiz va boshlang'ich atributlarni o'rnatamiz.
+        String code = codeGenerator.generate(tenantId, typeCode);
+        WorkItem workItem = new WorkItem(tenantId, code, typeCode, workflowDefinitionId,
+                title, initialStatusCode, createdByUserId);
+        if (description != null && !description.isBlank()) {
+            workItem.setDescription(description);
+        }
+        if (normalizedPriority != null) {
+            workItem.setPriorityCode(normalizedPriority);
+        }
+        if (normalizedSeverity != null) {
+            workItem.setSeverityCode(normalizedSeverity);
+        }
+        if (ownerUserId != null) {
+            workItem.assignOwner(ownerUserId);
+            // Phase 190 pattern: owner set bo'lsa updatedByUserId ham yoziladi.
+            workItem.setUpdatedByUserId(createdByUserId);
+        }
+
+        workItem = workItemRepository.save(workItem);
+
+        // 4. Audit — bounded JSON payload. Plain code path'i ({@link #create})
+        //    o'zgartirilmaydi; yangi yo'lda CREATED.newValueJson JSON object.
+        String createdPayload = buildCreatedPayload(workItem);
+        auditService.recordEvent(tenantId, "WORK_ITEM", workItem.getId(),
+                "CREATED", createdByUserId, actionSource, null, createdPayload);
+
+        return workItem;
+    }
+
+    /**
+     * Phase 195 — CREATED audit qatori uchun bounded JSON payload quradi.
+     *
+     * <p>Faqat non-null maydonlar JSON object'iga kiritiladi. {@code code}
+     * har doim mavjud. Defense-in-depth: Phase 185 {@code jsonStringOrNull}
+     * pattern bilan bir xil — bounded enum-like qiymatlar bo'lsa-da, mavjud
+     * code'larda backslash/quote escape qilinadi.</p>
+     */
+    static String buildCreatedPayload(WorkItem wi) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('{');
+        sb.append("\"code\":").append(jsonStringOrNull(wi.getWorkItemCode()));
+        if (wi.getPriorityCode() != null && !wi.getPriorityCode().isBlank()) {
+            sb.append(",\"priority\":").append(jsonStringOrNull(wi.getPriorityCode()));
+        }
+        if (wi.getSeverityCode() != null && !wi.getSeverityCode().isBlank()) {
+            sb.append(",\"severity\":").append(jsonStringOrNull(wi.getSeverityCode()));
+        }
+        if (wi.getCurrentOwnerUserId() != null) {
+            sb.append(",\"ownerUserId\":")
+                    .append(jsonStringOrNull(wi.getCurrentOwnerUserId().toString()));
+        }
+        sb.append('}');
+        return sb.toString();
+    }
+
+    /**
+     * Phase 185 jsonStringOrNull pattern (defense-in-depth). Bounded
+     * code'lar (BUG-N, LOW/MEDIUM/HIGH/CRITICAL, UUID toString) escape
+     * talab qilmaydi, lekin bu helper kelajakdagi kengayishlardan
+     * himoyalanish uchun ataylab saqlanadi.
+     */
+    private static String jsonStringOrNull(String value) {
+        if (value == null) {
+            return "null";
+        }
+        String escaped = value.replace("\\", "\\\\").replace("\"", "\\\"");
+        return "\"" + escaped + "\"";
+    }
+
+    /**
      * Work item'ga owner tayinlaydi.
      *
      * Validatsiya: owner shu tenantda active membership ga ega bo'lishi kerak.

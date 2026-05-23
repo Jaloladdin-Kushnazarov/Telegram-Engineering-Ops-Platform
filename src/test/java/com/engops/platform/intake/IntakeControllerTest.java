@@ -130,7 +130,7 @@ class IntakeControllerTest {
                 "BUGS",
                 WORKFLOW_DEFINITION_ID,
                 TENANT_ID,
-                null, null,
+                null, null, null,
                 true,
                 ROUTING_RULE_ID,
                 TOPIC_BINDING_ID,
@@ -179,7 +179,7 @@ class IntakeControllerTest {
                 "OPEN",
                 WORKFLOW_DEFINITION_ID,
                 TENANT_ID,
-                null, null,
+                null, null, null,
                 false,
                 null, null, null, null);
 
@@ -215,7 +215,7 @@ class IntakeControllerTest {
         IntakeResult result = new IntakeResult(
                 WORK_ITEM_ID, "BUG-2", "BUG", "Title", "BUGS",
                 WORKFLOW_DEFINITION_ID, TENANT_ID,
-                null, null,
+                null, null, null,
                 false, null, null, null, null);
         when(intakeApplicationService.submit(any(IntakeCommand.class))).thenReturn(result);
 
@@ -395,5 +395,147 @@ class IntakeControllerTest {
                         .with(withActor(ACTOR_USER_ID)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"));
+    }
+
+    // ========== Phase 195 — optional create-time attributes ==========
+
+    /**
+     * Phase 195: request body'da priorityCode/severityCode/ownerUserId
+     * berilsa, controller ularni IntakeCommand'ga uzatadi va response
+     * IntakeResult'dan echo qiladi.
+     */
+    @Test
+    void submitWithOptionalFieldsReturns201AndResponseEchoesThem() throws Exception {
+        UUID ownerUserId = UUID.fromString("99999999-9999-9999-9999-999999999991");
+        IntakeResult result = new IntakeResult(
+                WORK_ITEM_ID, "BUG-9", "BUG", "Race condition", "BUGS",
+                WORKFLOW_DEFINITION_ID, TENANT_ID,
+                "HIGH", "CRITICAL", ownerUserId,
+                false, null, null, null, null);
+        when(intakeApplicationService.submit(any(IntakeCommand.class))).thenReturn(result);
+
+        mockMvc.perform(post("/api/intake/work-items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"%s",
+                                  "typeCode":"BUG",
+                                  "title":"Race condition",
+                                  "createdByUserId":"%s",
+                                  "actionSource":"MANUAL",
+                                  "priorityCode":"HIGH",
+                                  "severityCode":"CRITICAL",
+                                  "ownerUserId":"%s"
+                                }
+                                """.formatted(TENANT_ID, CREATED_BY_USER_ID, ownerUserId))
+                        .with(withActor(ACTOR_USER_ID)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.priorityCode").value("HIGH"))
+                .andExpect(jsonPath("$.severityCode").value("CRITICAL"))
+                .andExpect(jsonPath("$.currentOwnerUserId").value(ownerUserId.toString()));
+
+        ArgumentCaptor<IntakeCommand> captor = ArgumentCaptor.forClass(IntakeCommand.class);
+        verify(intakeApplicationService).submit(captor.capture());
+        IntakeCommand command = captor.getValue();
+        assertThat(command.getPriorityCode()).isEqualTo("HIGH");
+        assertThat(command.getSeverityCode()).isEqualTo("CRITICAL");
+        assertThat(command.getOwnerUserId()).isEqualTo(ownerUserId);
+    }
+
+    /**
+     * Phase 195 regression: oldingi clientlar — optional maydonlarsiz —
+     * baribir 201 oladi va response'da priority/severity/owner JSON'da
+     * o'tkazib yuboriladi (NON_NULL include).
+     */
+    @Test
+    void submitWithoutOptionalFieldsReturns201Regression() throws Exception {
+        IntakeResult result = new IntakeResult(
+                WORK_ITEM_ID, "BUG-3", "BUG", "Plain", "BUGS",
+                WORKFLOW_DEFINITION_ID, TENANT_ID,
+                null, null, null,
+                false, null, null, null, null);
+        when(intakeApplicationService.submit(any(IntakeCommand.class))).thenReturn(result);
+
+        mockMvc.perform(post("/api/intake/work-items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"%s",
+                                  "typeCode":"BUG",
+                                  "title":"Plain",
+                                  "createdByUserId":"%s",
+                                  "actionSource":"MANUAL"
+                                }
+                                """.formatted(TENANT_ID, CREATED_BY_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.priorityCode").doesNotExist())
+                .andExpect(jsonPath("$.severityCode").doesNotExist())
+                .andExpect(jsonPath("$.currentOwnerUserId").doesNotExist());
+
+        ArgumentCaptor<IntakeCommand> captor = ArgumentCaptor.forClass(IntakeCommand.class);
+        verify(intakeApplicationService).submit(captor.capture());
+        IntakeCommand command = captor.getValue();
+        assertThat(command.getPriorityCode()).isNull();
+        assertThat(command.getSeverityCode()).isNull();
+        assertThat(command.getOwnerUserId()).isNull();
+    }
+
+    /**
+     * Phase 195: noto'g'ri priorityCode service'dan BusinessRuleException
+     * (INVALID_PRIORITY_CODE) sifatida ko'tariladi va 422 envelope'da
+     * qaytariladi.
+     */
+    @Test
+    void submitInvalidPriorityCodeReturns422() throws Exception {
+        when(intakeApplicationService.submit(any(IntakeCommand.class)))
+                .thenThrow(new BusinessRuleException(
+                        "INVALID_PRIORITY_CODE",
+                        "priorityCode noto'g'ri: 'URGENT'"));
+
+        mockMvc.perform(post("/api/intake/work-items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"%s",
+                                  "typeCode":"BUG",
+                                  "title":"Bug",
+                                  "createdByUserId":"%s",
+                                  "actionSource":"MANUAL",
+                                  "priorityCode":"URGENT"
+                                }
+                                """.formatted(TENANT_ID, CREATED_BY_USER_ID))
+                        .with(withActor(ACTOR_USER_ID)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_PRIORITY_CODE"));
+    }
+
+    /**
+     * Phase 195: ownerUserId active membership ga ega bo'lmasa, service
+     * BusinessRuleException("INVALID_OWNER") otadi → 422 envelope.
+     */
+    @Test
+    void submitInvalidOwnerReturns422() throws Exception {
+        UUID badOwner = UUID.fromString("55555555-5555-5555-5555-555555555555");
+        when(intakeApplicationService.submit(any(IntakeCommand.class)))
+                .thenThrow(new BusinessRuleException(
+                        "INVALID_OWNER",
+                        "Foydalanuvchi (id=" + badOwner + ") shu tenantda faol a'zo emas"));
+
+        mockMvc.perform(post("/api/intake/work-items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"%s",
+                                  "typeCode":"BUG",
+                                  "title":"Bug",
+                                  "createdByUserId":"%s",
+                                  "actionSource":"MANUAL",
+                                  "ownerUserId":"%s"
+                                }
+                                """.formatted(TENANT_ID, CREATED_BY_USER_ID, badOwner))
+                        .with(withActor(ACTOR_USER_ID)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_OWNER"));
     }
 }

@@ -75,6 +75,11 @@ public class IntakeController {
                 .initialStatusCode(request.initialStatusCode())
                 .createdByUserId(actorUserId)
                 .actionSource(request.actionSource())
+                // Phase 195 — ixtiyoriy create-time atributlar. Bo'sh / null
+                // qiymatlar service layer'da null sifatida qaraladi.
+                .priorityCode(request.priorityCode())
+                .severityCode(request.severityCode())
+                .ownerUserId(request.ownerUserId())
                 .build();
 
         IntakeResult result = intakeApplicationService.submit(command);
@@ -113,6 +118,11 @@ public class IntakeController {
                 result.getMatchedRoutingRuleId(),
                 result.getTargetTopicBindingId(),
                 result.getTargetChatBindingId(),
-                result.getTargetTopicId());
+                result.getTargetTopicId(),
+                // Phase 195 — echo create-time atributlarini response'ga
+                // (NON_NULL JSON include — null bo'lsa qaytarilmaydi).
+                result.getPriorityCode(),
+                result.getSeverityCode(),
+                result.getCurrentOwnerUserId());
     }
 }

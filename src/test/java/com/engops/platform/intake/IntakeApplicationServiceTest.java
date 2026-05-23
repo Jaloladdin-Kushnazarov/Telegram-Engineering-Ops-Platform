@@ -540,7 +540,7 @@ class IntakeApplicationServiceTest {
         IntakeResult result = new IntakeResult(
                 workItemId, "BUG-1", "BUG", "Login xato", "BUGS",
                 workflowDefId, tenantId,
-                null, null,
+                null, null, null,
                 true, routingRuleId, topicBindingId, chatBindingId, topicId);
 
         PreparedDeliveryTarget target = result.toPreparedDeliveryTarget();
@@ -570,7 +570,7 @@ class IntakeApplicationServiceTest {
         IntakeResult result = new IntakeResult(
                 workItemId, "BUG-9", "BUG", "Crash", "BUGS",
                 workflowDefId, tenantId,
-                "HIGH", "CRITICAL",
+                "HIGH", "CRITICAL", null,
                 true, UUID.randomUUID(), UUID.randomUUID(),
                 UUID.randomUUID(), 99L);
 
@@ -587,7 +587,7 @@ class IntakeApplicationServiceTest {
         IntakeResult result = new IntakeResult(
                 workItemId, "BUG-2", "BUG", "Server xato", "BUGS",
                 workflowDefId, tenantId,
-                null, null,
+                null, null, null,
                 false, null, null, null, null);
 
         PreparedDeliveryTarget target = result.toPreparedDeliveryTarget();
@@ -797,6 +797,297 @@ class IntakeApplicationServiceTest {
         verify(operationalAuthorizationService).authorizeIntake(tenantId, userId);
         verifyNoInteractions(workItemCommandService, routingDecisionService,
                 tenantConfigQueryService, eventPublisher);
+    }
+
+    // ========== Phase 195 — conditional delegation va atribut'larni
+    //              IntakeResult'ga olib o'tish ==========
+
+    /**
+     * Phase 195: ixtiyoriy maydonlar berilmagan submit chaqirig'i mavjud
+     * {@code create(...)} overload'iga delegate qiladi. Yangi
+     * {@code createWithAttributes(...)} chaqirilmaydi — bu Phase 192 invariant.
+     */
+    @Test
+    void submitWithoutOptionalFieldsDelegatesToCreate() {
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.none());
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
+                workflowDefId, "Plain", "BUGS", userId);
+        when(workItemCommandService.create(eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
+                eq("Plain"), eq((String) null), eq("BUGS"), eq(userId), eq("MANUAL")))
+                .thenReturn(createdItem);
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("Plain")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .build();
+
+        IntakeResult result = intakeService.submit(command);
+
+        assertThat(result.getWorkItemCode()).isEqualTo("BUG-1");
+        verify(workItemCommandService).create(eq(tenantId), eq(WorkItemType.BUG),
+                eq(workflowDefId), eq("Plain"), eq((String) null), eq("BUGS"),
+                eq(userId), eq("MANUAL"));
+        verify(workItemCommandService, never()).createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any());
+    }
+
+    /**
+     * Phase 195: faqat priorityCode berilsa, createWithAttributes chaqiriladi.
+     */
+    @Test
+    void submitWithPriorityOnlyDelegatesToCreateWithAttributes() {
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.none());
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-2", WorkItemType.BUG,
+                workflowDefId, "PrioBug", "BUGS", userId);
+        createdItem.setPriorityCode("HIGH");
+        when(workItemCommandService.createWithAttributes(
+                eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
+                eq("PrioBug"), eq((String) null), eq("BUGS"),
+                eq(userId), eq("MANUAL"),
+                eq("HIGH"), eq((String) null), eq((UUID) null)))
+                .thenReturn(createdItem);
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("PrioBug")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .priorityCode("HIGH")
+                .build();
+
+        IntakeResult result = intakeService.submit(command);
+
+        assertThat(result.getPriorityCode()).isEqualTo("HIGH");
+        verify(workItemCommandService).createWithAttributes(
+                eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
+                eq("PrioBug"), eq((String) null), eq("BUGS"),
+                eq(userId), eq("MANUAL"),
+                eq("HIGH"), eq((String) null), eq((UUID) null));
+        verify(workItemCommandService, never()).create(
+                any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    /**
+     * Phase 195: faqat severityCode berilsa, createWithAttributes chaqiriladi.
+     */
+    @Test
+    void submitWithSeverityOnlyDelegatesToCreateWithAttributes() {
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.none());
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-3", WorkItemType.BUG,
+                workflowDefId, "SevBug", "BUGS", userId);
+        createdItem.setSeverityCode("CRITICAL");
+        when(workItemCommandService.createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any()))
+                .thenReturn(createdItem);
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("SevBug")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .severityCode("CRITICAL")
+                .build();
+
+        IntakeResult result = intakeService.submit(command);
+
+        assertThat(result.getSeverityCode()).isEqualTo("CRITICAL");
+        verify(workItemCommandService).createWithAttributes(
+                eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
+                eq("SevBug"), eq((String) null), eq("BUGS"),
+                eq(userId), eq("MANUAL"),
+                eq((String) null), eq("CRITICAL"), eq((UUID) null));
+        verify(workItemCommandService, never()).create(
+                any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    /**
+     * Phase 195: faqat ownerUserId berilsa, createWithAttributes chaqiriladi.
+     */
+    @Test
+    void submitWithOwnerOnlyDelegatesToCreateWithAttributes() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.none());
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-4", WorkItemType.BUG,
+                workflowDefId, "OwnerBug", "BUGS", userId);
+        createdItem.assignOwner(ownerUserId);
+        when(workItemCommandService.createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any()))
+                .thenReturn(createdItem);
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("OwnerBug")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .ownerUserId(ownerUserId)
+                .build();
+
+        IntakeResult result = intakeService.submit(command);
+
+        assertThat(result.getCurrentOwnerUserId()).isEqualTo(ownerUserId);
+        verify(workItemCommandService).createWithAttributes(
+                eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
+                eq("OwnerBug"), eq((String) null), eq("BUGS"),
+                eq(userId), eq("MANUAL"),
+                eq((String) null), eq((String) null), eq(ownerUserId));
+        verify(workItemCommandService, never()).create(
+                any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    /**
+     * Phase 195: barcha 3 atribut berilsa, IntakeResult echo qiladi va
+     * createWithAttributes chaqiriladi.
+     */
+    @Test
+    void submitWithAllAttributesIntakeResultEchoesThem() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.none());
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-5", WorkItemType.BUG,
+                workflowDefId, "Full", "BUGS", userId);
+        createdItem.setPriorityCode("HIGH");
+        createdItem.setSeverityCode("CRITICAL");
+        createdItem.assignOwner(ownerUserId);
+        when(workItemCommandService.createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any()))
+                .thenReturn(createdItem);
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("Full")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .priorityCode("HIGH")
+                .severityCode("CRITICAL")
+                .ownerUserId(ownerUserId)
+                .build();
+
+        IntakeResult result = intakeService.submit(command);
+
+        assertThat(result.getPriorityCode()).isEqualTo("HIGH");
+        assertThat(result.getSeverityCode()).isEqualTo("CRITICAL");
+        assertThat(result.getCurrentOwnerUserId()).isEqualTo(ownerUserId);
+    }
+
+    /**
+     * Phase 195: noto'g'ri priorityCode service'dan propagation. Intake
+     * application service exception'ni o'zgartirmasdan ko'taradi.
+     */
+    @Test
+    void submitInvalidPriorityCodePropagatesBusinessRule() {
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.none());
+        when(workItemCommandService.createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any()))
+                .thenThrow(new BusinessRuleException("INVALID_PRIORITY_CODE",
+                        "priorityCode noto'g'ri"));
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("Bad")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .priorityCode("URGENT")
+                .build();
+
+        assertThatThrownBy(() -> intakeService.submit(command))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("priorityCode");
+        verifyNoInteractions(eventPublisher);
+    }
+
+    /**
+     * Phase 195: ownerUserId active membership ga ega bo'lmasa,
+     * BusinessRuleException("INVALID_OWNER") propagatsiya qilinadi.
+     */
+    @Test
+    void submitOwnerNotActiveMemberPropagatesBusinessRule() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.none());
+        when(workItemCommandService.createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any()))
+                .thenThrow(new BusinessRuleException("INVALID_OWNER",
+                        "Foydalanuvchi shu tenantda faol a'zo emas"));
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("BadOwner")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .ownerUserId(ownerUserId)
+                .build();
+
+        assertThatThrownBy(() -> intakeService.submit(command))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("faol a'zo emas");
+        verifyNoInteractions(eventPublisher);
     }
 
     // --- Helper ---
