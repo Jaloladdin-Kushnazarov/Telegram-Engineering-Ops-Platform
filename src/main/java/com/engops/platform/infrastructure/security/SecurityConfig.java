@@ -144,6 +144,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/telegram/webhook").permitAll()
                         // Phase 146: barcha business API endpoint'lari default-deny.
                         .requestMatchers("/api/**").authenticated()
+                        // Phase 207: web UI scaffolding (Thymeleaf-rendered server-side
+                        // HTML). Hozircha anonymous — auth Phase 208'da qo'shiladi.
+                        // Faqat /web/** namespace, /api/** ga ta'sir qilmaydi.
+                        .requestMatchers("/web/**").permitAll()
                         // Boshqa yo'llar (masalan mavjud bo'lmagan endpoint'lar va
                         // SecurityConfigTest probe path'lari) uchun avvalgi
                         // permitAll posture saqlanadi — auth challenge qaytarilmaydi
