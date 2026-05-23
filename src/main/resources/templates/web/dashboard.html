@@ -1,24 +1,75 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="uz">
 <body>
-    <div th:fragment="content">
-        <h1>Dashboard</h1>
-        <p>Tenant analytics overview. (Phase 209'da Phase 205
-           analytics endpoint'lari bilan to'ldiriladi.)</p>
-        <div class="dashboard-grid">
-            <div class="placeholder-card">
-                <h2>Work items by status</h2>
-                <p><em>Phase 209'da chart bo'ladi.</em></p>
+<div th:fragment="content">
+    <div class="page-header">
+        <div>
+            <h1>Dashboard</h1>
+            <div class="page-subtitle" th:if="${tenantId != null}">
+                Tenant: <code th:text="${tenantId}">...</code>
             </div>
-            <div class="placeholder-card">
-                <h2>Work items by type</h2>
-                <p><em>Phase 209'da chart bo'ladi.</em></p>
-            </div>
-            <div class="placeholder-card">
-                <h2>Work items by severity</h2>
-                <p><em>Phase 209'da chart bo'ladi.</em></p>
+            <div class="page-subtitle" th:unless="${tenantId != null}">
+                No tenant selected. Add <code>?tenantId=&lt;uuid&gt;</code>
+                to the URL to load analytics.
             </div>
         </div>
     </div>
+
+    <div class="dashboard-grid" th:if="${tenantId != null}">
+        <!-- by-status skeleton card -->
+        <div class="card skeleton"
+             th:hx-get="@{/web/api/analytics/by-status(tenantId=${tenantId})}"
+             hx-trigger="load delay:80ms"
+             hx-swap="outerHTML">
+            <div class="card-header">
+                <h2>By status</h2>
+                <div class="total skeleton-text">···</div>
+            </div>
+            <div class="bar-list">
+                <div class="bar-row skeleton-row" th:each="i : ${#numbers.sequence(1, 4)}">
+                    <span class="bar-label skeleton-text">·····</span>
+                    <div class="bar-track"></div>
+                    <span class="bar-count skeleton-text">··</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- by-type skeleton card -->
+        <div class="card skeleton"
+             th:hx-get="@{/web/api/analytics/by-type(tenantId=${tenantId})}"
+             hx-trigger="load delay:80ms"
+             hx-swap="outerHTML">
+            <div class="card-header">
+                <h2>By type</h2>
+                <div class="total skeleton-text">···</div>
+            </div>
+            <div class="bar-list">
+                <div class="bar-row skeleton-row" th:each="i : ${#numbers.sequence(1, 3)}">
+                    <span class="bar-label skeleton-text">·····</span>
+                    <div class="bar-track"></div>
+                    <span class="bar-count skeleton-text">··</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- by-severity skeleton card -->
+        <div class="card skeleton"
+             th:hx-get="@{/web/api/analytics/by-severity(tenantId=${tenantId})}"
+             hx-trigger="load delay:80ms"
+             hx-swap="outerHTML">
+            <div class="card-header">
+                <h2>By severity</h2>
+                <div class="total skeleton-text">···</div>
+            </div>
+            <div class="bar-list">
+                <div class="bar-row skeleton-row" th:each="i : ${#numbers.sequence(1, 4)}">
+                    <span class="bar-label skeleton-text">·····</span>
+                    <div class="bar-track"></div>
+                    <span class="bar-count skeleton-text">··</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 </body>
 </html>

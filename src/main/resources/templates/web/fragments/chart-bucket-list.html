@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+<div class="card" th:fragment="chart">
+    <div class="card-header">
+        <h2 th:text="${title}">Title</h2>
+        <div class="total" th:if="${!result.buckets().isEmpty()}">
+            <span th:text="${result.totalCount()}">0</span><small>items</small>
+        </div>
+        <div class="empty-badge" th:if="${result.buckets().isEmpty()}">No data</div>
+    </div>
+    <div class="bar-list" th:if="${!result.buckets().isEmpty()}">
+        <div th:each="bucket : ${result.buckets()}"
+             th:class="|bar-row ${bucket.label().toLowerCase()}|">
+            <span class="bar-label">
+                <span th:if="${bucket.label() == 'CRITICAL' or bucket.label() == 'HIGH' or bucket.label() == 'MEDIUM' or bucket.label() == 'LOW'}"
+                      th:class="|swatch ${bucket.label().toLowerCase()}|"></span>
+                <span th:text="${bucket.label()}">LABEL</span>
+            </span>
+            <div class="bar-track">
+                <div class="bar-fill"
+                     th:style="|width: ${100.0 * bucket.count() / result.buckets().get(0).count()}%|"></div>
+            </div>
+            <span class="bar-count" th:text="${bucket.count()}">0</span>
+        </div>
+    </div>
+    <div class="empty-state" th:if="${result.buckets().isEmpty()}">
+        <p>Hozircha bu o'lchamda data yo'q.</p>
+    </div>
+</div>
+</body>
+</html>

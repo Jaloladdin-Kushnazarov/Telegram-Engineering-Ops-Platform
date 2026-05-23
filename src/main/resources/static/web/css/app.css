@@ -1,112 +1,389 @@
-/* Phase 208 — minimal app stylesheet (no framework).
-   Just enough for nav, typography, simple forms, placeholder boxes.
-   Polish deferred to a future phase. */
+/* Phase 209B — polished design tokens + dashboard chart styling.
+   No framework, no Google Fonts, no JS — pure system font stack +
+   CSS variables. Skeleton states + bar charts via pure CSS. */
+
+:root {
+    /* Surface + structure */
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --border: #e5e7eb;
+    --border-strong: #d1d5db;
+
+    /* Typography */
+    --text: #1f2937;
+    --text-muted: #6b7280;
+    --text-faint: #9ca3af;
+
+    /* Brand + accent */
+    --accent: #1a73e8;
+    --accent-soft: rgba(26, 115, 232, 0.12);
+
+    /* Severity */
+    --critical: #d92d20;
+    --high:     #f59e0b;
+    --medium:   #2563eb;
+    --low:      #16a34a;
+
+    /* Elevation + radius */
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04),
+                 0 1px 3px rgba(15, 23, 42, 0.06);
+    --radius: 6px;
+}
 
 * { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+}
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
                  Oxygen, Ubuntu, Cantarell, sans-serif;
-    margin: 0;
-    background: #f7f8fa;
-    color: #1f2937;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
     line-height: 1.5;
 }
+
+code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    background: var(--bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--text);
+}
+
+/* ===== Top navigation ===== */
 
 nav.topnav {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0.75rem 1.5rem;
-    background: #1f2937;
-    color: #f9fafb;
+    gap: 1.5rem;
+    height: 56px;
+    padding: 0 1.5rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
 }
 
 nav.topnav strong {
-    font-size: 1.1rem;
-    margin-right: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--text);
 }
 
-nav.topnav a {
-    color: #f9fafb;
+nav.topnav strong::before {
+    content: "";
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: var(--accent);
+}
+
+nav.topnav .nav-links {
+    display: flex;
+    gap: 0.25rem;
+    margin-left: 0.5rem;
+}
+
+nav.topnav .nav-links a {
+    color: var(--text-muted);
     text-decoration: none;
-    padding: 0.25rem 0.5rem;
+    padding: 0.4rem 0.75rem;
     border-radius: 4px;
+    font-size: 13.5px;
+    line-height: 1;
+    transition: color 0.15s ease, background 0.15s ease,
+                box-shadow 0.15s ease;
 }
 
-nav.topnav a:hover {
-    background: #374151;
+nav.topnav .nav-links a:hover {
+    color: var(--text);
+    background: var(--bg);
 }
+
+nav.topnav .nav-links a.active {
+    color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+nav.topnav .topnav-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+nav.topnav .nav-action {
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 0.4rem 0.75rem;
+    border-radius: 4px;
+    font-size: 13.5px;
+}
+
+nav.topnav .nav-action:hover {
+    color: var(--text);
+    background: var(--bg);
+}
+
+/* ===== Layout ===== */
 
 main {
-    max-width: 1080px;
+    max-width: 1200px;
     margin: 1.5rem auto;
     padding: 0 1.5rem;
 }
 
 h1 {
-    font-size: 1.5rem;
-    margin: 0 0 1rem 0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.5rem 0;
 }
 
-h2 {
-    font-size: 1.1rem;
-    margin: 0 0 0.5rem 0;
+.page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+}
+
+.page-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+/* ===== Cards (dashboard chart cards) ===== */
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 16px 24px;
+}
+
+.card-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.card-header h2 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.card-header .total {
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.card-header .total small {
+    margin-left: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.empty-badge {
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--text-faint);
+    background: var(--bg);
+    padding: 3px 8px;
+    border-radius: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+/* ===== Bar list (chart rendering) ===== */
+
+.bar-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.bar-row {
+    display: grid;
+    grid-template-columns: 92px 1fr 42px;
+    align-items: center;
+    gap: 12px;
+    font-size: 12.5px;
+    color: var(--text);
+}
+
+.bar-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: var(--accent);
+    flex-shrink: 0;
+}
+
+.swatch.critical { background: var(--critical); }
+.swatch.high     { background: var(--high); }
+.swatch.medium   { background: var(--medium); }
+.swatch.low      { background: var(--low); }
+
+.bar-track {
+    background: #f3f4f6;
+    height: 8px;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.bar-row.critical .bar-fill { background: var(--critical); }
+.bar-row.high     .bar-fill { background: var(--high); }
+.bar-row.medium   .bar-fill { background: var(--medium); }
+.bar-row.low      .bar-fill { background: var(--low); }
+
+.bar-count {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    font-size: 12.5px;
+}
+
+/* ===== Empty + skeleton states ===== */
+
+.empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 1.5rem 0.5rem 0.5rem;
+    font-size: 13px;
+}
+
+.empty-state p { margin: 0; }
+
+.card.skeleton {
+    opacity: 0.7;
+}
+
+.skeleton-text {
+    color: transparent !important;
+    background: #f3f4f6;
+    border-radius: 3px;
+    animation: pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-row .bar-track {
+    animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%   { opacity: 1; }
+    50%  { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+/* ===== Forms (login etc.) ===== */
+
+form {
+    margin-top: 1rem;
 }
 
 form label {
     display: inline-block;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.4rem;
     font-weight: 600;
+    font-size: 13px;
+    color: var(--text);
 }
 
 form textarea,
 form input[type="text"] {
     width: 100%;
     max-width: 720px;
-    padding: 0.5rem;
-    border: 1px solid #d1d5db;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 0.9rem;
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+form textarea:focus,
+form input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 form button {
-    margin-top: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: #2563eb;
+    margin-top: 0.75rem;
+    padding: 0.55rem 1.1rem;
+    background: var(--accent);
     color: #ffffff;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-weight: 600;
+    font-size: 13.5px;
+    transition: background 0.15s ease;
 }
 
 form button:hover {
-    background: #1d4ed8;
+    background: #0860c7;
 }
 
-.dashboard-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 1rem;
-    margin-top: 1rem;
+.login-message {
+    color: var(--critical);
+    font-size: 13px;
+    min-height: 1.25rem;
+    margin-top: 0.5rem;
 }
 
-.placeholder-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    padding: 1rem;
-    min-height: 140px;
-}
-
-.placeholder-card h2 {
-    color: #2563eb;
-}
+/* ===== Footer ===== */
 
 footer {
     text-align: center;
-    margin: 3rem 0 1.5rem;
-    color: #6b7280;
+    margin: 2rem 0;
+    padding: 2rem 0;
+    color: var(--text-faint);
+    font-size: 12px;
 }

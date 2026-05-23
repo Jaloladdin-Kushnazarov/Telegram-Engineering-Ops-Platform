@@ -4,6 +4,9 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.UUID;
 
 /**
  * Phase 207 + Phase 208 — Web UI controller for the {@code /web/**} surface.
@@ -45,6 +48,7 @@ public class WebController {
         model.addAttribute("phase", PHASE);
         model.addAttribute("pageTitle", "Web Health");
         model.addAttribute("contentFragment", "web/health :: content");
+        model.addAttribute("activeNav", "health");
         return "web/layout/base";
     }
 
@@ -52,13 +56,17 @@ public class WebController {
     public String login(Model model) {
         model.addAttribute("pageTitle", "Login");
         model.addAttribute("contentFragment", "web/login :: content");
+        // activeNav: null — login page does not highlight a nav tab.
         return "web/layout/base";
     }
 
     @GetMapping("/dashboard")
-    public String dashboard(Model model) {
+    public String dashboard(@RequestParam(required = false) UUID tenantId,
+                             Model model) {
         model.addAttribute("pageTitle", "Dashboard");
         model.addAttribute("contentFragment", "web/dashboard :: content");
+        model.addAttribute("tenantId", tenantId);
+        model.addAttribute("activeNav", "dashboard");
         return "web/layout/base";
     }
 }

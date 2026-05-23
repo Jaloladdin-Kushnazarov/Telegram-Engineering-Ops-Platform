@@ -144,6 +144,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/telegram/webhook").permitAll()
                         // Phase 146: barcha business API endpoint'lari default-deny.
                         .requestMatchers("/api/**").authenticated()
+                        // Phase 209: web-side analytics shim endpoints — JWT-protected.
+                        // /web/api/** matcher MUST precede broader /web/** permitAll
+                        // (Spring Security uses first-match semantics).
+                        .requestMatchers("/web/api/**").authenticated()
                         // Phase 207: web UI scaffolding (Thymeleaf-rendered server-side
                         // HTML). Hozircha anonymous — auth Phase 208'da qo'shiladi.
                         // Faqat /web/** namespace, /api/** ga ta'sir qilmaydi.

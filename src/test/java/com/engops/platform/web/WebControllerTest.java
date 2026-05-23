@@ -9,6 +9,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.UUID;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -88,32 +90,55 @@ class WebControllerTest {
                 .andExpect(status().isOk());
     }
 
-    // ========== /web/dashboard (P208 NEW) ==========
+    // ========== /web/dashboard (P208/P209B) ==========
 
     @Test
-    void dashboard_returnsOk_andContainsPlaceholderCards() throws Exception {
-        mockMvc.perform(get("/web/dashboard"))
+    void dashboard_withTenantId_rendersAllThreeHtmxCards() throws Exception {
+        // Phase 209B — dashboard cards issue hx-get to /web/api/analytics/by-*.
+        UUID tenantId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/web/dashboard").queryParam("tenantId", tenantId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Work items by status")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Work items by type")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Work items by severity")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "/web/api/analytics/by-status")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "/web/api/analytics/by-type")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "/web/api/analytics/by-severity")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("card skeleton")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("hx-trigger=\"load")));
+    }
+
+    @Test
+    void dashboard_withoutTenantId_rendersNoTenantSelectedState() throws Exception {
+        // Phase 209B D5 — no ?tenantId param → empty state with helpful message.
+        mockMvc.perform(get("/web/dashboard"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "No tenant selected")))
+                // Skeleton cards must NOT be rendered without a tenant.
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("/web/api/analytics/by-status"))));
     }
 
     @Test
     void dashboard_endpointReachable_withoutJwt() throws Exception {
-        // Phase 208 D1 — anonymous at the shell level. Data loading is
-        // browser-side JS + JWT; server-side render returns the shell.
+        // Phase 208 D1 — anonymous at the shell level (/web/** permitAll).
         mockMvc.perform(get("/web/dashboard"))
                 .andExpect(status().isOk());
     }
 
     @Test
-    void dashboard_containsPhase209ChartPlaceholderText() throws Exception {
+    void dashboard_baseLayoutHasActiveNavIndicator() throws Exception {
+        // Phase 209B — Dashboard link receives "active" class via th:classappend.
         mockMvc.perform(get("/web/dashboard"))
                 .andExpect(status().isOk())
+                // The Dashboard <a> tag must carry the active class (rendered as
+                // class="active" — note attribute may include leading space from
+                // th:classappend, so we check for "active" presence near the
+                // Dashboard link).
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
-                        "Phase 209'da chart bo'ladi")));
+                        "active\">Dashboard")));
     }
 
     // ========== Base layout invariants (P208) ==========
@@ -150,11 +175,23 @@ class WebControllerTest {
     }
 
     @Test
-    void allPages_includeFooterPhaseMarker() throws Exception {
+    void allPages_includeFooterBrandMarker() throws Exception {
+        // Phase 209B base.html updated footer text to "v0.1" (replaced
+        // "Phase 208" marker). Assert the stable brand string still present.
         for (String path : new String[]{"/web/health", "/web/login", "/web/dashboard"}) {
             mockMvc.perform(get(path))
                     .andExpect(status().isOk())
-                    .andExpect(content().string(org.hamcrest.Matchers.containsString("Phase 208")));
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                            "Engineering Ops Platform")));
         }
+    }
+
+    @Test
+    void healthPage_baseLayoutHasActiveNavIndicator_onHealthLink() throws Exception {
+        // Phase 209B — Health link receives "active" class when on /web/health.
+        mockMvc.perform(get("/web/health"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "active\">Health")));
     }
 }
