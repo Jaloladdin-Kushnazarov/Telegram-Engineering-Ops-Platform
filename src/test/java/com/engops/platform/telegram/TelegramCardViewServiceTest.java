@@ -49,7 +49,8 @@ class TelegramCardViewServiceTest {
                 "[BUG-1] Login xato", "Bug",
                 null, null,
                 true,
-                chatBindingId, 42L);
+                chatBindingId, 42L,
+                null);
 
         TelegramRenderPayload renderPayload = new TelegramRenderPayload(
                 tenantId,
@@ -58,7 +59,8 @@ class TelegramCardViewServiceTest {
                 "Bug | BUG-1", "Status: BUGS",
                 null, null,
                 true,
-                chatBindingId, 42L);
+                chatBindingId, 42L,
+                null);
 
         TelegramCardAction action = new TelegramCardAction(
                 workItemId, "START_PROCESSING", "Start Processing",
@@ -85,7 +87,8 @@ class TelegramCardViewServiceTest {
                 "[INCIDENT-1] DB down", "Incident",
                 null, null,
                 false,
-                null, null);
+                null, null,
+                null);
 
         TelegramRenderPayload renderPayload = new TelegramRenderPayload(
                 projectionPayload.getTenantId(),
@@ -95,7 +98,8 @@ class TelegramCardViewServiceTest {
                 "Incident | INCIDENT-1", "Status: OPEN",
                 null, null,
                 false,
-                null, null);
+                null, null,
+                null);
 
         TelegramCardView expectedView = new TelegramCardView(renderPayload, List.of());
 

@@ -34,7 +34,8 @@ class TelegramRenderAssemblerTest {
                 "[BUG-1] Login xato", "Bug",
                 null, null,
                 true,
-                chatBindingId, topicId);
+                chatBindingId, topicId,
+                null);
 
         TelegramRenderPayload render = assembler.assemble(payload);
 
@@ -58,6 +59,9 @@ class TelegramRenderAssemblerTest {
         assertThat(render.getPriorityCode()).isNull();
         assertThat(render.getSeverityCode()).isNull();
 
+        // Phase 196 — owner display label absent
+        assertThat(render.getOwnerDisplayLabel()).isNull();
+
         // Delivery target
         assertThat(render.isDeliveryReady()).isTrue();
         assertThat(render.getTargetChatBindingId()).isEqualTo(chatBindingId);
@@ -75,7 +79,8 @@ class TelegramRenderAssemblerTest {
                 "[INCIDENT-1] DB down", "Incident",
                 null, null,
                 false,
-                null, null);
+                null, null,
+                null);
 
         TelegramRenderPayload render = assembler.assemble(payload);
 
@@ -96,7 +101,8 @@ class TelegramRenderAssemblerTest {
                 "[TASK-5] Deploy script", "Task",
                 null, null,
                 false,
-                null, null);
+                null, null,
+                null);
 
         TelegramRenderPayload render = assembler.assemble(payload);
 
@@ -119,12 +125,52 @@ class TelegramRenderAssemblerTest {
                 "[BUG-3] Race condition", "Bug",
                 "HIGH", "CRITICAL",
                 true,
-                UUID.randomUUID(), 7L);
+                UUID.randomUUID(), 7L,
+                null);
 
         TelegramRenderPayload render = assembler.assemble(payload);
 
         assertThat(render.getPriorityCode()).isEqualTo("HIGH");
         assertThat(render.getSeverityCode()).isEqualTo("CRITICAL");
+    }
+
+    /**
+     * Phase 196 — owner display label passes through verbatim. The assembler
+     * never imports identity; it only forwards the pre-resolved String.
+     */
+    @Test
+    void ownerDisplayLabelPassedThroughFromPayload() {
+        ProjectionPayload payload = new ProjectionPayload(
+                UUID.randomUUID(),
+                UUID.randomUUID(), "BUG-4", "BUG", "Owned bug", "BUGS",
+                "[BUG-4] Owned bug", "Bug",
+                null, null,
+                true,
+                UUID.randomUUID(), 8L,
+                "Bakhrom Yuldashev");
+
+        TelegramRenderPayload render = assembler.assemble(payload);
+
+        assertThat(render.getOwnerDisplayLabel()).isEqualTo("Bakhrom Yuldashev");
+    }
+
+    /**
+     * Phase 196 — null owner display label propagates as null.
+     */
+    @Test
+    void nullOwnerDisplayLabelPassedThroughAsNull() {
+        ProjectionPayload payload = new ProjectionPayload(
+                UUID.randomUUID(),
+                UUID.randomUUID(), "BUG-5", "BUG", "Unowned", "BUGS",
+                "[BUG-5] Unowned", "Bug",
+                null, null,
+                true,
+                UUID.randomUUID(), 8L,
+                null);
+
+        TelegramRenderPayload render = assembler.assemble(payload);
+
+        assertThat(render.getOwnerDisplayLabel()).isNull();
     }
 
     @Test

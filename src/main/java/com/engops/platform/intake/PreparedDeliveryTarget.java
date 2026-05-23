@@ -46,13 +46,21 @@ public class PreparedDeliveryTarget {
     private final UUID targetChatBindingId;
     private final Long targetTopicId;
 
+    // Phase 196 — pre-resolved owner display label. Nullable. The publisher
+    // (intake / workflow) resolves AppUser.displayName via IdentityQueryService
+    // and passes it here verbatim so the Telegram render path can include an
+    // "Owner: <displayName>" line without itself importing identity. Raw owner
+    // UUID is NEVER rendered — only this display label.
+    private final String ownerDisplayLabel;
+
     public PreparedDeliveryTarget(UUID tenantId,
                                    UUID workItemId, String workItemCode,
                                    String workItemType, String title,
                                    String currentStatusCode,
                                    String priorityCode, String severityCode,
                                    boolean deliveryReady,
-                                   UUID targetChatBindingId, Long targetTopicId) {
+                                   UUID targetChatBindingId, Long targetTopicId,
+                                   String ownerDisplayLabel) {
         this.tenantId = tenantId;
         this.workItemId = workItemId;
         this.workItemCode = workItemCode;
@@ -64,6 +72,7 @@ public class PreparedDeliveryTarget {
         this.deliveryReady = deliveryReady;
         this.targetChatBindingId = targetChatBindingId;
         this.targetTopicId = targetTopicId;
+        this.ownerDisplayLabel = ownerDisplayLabel;
     }
 
     public UUID getTenantId() { return tenantId; }
@@ -77,4 +86,5 @@ public class PreparedDeliveryTarget {
     public boolean isDeliveryReady() { return deliveryReady; }
     public UUID getTargetChatBindingId() { return targetChatBindingId; }
     public Long getTargetTopicId() { return targetTopicId; }
+    public String getOwnerDisplayLabel() { return ownerDisplayLabel; }
 }

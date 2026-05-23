@@ -50,6 +50,11 @@ public class ProjectionPayload {
     private final UUID targetChatBindingId;
     private final Long targetTopicId;
 
+    // Phase 196 — adapter-neutral pass-through of pre-resolved owner display
+    // label. Nullable. Identity resolution happens in the publisher (intake /
+    // workflow); this projection contract carries only the resolved string.
+    private final String ownerDisplayLabel;
+
     public ProjectionPayload(UUID tenantId,
                               UUID workItemId, String workItemCode,
                               String workItemType, String title,
@@ -57,7 +62,8 @@ public class ProjectionPayload {
                               String displayTitle, String displayTypeLabel,
                               String priorityCode, String severityCode,
                               boolean deliveryReady,
-                              UUID targetChatBindingId, Long targetTopicId) {
+                              UUID targetChatBindingId, Long targetTopicId,
+                              String ownerDisplayLabel) {
         this.tenantId = tenantId;
         this.workItemId = workItemId;
         this.workItemCode = workItemCode;
@@ -71,6 +77,7 @@ public class ProjectionPayload {
         this.deliveryReady = deliveryReady;
         this.targetChatBindingId = targetChatBindingId;
         this.targetTopicId = targetTopicId;
+        this.ownerDisplayLabel = ownerDisplayLabel;
     }
 
     public UUID getTenantId() { return tenantId; }
@@ -86,4 +93,5 @@ public class ProjectionPayload {
     public boolean isDeliveryReady() { return deliveryReady; }
     public UUID getTargetChatBindingId() { return targetChatBindingId; }
     public Long getTargetTopicId() { return targetTopicId; }
+    public String getOwnerDisplayLabel() { return ownerDisplayLabel; }
 }

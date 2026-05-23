@@ -53,7 +53,11 @@ public class ProjectionAssembler {
                 target.getSeverityCode(),
                 target.isDeliveryReady(),
                 target.getTargetChatBindingId(),
-                target.getTargetTopicId());
+                target.getTargetTopicId(),
+                // Phase 196 — owner display label passes through verbatim.
+                // Resolution happens in publisher (intake / workflow);
+                // assembler stays pure mapping with no identity import.
+                target.getOwnerDisplayLabel());
     }
 
     /**

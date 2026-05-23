@@ -28,7 +28,8 @@ class ProjectionAssemblerTest {
                 workItemId, "BUG-1", "BUG", "Login xato", "BUGS",
                 null, null,
                 true,
-                chatBindingId, topicId);
+                chatBindingId, topicId,
+                null);
 
         ProjectionPayload payload = assembler.assemble(target);
 
@@ -42,6 +43,7 @@ class ProjectionAssemblerTest {
         assertThat(payload.getDisplayTypeLabel()).isEqualTo("Bug");
         assertThat(payload.getPriorityCode()).isNull();
         assertThat(payload.getSeverityCode()).isNull();
+        assertThat(payload.getOwnerDisplayLabel()).isNull();
         assertThat(payload.isDeliveryReady()).isTrue();
         assertThat(payload.getTargetChatBindingId()).isEqualTo(chatBindingId);
         assertThat(payload.getTargetTopicId()).isEqualTo(topicId);
@@ -57,7 +59,8 @@ class ProjectionAssemblerTest {
                 workItemId, "INCIDENT-1", "INCIDENT", "DB down", "OPEN",
                 null, null,
                 false,
-                null, null);
+                null, null,
+                null);
 
         ProjectionPayload payload = assembler.assemble(target);
 
@@ -81,7 +84,8 @@ class ProjectionAssemblerTest {
                 UUID.randomUUID(), "TASK-5", "TASK", "Deploy script", "TODO",
                 null, null,
                 false,
-                null, null);
+                null, null,
+                null);
 
         ProjectionPayload payload = assembler.assemble(target);
 
@@ -101,7 +105,8 @@ class ProjectionAssemblerTest {
                 UUID.randomUUID(), "BUG-7", "BUG", "Race condition", "PROCESSING",
                 "HIGH", "CRITICAL",
                 true,
-                UUID.randomUUID(), 9L);
+                UUID.randomUUID(), 9L,
+                null);
 
         ProjectionPayload payload = assembler.assemble(target);
 
@@ -120,12 +125,51 @@ class ProjectionAssemblerTest {
                 UUID.randomUUID(), "BUG-8", "BUG", "Edge case", "BUGS",
                 "   ", "",
                 true,
-                UUID.randomUUID(), 9L);
+                UUID.randomUUID(), 9L,
+                null);
 
         ProjectionPayload payload = assembler.assemble(target);
 
         assertThat(payload.getPriorityCode()).isEqualTo("   ");
         assertThat(payload.getSeverityCode()).isEqualTo("");
+    }
+
+    /**
+     * Phase 196 — assembler passes the pre-resolved owner display label
+     * through to the projection payload verbatim. No identity lookup here.
+     */
+    @Test
+    void ownerDisplayLabelPassedThroughFromTarget() {
+        PreparedDeliveryTarget target = new PreparedDeliveryTarget(
+                UUID.randomUUID(),
+                UUID.randomUUID(), "BUG-10", "BUG", "Owned bug", "BUGS",
+                null, null,
+                true,
+                UUID.randomUUID(), 9L,
+                "Bakhrom Yuldashev");
+
+        ProjectionPayload payload = assembler.assemble(target);
+
+        assertThat(payload.getOwnerDisplayLabel()).isEqualTo("Bakhrom Yuldashev");
+    }
+
+    /**
+     * Phase 196 — null owner display label propagates as null. Renderer alone
+     * decides whether to emit the Owner line.
+     */
+    @Test
+    void nullOwnerDisplayLabelPassedThroughAsNull() {
+        PreparedDeliveryTarget target = new PreparedDeliveryTarget(
+                UUID.randomUUID(),
+                UUID.randomUUID(), "BUG-11", "BUG", "Unowned bug", "BUGS",
+                null, null,
+                true,
+                UUID.randomUUID(), 9L,
+                null);
+
+        ProjectionPayload payload = assembler.assemble(target);
+
+        assertThat(payload.getOwnerDisplayLabel()).isNull();
     }
 
     @Test

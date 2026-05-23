@@ -106,7 +106,8 @@ class TelegramCardDispatchAfterCommitIntegrationTest {
                 null, null,                         // Phase 194 — priority/severity absent
                 true,                               // deliveryReady
                 UUID.randomUUID(),                  // targetChatBindingId
-                42L);                               // targetTopicId
+                42L,                                // targetTopicId
+                null);                              // Phase 196 — ownerDisplayLabel absent
         return new TelegramCardDispatchRequested(target, sourceFlow, targetStatusCode);
     }
 }

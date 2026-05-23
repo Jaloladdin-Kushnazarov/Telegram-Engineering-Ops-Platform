@@ -35,7 +35,8 @@ class TelegramMessageRendererTest {
                 "Bug | BUG-1", "Status: BUGS",
                 null, null,
                 true,
-                chatBindingId, 42L);
+                chatBindingId, 42L,
+                null);
 
         TelegramCardAction action = new TelegramCardAction(
                 workItemId, "START_PROCESSING", "Start Processing",
@@ -77,7 +78,8 @@ class TelegramMessageRendererTest {
                 "Incident | INCIDENT-1", "Status: OPEN",
                 null, null,
                 false,
-                null, null);
+                null, null,
+                null);
 
         TelegramCardView cardView = new TelegramCardView(renderPayload, List.of());
 
@@ -102,7 +104,8 @@ class TelegramMessageRendererTest {
                 "Bug | BUG-5", "Status: TESTING",
                 null, null,
                 true,
-                UUID.randomUUID(), 10L);
+                UUID.randomUUID(), 10L,
+                null);
 
         TelegramCardAction markFixed = new TelegramCardAction(
                 workItemId, "MARK_FIXED", "Mark Fixed",
@@ -209,6 +212,109 @@ class TelegramMessageRendererTest {
                 "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS\nSeverity: LOW");
     }
 
+    // ---- Phase 196 — optional owner display label rendering ----
+
+    /**
+     * Phase 196 — owner display label alone appends one Owner line after
+     * status. Priority and severity are absent so neither line is rendered.
+     */
+    @Test
+    void render_withOwnerDisplayLabel_appendsOwnerLine() {
+        TelegramRenderPayload renderPayload = renderPayload(null, null, "Bakhrom Yuldashev");
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        assertThat(message.getText()).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS\nOwner: Bakhrom Yuldashev");
+    }
+
+    /**
+     * Phase 196 — null owner display label omits the Owner line.
+     */
+    @Test
+    void render_withNullOwnerDisplayLabel_omitsOwnerLine() {
+        TelegramRenderPayload renderPayload = renderPayload(null, null, null);
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        assertThat(message.getText()).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS");
+    }
+
+    /**
+     * Phase 196 — blank / whitespace owner display label is treated as absent;
+     * no empty {@code Owner:} label line.
+     */
+    @Test
+    void render_withBlankOwnerDisplayLabel_omitsOwnerLine() {
+        TelegramRenderPayload renderPayload = renderPayload(null, null, "   ");
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        assertThat(message.getText()).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS");
+    }
+
+    /**
+     * Phase 196 — when all three optional fields are present, they appear in
+     * stable order: Priority, Severity, Owner.
+     */
+    @Test
+    void render_withAllOptionalFields_outputsHeaderTitleStatusPrioritySeverityOwner_inThatOrder() {
+        TelegramRenderPayload renderPayload =
+                renderPayload("HIGH", "CRITICAL", "Bakhrom Yuldashev");
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        assertThat(message.getText()).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS"
+                        + "\nPriority: HIGH"
+                        + "\nSeverity: CRITICAL"
+                        + "\nOwner: Bakhrom Yuldashev");
+    }
+
+    /**
+     * Phase 196 — owner present but priority / severity absent: card is
+     * exactly 4 lines (header, title, status, owner). No blank lines
+     * between status and owner — line skipping is structural not whitespace.
+     */
+    @Test
+    void render_withOnlyOwnerLabel_outputs4lines() {
+        TelegramRenderPayload renderPayload = renderPayload(null, null, "Sardor");
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        String text = message.getText();
+        assertThat(text).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS\nOwner: Sardor");
+        // Exactly 4 lines (3 newline separators).
+        assertThat(text.chars().filter(c -> c == '\n').count()).isEqualTo(3);
+    }
+
+    /**
+     * Phase 196 / Phase 179 byte-compat: when ALL three optional fields
+     * (priority, severity, owner) are null/blank, the rendered text is
+     * byte-for-byte identical to the pre-Phase-194 baseline:
+     * 3 lines joined by '\n', no trailing newline.
+     */
+    @Test
+    void render_allOptionalNull_byteIdenticalToPhase179Format() {
+        TelegramRenderPayload renderPayload = renderPayload(null, null, null);
+
+        TelegramMessage message = renderer.render(buildCardView(renderPayload));
+
+        String text = message.getText();
+        assertThat(text).isEqualTo(
+                "Bug | BUG-1\n[BUG-1] Login xato\nStatus: BUGS");
+        // Defense: no trailing newline.
+        assertThat(text).doesNotEndWith("\n");
+        // Defense: exactly 2 newline separators (3 lines).
+        assertThat(text.chars().filter(c -> c == '\n').count()).isEqualTo(2);
+        // Defense: no UUID-like substring in rendered text.
+        assertThat(text).doesNotContainPattern(
+                "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+    }
+
     @Test
     void nullCardViewRadEtilishi() {
         assertThatThrownBy(() -> renderer.render(null))
@@ -220,6 +326,12 @@ class TelegramMessageRendererTest {
 
     /** Phase 194 — fixed BUG/BUGS payload with parameterised priority/severity. */
     private TelegramRenderPayload renderPayload(String priorityCode, String severityCode) {
+        return renderPayload(priorityCode, severityCode, null);
+    }
+
+    /** Phase 196 — overload with owner display label. */
+    private TelegramRenderPayload renderPayload(String priorityCode, String severityCode,
+                                                 String ownerDisplayLabel) {
         return new TelegramRenderPayload(
                 UUID.randomUUID(),
                 UUID.randomUUID(), "BUG-1", "BUG", "Login xato", "BUGS",
@@ -227,7 +339,8 @@ class TelegramMessageRendererTest {
                 "Bug | BUG-1", "Status: BUGS",
                 priorityCode, severityCode,
                 true,
-                UUID.randomUUID(), 42L);
+                UUID.randomUUID(), 42L,
+                ownerDisplayLabel);
     }
 
     private TelegramCardView buildCardView(TelegramRenderPayload payload) {

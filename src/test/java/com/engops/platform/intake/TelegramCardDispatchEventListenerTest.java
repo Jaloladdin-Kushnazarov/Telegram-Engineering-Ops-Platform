@@ -57,7 +57,8 @@ class TelegramCardDispatchEventListenerTest {
                 currentStatusCode,
                 null, null,
                 true,
-                chatBindingId, 42L);
+                chatBindingId, 42L,
+                null);
     }
 
     private PreparedDeliveryTarget notReadyTarget() {
@@ -66,7 +67,8 @@ class TelegramCardDispatchEventListenerTest {
                 "BUGS",
                 null, null,
                 false,
-                null, null);
+                null, null,
+                null);
     }
 
     @Test

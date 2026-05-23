@@ -98,13 +98,37 @@ public class IntakeResult {
      * Adapter-facing DTO ga konvertatsiya — faqat delivery uchun kerakli ma'lumotlar.
      * Routing internal details (matchedRoutingRuleId, targetTopicBindingId, workflowDefinitionId)
      * bu yerda tashlanadi — adapter uchun faqat final delivery target kerak.
+     *
+     * <p>Phase 196 backward-compat overload: hech qanday owner display label
+     * mavjud emas (null bilan delegate qiladi). Mavjud test sirti
+     * ({@code toPreparedDeliveryTargetRoutingPreparedHolatda},
+     * {@code toPreparedDeliveryTargetRoutingYoqHolatda},
+     * {@code toPreparedDeliveryTargetForwardsPriorityAndSeverity}) shu yo'l
+     * orqali invariantni saqlaydi.</p>
      */
     public PreparedDeliveryTarget toPreparedDeliveryTarget() {
+        return toPreparedDeliveryTarget(null);
+    }
+
+    /**
+     * Phase 196 — adapter-facing DTO ga konvertatsiya, oldindan resolve
+     * qilingan owner display label bilan. Production yo'lda
+     * {@code IntakeApplicationService.publishTelegramCardDispatchEventSafely}
+     * shu overload'ni chaqiradi: u {@code IdentityQueryService.findUserById}
+     * orqali {@code AppUser.displayName}'ni hal qilib, natijani shu yerga
+     * uzatadi. Raw owner UUID hech qachon bu zanjirga kirmaydi —
+     * faqat oldindan tayyorlangan label String'i.
+     *
+     * @param ownerDisplayLabel nullable — null/blank bo'lsa Telegram render
+     *                          {@code Owner: ...} qatorini chiqarmaydi.
+     */
+    public PreparedDeliveryTarget toPreparedDeliveryTarget(String ownerDisplayLabel) {
         return new PreparedDeliveryTarget(
                 tenantId,
                 workItemId, workItemCode, workItemType, title, currentStatusCode,
                 priorityCode, severityCode,
                 routingPrepared,
-                targetChatBindingId, targetTopicId);
+                targetChatBindingId, targetTopicId,
+                ownerDisplayLabel);
     }
 }

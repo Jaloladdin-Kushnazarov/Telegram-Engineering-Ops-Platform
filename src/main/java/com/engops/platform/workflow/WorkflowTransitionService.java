@@ -1,6 +1,8 @@
 package com.engops.platform.workflow;
 
 import com.engops.platform.audit.AuditService;
+import com.engops.platform.identity.IdentityQueryService;
+import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.intake.PreparedDeliveryTarget;
 import com.engops.platform.intake.TelegramCardDispatchRequested;
 import com.engops.platform.routing.RoutingDecision;
@@ -85,6 +87,12 @@ public class WorkflowTransitionService {
     private final OperationalAuthorizationService operationalAuthorizationService;
     private final RoutingDecisionService routingDecisionService;
     private final ApplicationEventPublisher eventPublisher;
+    // Phase 196 — owner displayName ni AFTER_COMMIT card refresh publisher
+    // boundary'da resolve qilish uchun. Telegram modul identity'ga import
+    // qilmaydi (ArchUnit boundary saqlanadi); resolve faqat shu yerda va
+    // {@link com.engops.platform.intake.IntakeApplicationService}'da amalga
+    // oshiriladi.
+    private final IdentityQueryService identityQueryService;
 
     public WorkflowTransitionService(WorkItemQueryService workItemQueryService,
                                       WorkItemCommandService workItemCommandService,
@@ -93,7 +101,8 @@ public class WorkflowTransitionService {
                                       AuditService auditService,
                                       OperationalAuthorizationService operationalAuthorizationService,
                                       RoutingDecisionService routingDecisionService,
-                                      ApplicationEventPublisher eventPublisher) {
+                                      ApplicationEventPublisher eventPublisher,
+                                      IdentityQueryService identityQueryService) {
         this.workItemQueryService = workItemQueryService;
         this.workItemCommandService = workItemCommandService;
         this.tenantConfigQueryService = tenantConfigQueryService;
@@ -102,6 +111,7 @@ public class WorkflowTransitionService {
         this.operationalAuthorizationService = operationalAuthorizationService;
         this.routingDecisionService = routingDecisionService;
         this.eventPublisher = eventPublisher;
+        this.identityQueryService = identityQueryService;
     }
 
     /**
@@ -217,9 +227,17 @@ public class WorkflowTransitionService {
             if (!routing.isPrepared()) {
                 return;
             }
+            // Phase 196 — owner display label resolution lives INSIDE this
+            // existing Phase 164 fail-soft try/catch. Any RuntimeException
+            // from findUserById is swallowed via the existing bounded warn
+            // log; the workflow transition is NOT rolled back, and the
+            // publish event is simply skipped.
+            String ownerDisplayLabel =
+                    resolveOwnerDisplayLabel(workItem.getCurrentOwnerUserId());
             // Phase 194 — priority/severity attribute snapshot captured from
             // the post-transition WorkItem so the AFTER_COMMIT Telegram card
             // refresh can render optional lines. Both nullable.
+            // Phase 196 — pre-resolved owner display label appended as LAST arg.
             PreparedDeliveryTarget target = new PreparedDeliveryTarget(
                     workItem.getTenantId(),
                     workItem.getId(),
@@ -231,7 +249,8 @@ public class WorkflowTransitionService {
                     workItem.getSeverityCode(),
                     true,
                     routing.getTargetChatBindingId(),
-                    routing.getTargetTopicId());
+                    routing.getTargetTopicId(),
+                    ownerDisplayLabel);
             eventPublisher.publishEvent(new TelegramCardDispatchRequested(
                     target,
                     TelegramCardDispatchRequested.SOURCE_WORKFLOW_TRANSITION,
@@ -241,6 +260,37 @@ public class WorkflowTransitionService {
                     workItem.getTenantId(), workItem.getId(), targetStatusCode,
                     ex.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Phase 196 — owner display label resolver. Telegram render path uchun
+     * pre-resolved {@code AppUser.displayName} qaytaradi.
+     *
+     * <p>Algoritm:</p>
+     * <ul>
+     *   <li>{@code ownerUserId == null} → null (DB lookup yo'q).</li>
+     *   <li>AppUser topilmasa → null.</li>
+     *   <li>{@code displayName} null yoki blank bo'lsa → null.</li>
+     *   <li>Aks holda → {@code displayName} verbatim.</li>
+     * </ul>
+     *
+     * <p><strong>Fallback YO'Q:</strong> Phase 196 da {@code username} yoki
+     * {@code telegram_user_id} ga fallback qilinmaydi. Raw UUID hech qachon
+     * qaytarilmaydi — Telegram render path UUID'ni ko'rmasligi shart.</p>
+     *
+     * <p><strong>Diqqat:</strong> bu helper ataylab {@link IntakeApplicationService}
+     * dagi nusxa bilan strukturali ravishda bir xil. Ikkala servis ham o'z
+     * boundary'siga ega; faqat ikkita caller borligi sababli shared-kernel
+     * extraction qilinmaydi (correctness > DRY, CLAUDE.md style).</p>
+     */
+    private String resolveOwnerDisplayLabel(java.util.UUID ownerUserId) {
+        if (ownerUserId == null) {
+            return null;
+        }
+        return identityQueryService.findUserById(ownerUserId)
+                .map(AppUser::getDisplayName)
+                .filter(s -> s != null && !s.isBlank())
+                .orElse(null);
     }
 
     /**

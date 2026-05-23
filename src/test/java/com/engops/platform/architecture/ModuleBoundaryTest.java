@@ -76,6 +76,26 @@ class ModuleBoundaryTest {
     }
 
     /**
+     * Phase 196 — Telegram moduli identity moduliga to'g'ridan-to'g'ri
+     * bog'lanmasligi kerak. Owner displayName resolve qilish faqat publisher
+     * tomonida (intake / workflow) {@code IdentityQueryService} orqali
+     * bajariladi; resolved label String sifatida render zanjiri DTO'lariga
+     * uzatiladi (PreparedDeliveryTarget → ProjectionPayload → TelegramRenderPayload).
+     * Render path hech qachon {@code identity} paketidan import qilmaydi va
+     * raw owner UUID'ni hech qachon ko'rmaydi.
+     */
+    @Test
+    void telegramModuli_identityModuligaTogridanTogriKiraOlmasligi() {
+        noClasses()
+                .that().resideInAPackage("..telegram..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage("..identity..")
+                .because("Telegram moduli identity'ga to'g'ridan-to'g'ri bog'lanmasligi kerak — " +
+                         "displayName resolve publisher tomonida (intake/workflow) bajariladi")
+                .check(classes);
+    }
+
+    /**
      * Infrastructure moduli faqat shared-kernel'dan foydalanishi mumkin,
      * boshqa biznes modullaridan emas.
      */

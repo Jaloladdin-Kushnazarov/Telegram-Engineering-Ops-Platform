@@ -475,7 +475,8 @@ class TelegramCardDispatchServiceTest {
                 null, null,
                 true,
                 UUID.randomUUID(),
-                42L);
+                42L,
+                null);
         return new TelegramCardView(renderPayload, List.of());
     }
 

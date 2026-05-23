@@ -56,6 +56,9 @@ class IntakeApplicationServiceTest {
     @Mock private OperationalAuthorizationService operationalAuthorizationService;
     // Phase 164: AFTER_COMMIT Telegram dispatch event publish.
     @Mock private ApplicationEventPublisher eventPublisher;
+    // Phase 196: owner displayName resolution inside the publisher's fail-soft
+    // try/catch of publishTelegramCardDispatchEventSafely(...).
+    @Mock private com.engops.platform.identity.IdentityQueryService identityQueryService;
 
     @InjectMocks
     private IntakeApplicationService intakeService;
@@ -1088,6 +1091,261 @@ class IntakeApplicationServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("faol a'zo emas");
         verifyNoInteractions(eventPublisher);
+    }
+
+    // ========== Phase 196 — owner displayName resolution at publisher side ==========
+
+    /**
+     * Phase 196: ownerUserId mavjud bo'lsa, publishTelegramCardDispatchEventSafely
+     * IdentityQueryService.findUserById(...) ni chaqiradi va AppUser.displayName
+     * ni resolved label sifatida PreparedDeliveryTarget'ga uzatadi.
+     */
+    @Test
+    void submit_withOwner_resolvesDisplayLabel_andPassesToPreparedDeliveryTarget() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(
+                        UUID.randomUUID(), UUID.randomUUID(),
+                        UUID.randomUUID(), 42L));
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-9", WorkItemType.BUG,
+                workflowDefId, "Owned", "BUGS", userId);
+        createdItem.assignOwner(ownerUserId);
+        when(workItemCommandService.createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any()))
+                .thenReturn(createdItem);
+
+        com.engops.platform.identity.model.AppUser appUser =
+                new com.engops.platform.identity.model.AppUser(
+                        ownerUserId, 1234567L, "Bakhrom Yuldashev");
+        when(identityQueryService.findUserById(ownerUserId)).thenReturn(Optional.of(appUser));
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("Owned")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .ownerUserId(ownerUserId)
+                .build();
+
+        intakeService.submit(command);
+
+        ArgumentCaptor<TelegramCardDispatchRequested> eventCaptor =
+                ArgumentCaptor.forClass(TelegramCardDispatchRequested.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        PreparedDeliveryTarget target = eventCaptor.getValue().target();
+        assertThat(target.getOwnerDisplayLabel()).isEqualTo("Bakhrom Yuldashev");
+    }
+
+    /**
+     * Phase 196: ownerUserId mavjud, lekin AppUser topilmasa, ownerDisplayLabel
+     * null sifatida uzatiladi.
+     */
+    @Test
+    void submit_withOwner_butAppUserNotFound_passesNullLabel() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(
+                        UUID.randomUUID(), UUID.randomUUID(),
+                        UUID.randomUUID(), 42L));
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-9", WorkItemType.BUG,
+                workflowDefId, "Owned", "BUGS", userId);
+        createdItem.assignOwner(ownerUserId);
+        when(workItemCommandService.createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any()))
+                .thenReturn(createdItem);
+
+        when(identityQueryService.findUserById(ownerUserId)).thenReturn(Optional.empty());
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId)
+                .typeCode(WorkItemType.BUG)
+                .title("Owned")
+                .workflowDefinitionId(workflowDefId)
+                .initialStatusCode("BUGS")
+                .createdByUserId(userId)
+                .actionSource("MANUAL")
+                .ownerUserId(ownerUserId)
+                .build();
+
+        intakeService.submit(command);
+
+        ArgumentCaptor<TelegramCardDispatchRequested> eventCaptor =
+                ArgumentCaptor.forClass(TelegramCardDispatchRequested.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().target().getOwnerDisplayLabel()).isNull();
+    }
+
+    /**
+     * Phase 196: AppUser topiladi, lekin displayName null bo'lsa → null label.
+     */
+    @Test
+    void submit_withOwner_butDisplayNameNull_passesNullLabel() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(
+                        UUID.randomUUID(), UUID.randomUUID(),
+                        UUID.randomUUID(), 42L));
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-9", WorkItemType.BUG,
+                workflowDefId, "Owned", "BUGS", userId);
+        createdItem.assignOwner(ownerUserId);
+        when(workItemCommandService.createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any()))
+                .thenReturn(createdItem);
+
+        com.engops.platform.identity.model.AppUser appUser =
+                new com.engops.platform.identity.model.AppUser(ownerUserId, 1234567L, null);
+        when(identityQueryService.findUserById(ownerUserId)).thenReturn(Optional.of(appUser));
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId).typeCode(WorkItemType.BUG).title("Owned")
+                .workflowDefinitionId(workflowDefId).initialStatusCode("BUGS")
+                .createdByUserId(userId).actionSource("MANUAL")
+                .ownerUserId(ownerUserId).build();
+
+        intakeService.submit(command);
+
+        ArgumentCaptor<TelegramCardDispatchRequested> eventCaptor =
+                ArgumentCaptor.forClass(TelegramCardDispatchRequested.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().target().getOwnerDisplayLabel()).isNull();
+    }
+
+    /**
+     * Phase 196: displayName blank/whitespace bo'lsa → null label.
+     */
+    @Test
+    void submit_withOwner_butDisplayNameBlank_passesNullLabel() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(
+                        UUID.randomUUID(), UUID.randomUUID(),
+                        UUID.randomUUID(), 42L));
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-9", WorkItemType.BUG,
+                workflowDefId, "Owned", "BUGS", userId);
+        createdItem.assignOwner(ownerUserId);
+        when(workItemCommandService.createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any()))
+                .thenReturn(createdItem);
+
+        com.engops.platform.identity.model.AppUser appUser =
+                new com.engops.platform.identity.model.AppUser(ownerUserId, 1234567L, "  ");
+        when(identityQueryService.findUserById(ownerUserId)).thenReturn(Optional.of(appUser));
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId).typeCode(WorkItemType.BUG).title("Owned")
+                .workflowDefinitionId(workflowDefId).initialStatusCode("BUGS")
+                .createdByUserId(userId).actionSource("MANUAL")
+                .ownerUserId(ownerUserId).build();
+
+        intakeService.submit(command);
+
+        ArgumentCaptor<TelegramCardDispatchRequested> eventCaptor =
+                ArgumentCaptor.forClass(TelegramCardDispatchRequested.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().target().getOwnerDisplayLabel()).isNull();
+    }
+
+    /**
+     * Phase 196: ownerUserId null bo'lsa, IdentityQueryService umuman chaqirilmaydi
+     * (DB lookup yo'q).
+     */
+    @Test
+    void submit_withoutOwner_doesNotCallIdentityQueryService() {
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(
+                        UUID.randomUUID(), UUID.randomUUID(),
+                        UUID.randomUUID(), 42L));
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-1", WorkItemType.BUG,
+                workflowDefId, "Plain", "BUGS", userId);
+        when(workItemCommandService.create(
+                eq(tenantId), eq(WorkItemType.BUG), eq(workflowDefId),
+                eq("Plain"), eq((String) null), eq("BUGS"), eq(userId), eq("MANUAL")))
+                .thenReturn(createdItem);
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId).typeCode(WorkItemType.BUG).title("Plain")
+                .workflowDefinitionId(workflowDefId).initialStatusCode("BUGS")
+                .createdByUserId(userId).actionSource("MANUAL").build();
+
+        intakeService.submit(command);
+
+        verify(identityQueryService, never()).findUserById(any());
+    }
+
+    /**
+     * Phase 196 + Phase 164 fail-soft: identityQueryService.findUserById tasodifan
+     * RuntimeException tashlasa, biznes transaction rollback bo'lmaydi
+     * (workItem yaratiladi va caller normal IntakeResult oladi), lekin
+     * event publish skip qilinadi va bounded warn log yoziladi.
+     */
+    @Test
+    void submit_withOwner_identityLookupThrows_dispatchSwallowedWithBoundedLog_andWorkItemStillCreated() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkflowDefinition def = mock(WorkflowDefinition.class);
+        when(def.getId()).thenReturn(workflowDefId);
+        when(tenantConfigQueryService.findWorkflowDefinitionById(tenantId, workflowDefId))
+                .thenReturn(Optional.of(def));
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(
+                        UUID.randomUUID(), UUID.randomUUID(),
+                        UUID.randomUUID(), 42L));
+
+        WorkItem createdItem = new WorkItem(tenantId, "BUG-9", WorkItemType.BUG,
+                workflowDefId, "Owned", "BUGS", userId);
+        createdItem.assignOwner(ownerUserId);
+        when(workItemCommandService.createWithAttributes(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any()))
+                .thenReturn(createdItem);
+
+        when(identityQueryService.findUserById(ownerUserId))
+                .thenThrow(new RuntimeException("simulated DB failure"));
+
+        IntakeCommand command = IntakeCommand.builder()
+                .tenantId(tenantId).typeCode(WorkItemType.BUG).title("Owned")
+                .workflowDefinitionId(workflowDefId).initialStatusCode("BUGS")
+                .createdByUserId(userId).actionSource("MANUAL")
+                .ownerUserId(ownerUserId).build();
+
+        // Biznes transaction muvaffaqiyatli qaytadi — exception swallow qilinadi.
+        IntakeResult result = intakeService.submit(command);
+        assertThat(result.getWorkItemCode()).isEqualTo("BUG-9");
+        assertThat(result.getCurrentOwnerUserId()).isEqualTo(ownerUserId);
+
+        // Event publish SKIP — fail-soft try/catch swallowed RuntimeException.
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     // --- Helper ---

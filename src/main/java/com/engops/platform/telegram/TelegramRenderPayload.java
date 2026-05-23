@@ -43,7 +43,6 @@ public class TelegramRenderPayload {
 
     // Phase 194 — optional work item attribute snapshot. Nullable.
     // TelegramMessageRenderer renders these only when non-null and non-blank.
-    // Owner intentionally NOT carried (Phase 196 scope).
     private final String priorityCode;
     private final String severityCode;
 
@@ -54,6 +53,11 @@ public class TelegramRenderPayload {
     private final UUID targetChatBindingId;
     private final Long targetTopicId;
 
+    // Phase 196 — pre-resolved owner display label (e.g. AppUser.displayName).
+    // Nullable. Telegram render path consumes this only as a String; raw owner
+    // UUID is NEVER carried on this DTO and NEVER rendered.
+    private final String ownerDisplayLabel;
+
     public TelegramRenderPayload(UUID tenantId,
                                   UUID workItemId, String workItemCode,
                                   String workItemType, String title,
@@ -62,7 +66,8 @@ public class TelegramRenderPayload {
                                   String headerLine, String statusLine,
                                   String priorityCode, String severityCode,
                                   boolean deliveryReady,
-                                  UUID targetChatBindingId, Long targetTopicId) {
+                                  UUID targetChatBindingId, Long targetTopicId,
+                                  String ownerDisplayLabel) {
         this.tenantId = tenantId;
         this.workItemId = workItemId;
         this.workItemCode = workItemCode;
@@ -78,6 +83,7 @@ public class TelegramRenderPayload {
         this.deliveryReady = deliveryReady;
         this.targetChatBindingId = targetChatBindingId;
         this.targetTopicId = targetTopicId;
+        this.ownerDisplayLabel = ownerDisplayLabel;
     }
 
     public UUID getTenantId() { return tenantId; }
@@ -95,4 +101,5 @@ public class TelegramRenderPayload {
     public boolean isDeliveryReady() { return deliveryReady; }
     public UUID getTargetChatBindingId() { return targetChatBindingId; }
     public Long getTargetTopicId() { return targetTopicId; }
+    public String getOwnerDisplayLabel() { return ownerDisplayLabel; }
 }

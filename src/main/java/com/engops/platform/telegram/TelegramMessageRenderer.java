@@ -49,15 +49,22 @@ public class TelegramMessageRenderer {
     }
 
     /**
-     * Phase 194 — base 3-line card text optionally followed by
-     * {@code Priority: <code>} and/or {@code Severity: <code>} lines.
+     * Phase 194 / Phase 196 — base 3-line card text optionally followed by
+     * {@code Priority: <code>}, {@code Severity: <code>} and/or
+     * {@code Owner: <displayName>} lines (in that stable order).
      *
-     * <p>The optional lines are appended <em>only</em> when the corresponding
+     * <p>Each optional line is appended <em>only</em> when the corresponding
      * field on the {@link TelegramRenderPayload} is non-null and non-blank.
      * Blank strings are treated like absent values; no empty-label line is
-     * ever rendered. When both fields are absent the output is byte-for-byte
-     * identical to the pre-Phase-194 format, preserving Phase 179
-     * NOT_MODIFIED behavior for unchanged work items.</p>
+     * ever rendered. When ALL THREE optional fields are absent the output is
+     * byte-for-byte identical to the pre-Phase-194 format, preserving Phase
+     * 179 NOT_MODIFIED behavior for unchanged work items.</p>
+     *
+     * <p><strong>Owner is always rendered as the pre-resolved display label
+     * String</strong> (Phase 196 contract). The raw owner UUID is never
+     * carried into this renderer and never written to the rendered text —
+     * resolution happens publisher-side via {@code IdentityQueryService} in
+     * intake / workflow services, never in the telegram module.</p>
      *
      * <p>No Markdown or HTML — plain text only. No {@code parse_mode}.
      * Rendered text is never logged (token-leak guard pattern).</p>
@@ -72,6 +79,9 @@ public class TelegramMessageRenderer {
         }
         if (isPresent(renderPayload.getSeverityCode())) {
             sb.append('\n').append("Severity: ").append(renderPayload.getSeverityCode());
+        }
+        if (isPresent(renderPayload.getOwnerDisplayLabel())) {
+            sb.append('\n').append("Owner: ").append(renderPayload.getOwnerDisplayLabel());
         }
         return sb.toString();
     }

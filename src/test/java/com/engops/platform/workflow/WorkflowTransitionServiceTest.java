@@ -62,6 +62,9 @@ class WorkflowTransitionServiceTest {
     @Mock private AuditService auditService;
     @Mock private OperationalAuthorizationService operationalAuthorizationService;
     @Mock private RoutingDecisionService routingDecisionService;
+    // Phase 196 — owner displayName resolution inside the publisher's fail-soft
+    // try/catch of publishTelegramCardDispatchEventSafely(...).
+    @Mock private com.engops.platform.identity.IdentityQueryService identityQueryService;
     // Phase 164: AFTER_COMMIT Telegram dispatch event publish.
     @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -405,6 +408,124 @@ class WorkflowTransitionServiceTest {
 
         assertThat(result.getCurrentStatusCode()).isEqualTo("PROCESSING");
         verify(routingDecisionService).resolve(tenantId, "BUG");
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    // ========== Phase 196 — owner displayName resolution at publisher side ==========
+
+    /**
+     * Phase 196: transition-dan keyin workItem'da owner mavjud bo'lsa,
+     * publishTelegramCardDispatchEventSafely IdentityQueryService.findUserById(...)
+     * ni chaqiradi va AppUser.displayName ni resolved label sifatida
+     * PreparedDeliveryTarget'ga uzatadi.
+     */
+    @Test
+    void transition_withWorkItemHavingOwner_resolvesDisplayLabel_andPassesToPreparedDeliveryTarget() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkItem workItem = createWorkItem("BUGS");
+        workItem.assignOwner(ownerUserId);
+        setupMocks(workItem);
+
+        UUID routingRuleId = UUID.randomUUID();
+        UUID topicBindingId = UUID.randomUUID();
+        UUID chatBindingId = UUID.randomUUID();
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(routingRuleId, topicBindingId, chatBindingId, 42L));
+
+        com.engops.platform.identity.model.AppUser appUser =
+                new com.engops.platform.identity.model.AppUser(
+                        ownerUserId, 1234567L, "Bakhrom Yuldashev");
+        when(identityQueryService.findUserById(ownerUserId)).thenReturn(Optional.of(appUser));
+
+        transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        ArgumentCaptor<com.engops.platform.intake.TelegramCardDispatchRequested> eventCaptor =
+                ArgumentCaptor.forClass(com.engops.platform.intake.TelegramCardDispatchRequested.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        com.engops.platform.intake.PreparedDeliveryTarget target = eventCaptor.getValue().target();
+        assertThat(target.getOwnerDisplayLabel()).isEqualTo("Bakhrom Yuldashev");
+    }
+
+    /**
+     * Phase 196: workItem.currentOwnerUserId null bo'lsa,
+     * IdentityQueryService umuman chaqirilmaydi va ownerDisplayLabel null
+     * sifatida uzatiladi (DB lookup yo'q).
+     */
+    @Test
+    void transition_withWorkItemHavingNullOwner_passesNullLabel_andDoesNotCallIdentityQueryService() {
+        WorkItem workItem = createWorkItem("BUGS");
+        // currentOwnerUserId default null
+        setupMocks(workItem);
+
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(
+                        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 42L));
+
+        transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        ArgumentCaptor<com.engops.platform.intake.TelegramCardDispatchRequested> eventCaptor =
+                ArgumentCaptor.forClass(com.engops.platform.intake.TelegramCardDispatchRequested.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().target().getOwnerDisplayLabel()).isNull();
+        verify(identityQueryService, never()).findUserById(any());
+    }
+
+    /**
+     * Phase 196: AppUser topilmasa, ownerDisplayLabel null sifatida uzatiladi
+     * (transition baribir muvaffaqiyatli qaytadi).
+     */
+    @Test
+    void transition_withOwner_appUserNotFound_passesNullLabel() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkItem workItem = createWorkItem("BUGS");
+        workItem.assignOwner(ownerUserId);
+        setupMocks(workItem);
+
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(
+                        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 42L));
+        when(identityQueryService.findUserById(ownerUserId)).thenReturn(Optional.empty());
+
+        transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        ArgumentCaptor<com.engops.platform.intake.TelegramCardDispatchRequested> eventCaptor =
+                ArgumentCaptor.forClass(com.engops.platform.intake.TelegramCardDispatchRequested.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().target().getOwnerDisplayLabel()).isNull();
+    }
+
+    /**
+     * Phase 196 + Phase 164 fail-soft: identityQueryService.findUserById(...)
+     * RuntimeException tashlasa, workflow transition baribir muvaffaqiyatli
+     * commit qilinadi (transition history + audit + workItem update yoziladi),
+     * faqat event publish skip qilinadi.
+     */
+    @Test
+    void transition_withOwner_identityLookupThrows_workItemTransitionStillCommitted() {
+        UUID ownerUserId = UUID.randomUUID();
+        WorkItem workItem = createWorkItem("BUGS");
+        workItem.assignOwner(ownerUserId);
+        setupMocks(workItem);
+
+        when(routingDecisionService.resolve(tenantId, "BUG"))
+                .thenReturn(RoutingDecision.matched(
+                        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 42L));
+        when(identityQueryService.findUserById(ownerUserId))
+                .thenThrow(new RuntimeException("simulated DB failure"));
+
+        WorkItem result = transitionService.transition(
+                tenantId, workItemId, "PROCESSING", actorUserId, "MANUAL", null);
+
+        // Transition muvaffaqiyatli — workItem post-transition status'da.
+        assertThat(result.getCurrentStatusCode()).isEqualTo("PROCESSING");
+        // Audit + transition history yozildi (rollback yo'q).
+        verify(transitionRepository).save(any(WorkItemTransition.class));
+        verify(auditService).recordEvent(tenantId, "WORK_ITEM", workItemId,
+                "STATUS_TRANSITION", actorUserId, "MANUAL", "BUGS", "PROCESSING");
+        // Event publish skip — fail-soft try/catch swallowed RuntimeException.
         verify(eventPublisher, never()).publishEvent(any());
     }
 }

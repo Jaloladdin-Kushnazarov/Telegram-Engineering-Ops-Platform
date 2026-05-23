@@ -57,7 +57,12 @@ public class TelegramRenderAssembler {
                 payload.getSeverityCode(),
                 payload.isDeliveryReady(),
                 payload.getTargetChatBindingId(),
-                payload.getTargetTopicId());
+                payload.getTargetTopicId(),
+                // Phase 196 — owner display label pass-through. Renderer
+                // decides whether to emit the optional Owner line. Telegram
+                // module does NOT import identity — the publisher pre-resolved
+                // the label string.
+                payload.getOwnerDisplayLabel());
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.engops.platform.intake;
 
+import com.engops.platform.identity.IdentityQueryService;
+import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.routing.RoutingDecision;
 import com.engops.platform.routing.RoutingDecisionService;
 import com.engops.platform.sharedkernel.exception.BusinessRuleException;
@@ -17,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Intake application servisi — yangi work item yaratish uchun yagona kirish nuqtasi.
@@ -70,17 +73,25 @@ public class IntakeApplicationService {
     private final RoutingDecisionService routingDecisionService;
     private final OperationalAuthorizationService operationalAuthorizationService;
     private final ApplicationEventPublisher eventPublisher;
+    // Phase 196 — owner displayName ni AFTER_COMMIT card dispatch publisher
+    // boundary'da resolve qilish uchun. Telegram modul identity'ga import
+    // qilmaydi (ArchUnit boundary saqlanadi); resolve faqat shu yerda va
+    // {@link com.engops.platform.workflow.WorkflowTransitionService}'da
+    // amalga oshiriladi.
+    private final IdentityQueryService identityQueryService;
 
     public IntakeApplicationService(WorkItemCommandService workItemCommandService,
                                      TenantConfigQueryService tenantConfigQueryService,
                                      RoutingDecisionService routingDecisionService,
                                      OperationalAuthorizationService operationalAuthorizationService,
-                                     ApplicationEventPublisher eventPublisher) {
+                                     ApplicationEventPublisher eventPublisher,
+                                     IdentityQueryService identityQueryService) {
         this.workItemCommandService = workItemCommandService;
         this.tenantConfigQueryService = tenantConfigQueryService;
         this.routingDecisionService = routingDecisionService;
         this.operationalAuthorizationService = operationalAuthorizationService;
         this.eventPublisher = eventPublisher;
+        this.identityQueryService = identityQueryService;
     }
 
     /**
@@ -197,7 +208,15 @@ public class IntakeApplicationService {
             return;
         }
         try {
-            PreparedDeliveryTarget target = result.toPreparedDeliveryTarget();
+            // Phase 196 — owner display label resolution lives INSIDE the
+            // existing Phase 164 fail-soft try/catch. Any RuntimeException
+            // from findUserById (e.g. transient DB failure) is swallowed via
+            // the existing bounded warn log; the business transaction is not
+            // rolled back, and the publish event is simply skipped.
+            String ownerDisplayLabel =
+                    resolveOwnerDisplayLabel(result.getCurrentOwnerUserId());
+            PreparedDeliveryTarget target =
+                    result.toPreparedDeliveryTarget(ownerDisplayLabel);
             eventPublisher.publishEvent(new TelegramCardDispatchRequested(
                     target,
                     TelegramCardDispatchRequested.SOURCE_INTAKE,
@@ -207,6 +226,33 @@ public class IntakeApplicationService {
                     result.getTenantId(), result.getWorkItemId(),
                     ex.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Phase 196 — owner display label resolver. Telegram render path uchun
+     * pre-resolved {@code AppUser.displayName} qaytaradi.
+     *
+     * <p>Algoritm:</p>
+     * <ul>
+     *   <li>{@code ownerUserId == null} → null (DB lookup yo'q).</li>
+     *   <li>AppUser topilmasa → null.</li>
+     *   <li>{@code displayName} null yoki blank bo'lsa → null.</li>
+     *   <li>Aks holda → {@code displayName} verbatim.</li>
+     * </ul>
+     *
+     * <p><strong>Fallback YO'Q:</strong> Phase 196 da {@code username} yoki
+     * {@code telegram_user_id} ga fallback qilinmaydi. Raw UUID hech qachon
+     * qaytarilmaydi — chunki Telegram render path UUID'ni hech qachon ko'rmasligi
+     * kerak.</p>
+     */
+    private String resolveOwnerDisplayLabel(UUID ownerUserId) {
+        if (ownerUserId == null) {
+            return null;
+        }
+        return identityQueryService.findUserById(ownerUserId)
+                .map(AppUser::getDisplayName)
+                .filter(s -> s != null && !s.isBlank())
+                .orElse(null);
     }
 
     /**

@@ -189,6 +189,7 @@ class TelegramActionAssemblerTest {
                 "Status: " + currentStatusCode,
                 null, null,
                 true,
-                UUID.randomUUID(), 42L);
+                UUID.randomUUID(), 42L,
+                null);
     }
 }
