@@ -25,11 +25,12 @@ class HelpCommandTest {
     }
 
     @Test
-    void execute_returnsListOfAllFourCommands() {
+    void execute_returnsListOfAllCommands() {
         String reply = command.execute(genericContext());
         assertThat(reply).contains("/start");
         assertThat(reply).contains("/help");
         assertThat(reply).contains("/whoami");
+        assertThat(reply).contains("/onboard");
         assertThat(reply).contains("/ping");
     }
 

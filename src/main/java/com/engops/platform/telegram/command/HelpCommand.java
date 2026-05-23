@@ -25,6 +25,7 @@ public class HelpCommand implements TelegramBotCommand {
                 + "/start — botni boshlash\n"
                 + "/help — buyruqlar ro'yxati\n"
                 + "/whoami — joriy foydalanuvchi haqida\n"
+                + "/onboard — yangi tenant ochish (admin)\n"
                 + "/ping — bot tirik tekshiruvi";
     }
 }
