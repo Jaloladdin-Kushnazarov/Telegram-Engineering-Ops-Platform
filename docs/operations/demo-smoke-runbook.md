@@ -1486,3 +1486,33 @@ A complete Phase 190 admin write smoke run ticks every box below.
 
 If every box ticks, the Phase 190 admin write surface is verified
 end-to-end against the demo tenant.
+
+---
+
+## 15. Onboarding smoke
+
+Three-step smoke checklist for the tenant onboarding surfaces introduced
+in Phase 199 (REST) / Phase 200 (bot dispatcher) / Phase 201
+(`/onboard` command). Operator just confirms each step succeeded — the
+exact command output is not expected to be reproduced verbatim.
+
+1. **REST path.** `POST /api/admin/tenants` with a valid body returns
+   `201 Created` with a non-null `tenantId` in the JSON response. The
+   `Location` header points at `/api/admin/tenants/<tenantId>` (the
+   GET surface itself is not implemented yet — forward-compatible
+   hint).
+
+2. **Bot help discovery.** In a chat with the bot, type `/help`. The
+   reply must include the line
+   `/onboard — yangi tenant ochish (admin)` (the line is in the
+   hardcoded help body added in Phase 201).
+
+3. **Bot onboarding path.** In a chat with the bot, type
+   `/onboard <slug> "<tenant_name>" <admin_telegram_user_id> "<admin_display_name>" BUG_MINIMAL`.
+   The reply must start with `✅ Tenant yaratildi:` and include
+   `Slug:`, `Tenant ID:`, `Admin user ID:`, and
+   `Workflows: 1 ta (BUG_MINIMAL)`.
+
+For full request/response examples, the audit row inventory, and SQL
+verification queries, see
+[`tenant-onboarding-runbook.md`](tenant-onboarding-runbook.md).

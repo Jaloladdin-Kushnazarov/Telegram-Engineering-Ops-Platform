@@ -102,6 +102,24 @@ What the platform can do today (verified, tested, documented):
   `Severity:` / `Owner:` lines when set, with owner displayName
   resolved publisher-side via `IdentityQueryService` (telegram module
   remains identity-independent, ArchUnit-enforced).
+- **Phase 198 + 199 + 201.** Multi-tenant onboarding via two paths:
+  REST endpoint `POST /api/admin/tenants` (Phase 199, JWT-protected,
+  `TENANT_ONBOARD` permission via V8 migration) and Telegram bot
+  command `/onboard <slug> "<name>" <telegram_id> "<display>" <tpl>...`
+  (Phase 201, quoted-string parser). Both paths converge on a single
+  atomic `TenantOnboardingService.@Transactional` boundary.
+- **Workflow template catalog (Phase 198).** 4 seeded system templates
+  (`BUG_MINIMAL`, `BUG_FULL`, `INCIDENT_BASIC`, `TASK_BASIC`)
+  available for any new tenant; status + transition rules are cloned
+  per onboarding via `WorkflowTemplateQueryService`.
+- **Onboarding audit trail.** 8+ audit rows per successful onboarding
+  (one extra `TELEGRAM_BOT_COMMAND_EXECUTED` row for the bot path):
+  `TENANT_CREATED` + `ADMIN_MEMBERSHIP_CREATED` +
+  `WORKFLOW_SEEDED` × N (onboarding-level), plus existing `CREATED`
+  rows for TENANT / APP_USER / MEMBERSHIP / MEMBERSHIP_ROLE_BINDING /
+  WORKFLOW_DEFINITION / WORKFLOW_STATUS / WORKFLOW_TRANSITION_RULE
+  (Phase 199 reuse path). Full inventory in
+  [`tenant-onboarding-runbook.md` §5](tenant-onboarding-runbook.md#5-audit-trail-per-successful-onboarding).
 
 ---
 
