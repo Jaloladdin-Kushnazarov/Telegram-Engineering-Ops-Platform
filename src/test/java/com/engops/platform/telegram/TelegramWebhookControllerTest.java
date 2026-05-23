@@ -2,6 +2,7 @@ package com.engops.platform.telegram;
 
 import com.engops.platform.infrastructure.security.SecurityConfig;
 import com.engops.platform.infrastructure.security.SecurityWebMvcConfig;
+import com.engops.platform.intake.TelegramBotCommandService;
 import com.engops.platform.intake.TelegramCallbackActionExecutionService;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -88,6 +89,7 @@ class TelegramWebhookControllerTest {
         @Autowired private MockMvc mockMvc;
         @MockBean private TelegramCallbackQueryService callbackQueryService;
         @MockBean private TelegramCallbackActionExecutionService executionService;
+        @MockBean private TelegramBotCommandService botCommandService;
 
         // --- Secret validation: missing/wrong ---
 
@@ -254,6 +256,93 @@ class TelegramWebhookControllerTest {
 
             verify(executionService, times(1)).execute(any(), any(), any());
         }
+
+        // --- Phase 200: bot command message branch ---
+
+        private String botCommandBody(String text) {
+            return """
+                    {
+                      "update_id": 200,
+                      "message": {
+                        "from": {"id": 123456789},
+                        "chat": {"id": -1001234567890},
+                        "text": "%s"
+                      }
+                    }
+                    """.formatted(text);
+        }
+
+        @Test
+        void webhookWithCommandMessage_dispatchedToBotCommandService_returns200() throws Exception {
+            mockMvc.perform(post(WEBHOOK_PATH)
+                            .header(SECRET_HEADER, CONFIGURED_SECRET)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(botCommandBody("/help")))
+                    .andExpect(status().isOk());
+
+            verify(botCommandService, times(1)).handle(any(TelegramUpdateRequest.class));
+            verifyNoInteractions(callbackQueryService);
+            verifyNoInteractions(executionService);
+        }
+
+        @Test
+        void webhookWithBotCommandThatThrows_failSoft_returns200_andNoPropagation() throws Exception {
+            org.mockito.Mockito.doThrow(new RuntimeException("simulated"))
+                    .when(botCommandService).handle(any(TelegramUpdateRequest.class));
+
+            mockMvc.perform(post(WEBHOOK_PATH)
+                            .header(SECRET_HEADER, CONFIGURED_SECRET)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(botCommandBody("/help")))
+                    .andExpect(status().isOk());
+
+            verify(botCommandService, times(1)).handle(any(TelegramUpdateRequest.class));
+        }
+
+        @Test
+        void webhookWithNonCommandTextMessage_ignored_returns200_andBotCommandServiceNotCalled() throws Exception {
+            mockMvc.perform(post(WEBHOOK_PATH)
+                            .header(SECRET_HEADER, CONFIGURED_SECRET)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(botCommandBody("hello world (no slash)")))
+                    .andExpect(status().isOk());
+
+            verifyNoInteractions(botCommandService);
+            verifyNoInteractions(callbackQueryService);
+            verifyNoInteractions(executionService);
+        }
+
+        @Test
+        void webhookWithEmptyUpdate_returns200_noServiceCalls() throws Exception {
+            mockMvc.perform(post(WEBHOOK_PATH)
+                            .header(SECRET_HEADER, CONFIGURED_SECRET)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{}"))
+                    .andExpect(status().isOk());
+
+            verifyNoInteractions(botCommandService);
+            verifyNoInteractions(callbackQueryService);
+            verifyNoInteractions(executionService);
+        }
+
+        @Test
+        void webhookWithCallbackQueryAndNoMessage_stillRoutesToCallbackPath() throws Exception {
+            // Regression: Phase 171/173 callback path byte-for-byte preserved.
+            when(callbackQueryService.process(any(TelegramCallbackQueryRequest.class)))
+                    .thenReturn(accepted(WORK_ITEM_ID, "START_PROCESSING"));
+            when(executionService.execute(any(), any(), any()))
+                    .thenReturn(TelegramCallbackActionExecutionService.ExecutionOutcome.EXECUTED);
+
+            mockMvc.perform(post(WEBHOOK_PATH)
+                            .header(SECRET_HEADER, CONFIGURED_SECRET)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(callbackBody(WORK_ITEM_ID + ":START_PROCESSING")))
+                    .andExpect(status().isOk());
+
+            verify(callbackQueryService, times(1)).process(any(TelegramCallbackQueryRequest.class));
+            verify(executionService, times(1)).execute(any(), any(), any());
+            verifyNoInteractions(botCommandService);
+        }
     }
 
     // ============================================================
@@ -273,6 +362,7 @@ class TelegramWebhookControllerTest {
         @Autowired private MockMvc mockMvc;
         @MockBean private TelegramCallbackQueryService callbackQueryService;
         @MockBean private TelegramCallbackActionExecutionService executionService;
+        @MockBean private TelegramBotCommandService botCommandService;
 
         @Test
         void blankConfiguredSecretRejectsEverythingWith401() throws Exception {

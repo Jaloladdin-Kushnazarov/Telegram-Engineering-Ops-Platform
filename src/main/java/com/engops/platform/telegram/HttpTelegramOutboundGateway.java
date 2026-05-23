@@ -536,6 +536,61 @@ public class HttpTelegramOutboundGateway implements TelegramOutboundGateway {
     }
 
     /**
+     * Phase 200 — bot command reply uchun fresh {@code sendMessage} chaqiruvi.
+     * Card dispatch lookup'idan ataylab chetlatilgan: raw {@code chatId} +
+     * plain text, hech qanday inline keyboard, hech qanday delivery attempt
+     * persistence.
+     */
+    @Override
+    public TelegramGatewayResult sendBotReply(long chatId, String text) {
+        if (text == null || text.isBlank()) {
+            return TelegramGatewayResult.failed(TelegramGatewayError.UNKNOWN_ERROR,
+                    "Bot reply text null yoki bo'sh");
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("chat_id", chatId);
+        payload.put("text", text);
+
+        String url = buildSendMessageUrl();
+
+        try {
+            String body = restClient.post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(String.class);
+            return mapSuccessfulResponse(body);
+        } catch (HttpClientErrorException ex) {
+            return mapClientError(ex);
+        } catch (HttpServerErrorException ex) {
+            return TelegramGatewayResult.failed(TelegramGatewayError.NETWORK_ERROR,
+                    "Telegram server error: HTTP " + ex.getStatusCode().value());
+        } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            if (status == 429) {
+                return TelegramGatewayResult.failed(TelegramGatewayError.RATE_LIMIT,
+                        "Telegram rate limit: HTTP 429");
+            }
+            if (status >= 500) {
+                return TelegramGatewayResult.failed(TelegramGatewayError.NETWORK_ERROR,
+                        "Telegram server error: HTTP " + status);
+            }
+            return TelegramGatewayResult.rejected(TelegramGatewayError.INVALID_REQUEST,
+                    "Telegram client error: HTTP " + status);
+        } catch (ResourceAccessException ex) {
+            return TelegramGatewayResult.failed(TelegramGatewayError.NETWORK_ERROR,
+                    "Telegram network error: " + sanitize(ex.getMessage()));
+        } catch (RuntimeException ex) {
+            log.warn("Telegram bot reply unexpected error chatId={}: {}",
+                    chatId, sanitize(ex.getMessage()));
+            return TelegramGatewayResult.failed(TelegramGatewayError.UNKNOWN_ERROR,
+                    "Telegram unexpected: " + sanitize(ex.getMessage()));
+        }
+    }
+
+    /**
      * Bot token sub-string'ini berilgan matn ichida {@value #TOKEN_REDACTED}
      * bilan almashtiradi. Token bo'sh bo'lsa hech narsa qilmaydi.
      */

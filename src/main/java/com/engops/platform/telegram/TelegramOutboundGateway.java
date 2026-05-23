@@ -70,4 +70,26 @@ public interface TelegramOutboundGateway {
      * @return transport-level edit result
      */
     TelegramEditMessageTextResult editMessageText(TelegramEditMessageTextRequest request);
+
+    /**
+     * Phase 200 — Telegram {@code sendMessage} chaqiruvi bot command
+     * reply'lari uchun. Card dispatch pipeline'idan ataylab alohida:
+     * <ul>
+     *   <li>workItemId, tenantId, chat/topic binding lookup talab qilinmaydi —
+     *       raw {@code chatId} bot reply path'i uchun yagona kerakli kanal.</li>
+     *   <li>Telegram delivery attempt qatorlari yozilmaydi (kard projektsiyasi
+     *       emas, conversational reply).</li>
+     *   <li>Retry/backoff yo'q — bir martalik fresh send.</li>
+     * </ul>
+     *
+     * <p><strong>Failure semantics:</strong> implementor hech qachon
+     * exception tashlamaydi; har bir holat strukturali
+     * {@link TelegramGatewayResult} bilan qaytadi. Stub gateway fail-closed
+     * strukturali failure qaytaradi.</p>
+     *
+     * @param chatId Telegram chat id (negative group/supergroup, positive bot-private)
+     * @param text plain text reply (no parse_mode); 1..4000 bytes (Telegram limit)
+     * @return transport-level send natijasi
+     */
+    TelegramGatewayResult sendBotReply(long chatId, String text);
 }

@@ -1,6 +1,7 @@
 package com.engops.platform.telegram;
 
 import com.engops.platform.infrastructure.web.ApiErrorResponse;
+import com.engops.platform.intake.TelegramBotCommandService;
 import com.engops.platform.intake.TelegramCallbackActionExecutionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -124,13 +125,16 @@ public class TelegramWebhookController {
     private final TelegramWebhookProperties properties;
     private final TelegramCallbackQueryService callbackQueryService;
     private final TelegramCallbackActionExecutionService executionService;
+    private final TelegramBotCommandService botCommandService;
 
     public TelegramWebhookController(TelegramWebhookProperties properties,
                                       TelegramCallbackQueryService callbackQueryService,
-                                      TelegramCallbackActionExecutionService executionService) {
+                                      TelegramCallbackActionExecutionService executionService,
+                                      TelegramBotCommandService botCommandService) {
         this.properties = properties;
         this.callbackQueryService = callbackQueryService;
         this.executionService = executionService;
+        this.botCommandService = botCommandService;
     }
 
     @PostMapping
@@ -145,6 +149,25 @@ public class TelegramWebhookController {
                     rejectionReason,
                     update == null ? "null" : Boolean.toString(update.callbackQuery() != null));
             return unauthorized(httpRequest);
+        }
+
+        // Phase 200: bot command (text message starting with "/") branch.
+        // callback_query bilan o'zaro eksklyuziv (Telegram bir update'da
+        // yo callback_query yo message yuboradi). Fail-soft — har qanday
+        // RuntimeException webhook handler'da 200 OK ga aylanadi: harakat
+        // Telegram retry loop'larini chiqarib qo'ymaslik uchun.
+        if (update != null
+                && update.callbackQuery() == null
+                && update.message() != null
+                && update.message().text() != null
+                && update.message().text().startsWith("/")) {
+            try {
+                botCommandService.handle(update);
+            } catch (RuntimeException ex) {
+                log.warn("Telegram bot command dispatch threw (fail-soft): updateId={} exceptionType={}",
+                        update.updateId(), ex.getClass().getSimpleName());
+            }
+            return ResponseEntity.ok().build();
         }
 
         if (update == null || update.callbackQuery() == null) {
