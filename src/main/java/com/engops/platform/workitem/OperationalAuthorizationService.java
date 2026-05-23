@@ -1,11 +1,15 @@
 package com.engops.platform.workitem;
 
 import com.engops.platform.identity.IdentityQueryService;
+import com.engops.platform.identity.model.Membership;
+import com.engops.platform.identity.model.MembershipStatus;
+import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -49,9 +53,12 @@ public class OperationalAuthorizationService {
     public static final String WORK_ITEM_ASSIGN = "WORK_ITEM_ASSIGN";
 
     private final IdentityQueryService identityQueryService;
+    private final MembershipRepository membershipRepository;
 
-    public OperationalAuthorizationService(IdentityQueryService identityQueryService) {
+    public OperationalAuthorizationService(IdentityQueryService identityQueryService,
+                                            MembershipRepository membershipRepository) {
         this.identityQueryService = identityQueryService;
+        this.membershipRepository = membershipRepository;
     }
 
     /**
@@ -97,6 +104,48 @@ public class OperationalAuthorizationService {
      */
     public void authorizeAssignOwner(UUID tenantId, UUID actorUserId) {
         requirePermission(tenantId, actorUserId, WORK_ITEM_ASSIGN);
+    }
+
+    /**
+     * Phase 199 — "global" authorization tekshiruvi: actor'ning HER QANDAY
+     * aktiv membership'ida ko'rsatilgan permission kodi bo'lsa, ruxsat
+     * beriladi. Tenant onboarding (POST /api/admin/tenants) uchun ishlatiladi —
+     * yangi tenant yaratayotgan actor hali shu tenantning a'zosi emas, lekin
+     * boshqa biror tenantida {@code TENANT_ONBOARD} ruxsatiga ega bo'lishi
+     * shart.
+     *
+     * Fail-closed:
+     * - actorUserId null → 403
+     * - actor'da bironta aktiv membership yo'q → 403
+     * - bironta aktiv membership permissionga ega emas → 403
+     *
+     * @param actorUserId joriy actor identifikatori
+     * @param permissionCode kerakli ruxsat kodi (masalan "TENANT_ONBOARD")
+     * @throws AccessDeniedException ruxsat bo'lmasa
+     */
+    public void authorizeGlobal(UUID actorUserId, String permissionCode) {
+        if (actorUserId == null) {
+            log.warn("Global authorization rad etildi: actorUserId taqdim etilmadi, kerakli ruxsat={}",
+                    permissionCode);
+            throw new AccessDeniedException("Actor identifikatsiyasi talab qilinadi");
+        }
+
+        List<Membership> memberships = membershipRepository.findByUserId(actorUserId);
+        for (Membership membership : memberships) {
+            if (membership.getStatus() != MembershipStatus.ACTIVE) {
+                continue;
+            }
+            Set<String> permissions = identityQueryService.resolvePermissionCodes(
+                    membership.getTenantId(), actorUserId);
+            if (permissions.contains(permissionCode)) {
+                return;
+            }
+        }
+
+        log.warn("Global authorization rad etildi: actor={}, kerakli ruxsat={} (aktiv membership'larda topilmadi)",
+                actorUserId, permissionCode);
+        throw new AccessDeniedException(
+                "Bu operatsiya uchun " + permissionCode + " ruxsati talab qilinadi");
     }
 
     private void requirePermission(UUID tenantId, UUID actorUserId, String permissionCode) {
