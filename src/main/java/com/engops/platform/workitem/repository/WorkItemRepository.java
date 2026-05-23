@@ -1,5 +1,6 @@
 package com.engops.platform.workitem.repository;
 
+import com.engops.platform.analytics.AnalyticsBucketProjection;
 import com.engops.platform.workitem.model.WorkItem;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -94,4 +95,42 @@ public interface WorkItemRepository extends JpaRepository<WorkItem, UUID> {
      */
     @Query("SELECT COUNT(w) FROM WorkItem w WHERE w.tenantId = :tenantId AND w.typeCode = :typeCode")
     long countByTenantIdAndTypeCode(UUID tenantId, com.engops.platform.workitem.model.WorkItemType typeCode);
+
+    // ========== Phase 205: analytics aggregates ==========
+
+    /**
+     * Phase 205 — tenant uchun work item'larni currentStatusCode bo'yicha
+     * group qiladi va har bucket uchun count qaytaradi. JPQL alias
+     * {@code AS label / AS count} {@link AnalyticsBucketProjection} interface
+     * projection'iga map qilinadi. Tartiblash service tomonida
+     * (count DESC, label ASC determinizm uchun).
+     */
+    @Query("SELECT w.currentStatusCode AS label, COUNT(w) AS count "
+            + "FROM WorkItem w WHERE w.tenantId = :tenantId "
+            + "GROUP BY w.currentStatusCode")
+    List<AnalyticsBucketProjection> countWorkItemsByCurrentStatusCode(
+            @Param("tenantId") UUID tenantId);
+
+    /**
+     * Phase 205 — tenant uchun work item'larni typeCode bo'yicha group qiladi.
+     * Enum {@link com.engops.platform.workitem.model.WorkItemType} string
+     * sifatida qaytariladi (BUG / INCIDENT / TASK).
+     */
+    @Query("SELECT CAST(w.typeCode AS string) AS label, COUNT(w) AS count "
+            + "FROM WorkItem w WHERE w.tenantId = :tenantId "
+            + "GROUP BY w.typeCode")
+    List<AnalyticsBucketProjection> countWorkItemsByTypeCode(
+            @Param("tenantId") UUID tenantId);
+
+    /**
+     * Phase 205 — tenant uchun work item'larni severityCode bo'yicha group
+     * qiladi. {@code severityCode IS NULL} bo'lgan rows EKSKLUD qilinadi —
+     * severity belgilanmagan work item'lar bucket'da ko'rinmaydi (Phase 205 D2).
+     */
+    @Query("SELECT w.severityCode AS label, COUNT(w) AS count "
+            + "FROM WorkItem w WHERE w.tenantId = :tenantId "
+            + "AND w.severityCode IS NOT NULL "
+            + "GROUP BY w.severityCode")
+    List<AnalyticsBucketProjection> countWorkItemsBySeverityCode(
+            @Param("tenantId") UUID tenantId);
 }
