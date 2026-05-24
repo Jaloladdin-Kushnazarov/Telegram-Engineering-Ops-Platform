@@ -28,6 +28,7 @@
            th:classappend="${activeNav == 'health' ? 'active' : ''}">Health</a>
     </div>
     <div class="topnav-right">
+        <a th:href="@{/web/onboarding}" id="onboarding-link" class="nav-action">+ New tenant</a>
         <a th:href="@{/web/login}" id="login-link" class="nav-action">Login</a>
         <a href="#" id="logout-link" class="nav-action" style="display:none"
            onclick="clearJwt();return false;">Logout</a>

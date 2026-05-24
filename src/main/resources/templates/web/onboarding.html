@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+<div th:fragment="content">
+    <div class="page-header">
+        <div>
+            <h1>Create tenant</h1>
+            <p class="page-subtitle">Set up a new tenant workspace.</p>
+        </div>
+    </div>
+
+    <div class="form-card">
+        <div class="form-error-banner"
+             th:if="${errors != null and errors['_global'] != null}"
+             th:text="${errors['_global']}">Error message</div>
+
+        <form hx-post="/web/onboarding"
+              hx-target="this"
+              hx-swap="outerHTML"
+              hx-select="form">
+            <div class="form-field">
+                <label for="name">Tenant name <span class="required">*</span></label>
+                <input type="text" id="name" name="name"
+                       th:value="${form != null ? form.name : ''}"
+                       th:classappend="${errors != null and errors['name'] != null ? 'invalid' : ''}"
+                       placeholder="Acme Corporation" required maxlength="80">
+                <p class="field-help" th:if="${errors == null or errors['name'] == null}">
+                    Display name shown across the platform.
+                </p>
+                <p class="field-error"
+                   th:if="${errors != null and errors['name'] != null}"
+                   th:text="${errors['name']}">Error</p>
+            </div>
+
+            <div class="form-field">
+                <label for="slug">Slug <span class="required">*</span></label>
+                <input type="text" id="slug" name="slug"
+                       th:value="${form != null ? form.slug : ''}"
+                       th:classappend="${errors != null and errors['slug'] != null ? 'invalid' : ''}"
+                       placeholder="acme-corp" required pattern="[a-z0-9-]+" maxlength="40">
+                <p class="field-help" th:if="${errors == null or errors['slug'] == null}">
+                    URL-safe identifier. Lowercase letters, numbers, hyphens.
+                </p>
+                <p class="field-error"
+                   th:if="${errors != null and errors['slug'] != null}"
+                   th:text="${errors['slug']}">Error</p>
+            </div>
+
+            <div class="form-field">
+                <label for="adminTelegramUserId">
+                    Admin Telegram user ID <span class="required">*</span>
+                </label>
+                <input type="number" id="adminTelegramUserId" name="adminTelegramUserId"
+                       th:value="${form != null ? form.adminTelegramUserId : ''}"
+                       th:classappend="${errors != null and errors['adminTelegramUserId'] != null ? 'invalid' : ''}"
+                       placeholder="100000001" required min="1">
+                <p class="field-help"
+                   th:if="${errors == null or errors['adminTelegramUserId'] == null}">
+                    Numeric Telegram user ID. Find via @userinfobot.
+                </p>
+                <p class="field-error"
+                   th:if="${errors != null and errors['adminTelegramUserId'] != null}"
+                   th:text="${errors['adminTelegramUserId']}">Error</p>
+            </div>
+
+            <div class="form-field">
+                <label for="adminDisplayName">
+                    Admin display name <span class="optional">(optional)</span>
+                </label>
+                <input type="text" id="adminDisplayName" name="adminDisplayName"
+                       th:value="${form != null ? form.adminDisplayName : ''}"
+                       th:classappend="${errors != null and errors['adminDisplayName'] != null ? 'invalid' : ''}"
+                       placeholder="Tenant Admin" maxlength="80">
+                <p class="field-error"
+                   th:if="${errors != null and errors['adminDisplayName'] != null}"
+                   th:text="${errors['adminDisplayName']}">Error</p>
+            </div>
+
+            <div class="form-field">
+                <label for="timezone">
+                    Timezone <span class="optional">(optional)</span>
+                </label>
+                <input type="text" id="timezone" name="timezone"
+                       th:value="${form != null ? form.timezone : ''}"
+                       th:classappend="${errors != null and errors['timezone'] != null ? 'invalid' : ''}"
+                       placeholder="UTC" maxlength="40">
+                <p class="field-help" th:if="${errors == null or errors['timezone'] == null}">
+                    IANA timezone identifier. Default: UTC.
+                </p>
+                <p class="field-error"
+                   th:if="${errors != null and errors['timezone'] != null}"
+                   th:text="${errors['timezone']}">Error</p>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="primary">Create tenant</button>
+                <a th:href="@{/web/dashboard}" class="secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+</body>
+</html>

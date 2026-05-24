@@ -562,3 +562,133 @@ footer {
     letter-spacing: 0.04em;
     margin-bottom: 4px;
 }
+
+/* ===================================================================
+   Phase 213 — Tenant onboarding form (single-column card with field
+   helps, validation states, error banner). Form styles are scoped via
+   .form-card to avoid affecting other forms.
+   =================================================================== */
+.form-card {
+    max-width: 480px;
+    margin: 1.5rem auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+}
+
+.form-field {
+    margin-bottom: 1.25rem;
+}
+
+.form-field label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text);
+}
+
+.form-field .required {
+    color: var(--critical);
+    margin-left: 2px;
+}
+
+.form-field .optional {
+    color: var(--text-faint);
+    font-weight: 400;
+    font-size: 12px;
+    margin-left: 2px;
+}
+
+.form-field input[type="text"],
+.form-field input[type="number"] {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 14px;
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-field input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.form-field input.invalid {
+    border-color: var(--critical);
+}
+
+.form-field input.invalid:focus {
+    box-shadow: 0 0 0 3px rgba(217, 45, 32, 0.12);
+}
+
+.form-field .field-help {
+    margin: 0.35rem 0 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.form-field .field-error {
+    margin: 0.35rem 0 0 0;
+    font-size: 12px;
+    color: var(--critical);
+    font-weight: 500;
+}
+
+.form-error-banner {
+    background: rgba(217, 45, 32, 0.08);
+    border: 1px solid rgba(217, 45, 32, 0.25);
+    color: var(--critical);
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 1.25rem;
+    font-size: 13px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+}
+
+.form-actions button.primary {
+    margin: 0;
+    padding: 0.55rem 1.25rem;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13.5px;
+}
+
+.form-actions button.primary:hover {
+    background: #0860c7;
+}
+
+.form-actions a.secondary {
+    padding: 0.55rem 1.25rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-weight: 500;
+    font-size: 13.5px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.form-actions a.secondary:hover {
+    color: var(--text);
+    border-color: var(--text-muted);
+}
