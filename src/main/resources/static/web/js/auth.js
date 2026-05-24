@@ -4,27 +4,54 @@
 (function() {
     const JWT_KEY = 'platform.jwt';
 
+    const USER_DISPLAY_NAME_KEY = 'platform.userDisplayName';
+
     function getJwt() { return localStorage.getItem(JWT_KEY); }
     function setJwt(value) { localStorage.setItem(JWT_KEY, value); }
     function clearJwt() {
+        // Phase 218c — barcha session keylarni tozalaymiz (JWT, user
+        // display name, faollashtirilgan tenant). Logout butun sessiya
+        // qoldiqlarini olib tashlasin.
         localStorage.removeItem(JWT_KEY);
+        localStorage.removeItem(USER_DISPLAY_NAME_KEY);
+        localStorage.removeItem('platform.tenantId');
         window.location.href = '/web/login';
+    }
+
+    // Phase 218c — login/logout link + user display visibility ni JWT
+    // mavjudligi asosida qayta hisoblaydi. DOMContentLoaded'da ham,
+    // login muvaffaqiyatidan keyin ham qayta chaqiriladi (window
+    // orqali expose qilinganligi sababli).
+    function updateAuthNav() {
+        const loginLink = document.getElementById('login-link');
+        const logoutLink = document.getElementById('logout-link');
+        const userDisplay = document.getElementById('user-display');
+        if (getJwt()) {
+            if (loginLink) loginLink.style.display = 'none';
+            if (logoutLink) logoutLink.style.display = '';
+            const displayName = localStorage.getItem(USER_DISPLAY_NAME_KEY);
+            if (userDisplay) {
+                if (displayName) {
+                    userDisplay.style.display = '';
+                    userDisplay.textContent = displayName;
+                } else {
+                    userDisplay.style.display = 'none';
+                }
+            }
+        } else {
+            if (loginLink) loginLink.style.display = '';
+            if (logoutLink) logoutLink.style.display = 'none';
+            if (userDisplay) userDisplay.style.display = 'none';
+        }
     }
 
     // Expose globally for inline onclick handlers + login page submit handler.
     window.clearJwt = clearJwt;
     window.getJwt = getJwt;
     window.setJwt = setJwt;
+    window.updateAuthNav = updateAuthNav;
 
-    // Toggle login/logout link visibility based on JWT presence.
-    document.addEventListener('DOMContentLoaded', function() {
-        const loginLink = document.getElementById('login-link');
-        const logoutLink = document.getElementById('logout-link');
-        if (getJwt()) {
-            if (loginLink) loginLink.style.display = 'none';
-            if (logoutLink) logoutLink.style.display = '';
-        }
-    });
+    document.addEventListener('DOMContentLoaded', updateAuthNav);
 
     // Auto-attach Authorization header to HTMX requests so /api/** calls
     // from HTMX-driven page fragments authenticate via the stored JWT.
@@ -69,51 +96,15 @@
         window.location.replace(path + '?' + params.toString());
     });
 
-    // ===== Phase 218b: Telegram Login Widget callback =====
+    // ===== Phase 218d: Telegram Login Widget REDIRECT MODE =====
     //
-    // Telegram widget'ning data-onauth atribut'i window.onTelegramAuth
-    // chaqiradi. User payload (id, first_name, last_name, username,
-    // photo_url, auth_date, hash) backend'ga JSON sifatida yuboriladi —
-    // Telegram'ning snake_case'ini camelCase'ga aylantirib (Phase 218a
-    // TelegramLoginPayload record talab qiladi).
-    window.onTelegramAuth = function(user) {
-        fetch('/api/auth/telegram-login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: user.id,
-                firstName: user.first_name,
-                lastName: user.last_name || null,
-                username: user.username || null,
-                photoUrl: user.photo_url || null,
-                authDate: user.auth_date,
-                hash: user.hash
-            })
-        }).then(function(response) {
-            if (!response.ok) {
-                return response.json().then(function(body) {
-                    throw new Error(body && body.error
-                            ? body.error
-                            : 'HTTP ' + response.status);
-                });
-            }
-            return response.json();
-        }).then(function(data) {
-            if (data && data.token) {
-                setJwt(data.token);
-                window.location.href = '/web/dashboard';
-            } else {
-                throw new Error('Token javob ichida yo\'q');
-            }
-        }).catch(function(error) {
-            var msg = document.getElementById('login-message');
-            if (msg) {
-                msg.textContent = 'Telegram login xatolik: ' + error.message;
-            } else {
-                console.error('Telegram login error:', error);
-            }
-        });
-    };
+    // Phase 218b/c callback mode (data-onauth JS callback + iframe
+    // postMessage) olib tashlandi: ngrok orqali cross-origin postMessage
+    // ishonchsiz edi va JWT hech qachon saqlanmasdi. Endi widget
+    // data-auth-url bilan to'g'ridan-to'g'ri /web/login/telegram-callback'ga
+    // redirect qiladi — JWT saqlash server tomonidan qaytarilgan
+    // login-callback-success.html inline script'ida bajariladi. Bu yerda
+    // hech qanday JS callback kerak emas.
 
     // ===== Phase 217b: detect PLATFORM_OWNER + show Platform nav link =====
     //

@@ -53,11 +53,17 @@ class LoginPageTelegramWidgetTest {
         }
 
         @Test
-        void loginPage_includesTelegramOnauthCallback() throws Exception {
+        void loginPage_usesTelegramRedirectMode() throws Exception {
+            // Phase 218d — widget redirect mode'ga o'tdi: data-auth-url
+            // Telegram'ni /web/login/telegram-callback'ga query params bilan
+            // yo'naltiradi. data-onauth callback mode (Phase 218b/c) olib
+            // tashlandi — ngrok orqali silent fail qilardi.
             mockMvc.perform(get("/web/login"))
                     .andExpect(status().isOk())
                     .andExpect(content().string(containsString(
-                            "onTelegramAuth(user)")));
+                            "data-auth-url=\"/web/login/telegram-callback\"")))
+                    .andExpect(content().string(not(containsString(
+                            "data-onauth"))));
         }
 
         @Test

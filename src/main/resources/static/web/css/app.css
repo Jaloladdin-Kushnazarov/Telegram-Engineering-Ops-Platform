@@ -766,3 +766,14 @@ footer {
     color: var(--critical);
     font-weight: 500;
 }
+
+/* ===================================================================
+   Phase 218c — user display in topnav (Telegram login muvaffaqiyatidan
+   keyin localStorage'da saqlangan display name'ni ko'rsatadi).
+   =================================================================== */
+.user-display {
+    color: var(--text-muted);
+    font-size: 13.5px;
+    font-weight: 500;
+    padding: 0.4rem 0.5rem;
+}

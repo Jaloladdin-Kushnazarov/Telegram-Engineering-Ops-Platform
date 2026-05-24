@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <title>Login...</title>
+</head>
+<body>
+    <p>Login muvaffaqiyatli. Yo'naltirilmoqda...</p>
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        const jwt = /*[[${jwt}]]*/ '';
+        const displayName = /*[[${displayName}]]*/ '';
+        localStorage.setItem('platform.jwt', jwt);
+        localStorage.setItem('platform.userDisplayName', displayName);
+        window.location.href = '/web/dashboard';
+        /*]]>*/
+    </script>
+</body>
+</html>

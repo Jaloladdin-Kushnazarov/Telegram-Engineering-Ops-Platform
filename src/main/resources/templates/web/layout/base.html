@@ -36,6 +36,10 @@
     </div>
     <div class="topnav-right">
         <a th:href="@{/web/onboarding}" id="onboarding-link" class="nav-action">+ New tenant</a>
+        <!-- Phase 218c — joriy foydalanuvchi display name (auth.js updateAuthNav
+             tomonidan boshqariladi; localStorage.platform.userDisplayName'dan
+             o'qiladi). -->
+        <span id="user-display" class="user-display" style="display: none;"></span>
         <a th:href="@{/web/login}" id="login-link" class="nav-action">Login</a>
         <a href="#" id="logout-link" class="nav-action" style="display:none"
            onclick="clearJwt();return false;">Logout</a>
