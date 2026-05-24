@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+<th:block th:fragment="rows">
+    <tr th:each="item : ${items}">
+        <td><code th:text="${item.workItemCode()}">CODE</code></td>
+        <td th:text="${item.title()}">Title</td>
+        <td><span class="type-tag" th:text="${item.typeCode()}">TYPE</span></td>
+        <td th:text="${item.currentStatusCode()}">STATUS</td>
+        <td>
+            <span th:if="${item.severityCode() != null}"
+                  th:class="|severity-tag ${item.severityCode().toLowerCase()}|"
+                  th:text="${item.severityCode()}">SEV</span>
+            <span th:if="${item.severityCode() == null}" class="severity-tag none">—</span>
+        </td>
+    </tr>
+    <tr th:if="${items.isEmpty()}">
+        <td colspan="5" class="empty-state">No work items yet for this tenant.</td>
+    </tr>
+</th:block>
+</body>
+</html>
