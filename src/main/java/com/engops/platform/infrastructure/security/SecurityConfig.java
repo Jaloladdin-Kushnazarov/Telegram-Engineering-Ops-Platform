@@ -150,6 +150,12 @@ public class SecurityConfig {
                         // hech qanday endpoint surface'ini ochmaydi. ZERO
                         // production impact. MUST precede /api/** authenticated.
                         .requestMatchers("/api/dev/**").permitAll()
+                        // Phase 218a: Telegram Login Widget callback endpoint
+                        // — JWT yo'q (foydalanuvchi hali login qilmagan).
+                        // TelegramLoginService HMAC hash verify + 24h auth_date
+                        // tekshiruvi orqali himoyalanadi (bot token
+                        // app.security.telegram.bot-token bilan).
+                        .requestMatchers("/api/auth/telegram-login").permitAll()
                         // Phase 146: barcha business API endpoint'lari default-deny.
                         .requestMatchers("/api/**").authenticated()
                         // Phase 209: web-side analytics shim endpoints — JWT-protected.
