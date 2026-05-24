@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+<div th:fragment="content">
+    <div class="page-header">
+        <div>
+            <h1>Work items</h1>
+            <div class="page-subtitle" th:if="${tenantId != null}">
+                Tenant: <code th:text="${tenantId}">...</code>
+            </div>
+            <div class="page-subtitle" th:unless="${tenantId != null}">
+                No tenant selected. Use the tenant selector in the nav above
+                or add <code>?tenantId=&lt;uuid&gt;</code> to the URL.
+            </div>
+        </div>
+    </div>
+
+    <div class="card" th:if="${tenantId != null}">
+        <table class="data-table"
+               th:hx-get="@{/web/api/work-items/list(tenantId=${tenantId})}"
+               hx-trigger="load delay:80ms"
+               hx-target="tbody"
+               hx-swap="innerHTML">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Severity</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="skeleton-row" th:each="i : ${#numbers.sequence(1, 5)}">
+                    <td colspan="5"><span class="skeleton-text">···</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>

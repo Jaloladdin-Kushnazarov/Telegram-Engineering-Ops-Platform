@@ -69,4 +69,14 @@ public class WebController {
         model.addAttribute("activeNav", "dashboard");
         return "web/layout/base";
     }
+
+    @GetMapping("/work-items")
+    public String workItems(@RequestParam(required = false) UUID tenantId,
+                             Model model) {
+        model.addAttribute("pageTitle", "Work items");
+        model.addAttribute("contentFragment", "web/work-items :: content");
+        model.addAttribute("tenantId", tenantId);
+        model.addAttribute("activeNav", "work-items");
+        return "web/layout/base";
+    }
 }

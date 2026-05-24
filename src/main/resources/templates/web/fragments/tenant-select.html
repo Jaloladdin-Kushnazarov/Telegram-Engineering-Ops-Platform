@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+<div th:fragment="select" class="tenant-select-wrapper">
+    <label for="tenant-select" class="visually-hidden">Tenant</label>
+    <select id="tenant-select" class="tenant-select"
+            onchange="onTenantSelected(this.value)">
+        <option value="" th:if="${activeTenantId == null}" selected>Select tenant…</option>
+        <option th:each="t : ${tenants}"
+                th:value="${t.id()}"
+                th:text="${t.displayName()}"
+                th:selected="${activeTenantId != null and activeTenantId.toString() == t.id().toString()}">Tenant</option>
+    </select>
+</div>
+</body>
+</html>

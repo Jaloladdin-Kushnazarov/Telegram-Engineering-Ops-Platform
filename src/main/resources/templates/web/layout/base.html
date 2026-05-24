@@ -11,9 +11,17 @@
 <body>
 <nav class="topnav">
     <strong>Engineering Ops</strong>
+    <div id="tenant-select-wrapper"
+         th:hx-get="@{/web/api/tenants/options(activeTenantId=${tenantId})}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="tenant-select-skeleton skeleton-text">···</div>
+    </div>
     <div class="nav-links">
         <a th:href="@{/web/dashboard}"
            th:classappend="${activeNav == 'dashboard' ? 'active' : ''}">Dashboard</a>
+        <a th:href="@{/web/work-items}"
+           th:classappend="${activeNav == 'work-items' ? 'active' : ''}">Work items</a>
         <a th:href="@{/web/health}"
            th:classappend="${activeNav == 'health' ? 'active' : ''}">Health</a>
     </div>

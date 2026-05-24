@@ -34,4 +34,38 @@
             e.detail.headers['Authorization'] = 'Bearer ' + jwt;
         }
     });
+
+    // ===== Phase 210: tenant persistence + selector handler =====
+    const TENANT_KEY = 'platform.tenantId';
+
+    function getActiveTenant() { return localStorage.getItem(TENANT_KEY); }
+    function setActiveTenant(uuid) {
+        if (!uuid) return;
+        localStorage.setItem(TENANT_KEY, uuid);
+    }
+    function onTenantSelected(uuid) {
+        if (!uuid) return;
+        setActiveTenant(uuid);
+        const url = new URL(window.location.href);
+        url.searchParams.set('tenantId', uuid);
+        window.location.href = url.toString();
+    }
+
+    window.getActiveTenant = getActiveTenant;
+    window.setActiveTenant = setActiveTenant;
+    window.onTenantSelected = onTenantSelected;
+
+    // On dashboard / work-items pages, if URL lacks ?tenantId but
+    // localStorage has one, transparently redirect with the saved id.
+    document.addEventListener('DOMContentLoaded', function() {
+        const tenantAwarePaths = ['/web/dashboard', '/web/work-items'];
+        const path = window.location.pathname;
+        if (tenantAwarePaths.indexOf(path) === -1) return;
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('tenantId')) return;
+        const saved = getActiveTenant();
+        if (!saved) return;
+        params.set('tenantId', saved);
+        window.location.replace(path + '?' + params.toString());
+    });
 })();

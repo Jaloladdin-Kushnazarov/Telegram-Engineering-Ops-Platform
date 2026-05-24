@@ -194,4 +194,63 @@ class WebControllerTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "active\">Health")));
     }
+
+    // ========== Phase 210 — /web/work-items + tenant selector ==========
+
+    @Test
+    void workItems_withTenantId_rendersTableWithHtmxLoad() throws Exception {
+        UUID tenantId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/web/work-items").queryParam("tenantId", tenantId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "/web/api/work-items/list")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "hx-trigger=\"load")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "class=\"data-table\"")));
+    }
+
+    @Test
+    void workItems_withoutTenantId_rendersNoTenantHint() throws Exception {
+        mockMvc.perform(get("/web/work-items"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "No tenant selected")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("/web/api/work-items/list"))));
+    }
+
+    @Test
+    void workItems_baseLayoutHasActiveNavIndicator_onWorkItemsLink() throws Exception {
+        mockMvc.perform(get("/web/work-items"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "active\">Work items")));
+    }
+
+    @Test
+    void allPages_includeTenantSelectWrapper() throws Exception {
+        // Phase 210 — base.html nav must contain the tenant-select wrapper
+        // div for the HTMX-loaded dropdown across all pages.
+        for (String path : new String[]{"/web/health", "/web/login", "/web/dashboard", "/web/work-items"}) {
+            mockMvc.perform(get(path))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                            "id=\"tenant-select-wrapper\"")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                            "/web/api/tenants/options")));
+        }
+    }
+
+    @Test
+    void allPages_navIncludesWorkItemsLink() throws Exception {
+        // Phase 210 — nav-links extended with "Work items" link.
+        for (String path : new String[]{"/web/health", "/web/login", "/web/dashboard"}) {
+            mockMvc.perform(get(path))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                            ">Work items</a>")));
+        }
+    }
 }
