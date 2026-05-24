@@ -6,7 +6,8 @@
         <div>
             <h1>Work items</h1>
             <div class="page-subtitle" th:if="${tenantId != null}">
-                Tenant: <code th:text="${tenantId}">...</code>
+                Tenant: <strong th:text="${tenantName}">Demo Tenant</strong>
+                <code class="tenant-id-pill" th:text="${tenantId}">uuid</code>
             </div>
             <div class="page-subtitle" th:unless="${tenantId != null}">
                 No tenant selected. Use the tenant selector in the nav above

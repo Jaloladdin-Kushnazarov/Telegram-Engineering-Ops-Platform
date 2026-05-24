@@ -18,11 +18,13 @@
         <div class="tenant-select-skeleton skeleton-text">···</div>
     </div>
     <div class="nav-links">
-        <a th:href="@{/web/dashboard}"
+        <!-- Phase 212 D2 — tenantId saqlanadi nav'da, null bo'lsa ?tenantId=
+             empty param'sini render qilmaslik uchun conditional href. -->
+        <a th:href="${tenantId != null} ? @{/web/dashboard(tenantId=${tenantId})} : @{/web/dashboard}"
            th:classappend="${activeNav == 'dashboard' ? 'active' : ''}">Dashboard</a>
-        <a th:href="@{/web/work-items}"
+        <a th:href="${tenantId != null} ? @{/web/work-items(tenantId=${tenantId})} : @{/web/work-items}"
            th:classappend="${activeNav == 'work-items' ? 'active' : ''}">Work items</a>
-        <a th:href="@{/web/health}"
+        <a th:href="${tenantId != null} ? @{/web/health(tenantId=${tenantId})} : @{/web/health}"
            th:classappend="${activeNav == 'health' ? 'active' : ''}">Health</a>
     </div>
     <div class="topnav-right">

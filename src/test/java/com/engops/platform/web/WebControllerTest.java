@@ -2,26 +2,33 @@ package com.engops.platform.web;
 
 import com.engops.platform.infrastructure.security.SecurityConfig;
 import com.engops.platform.infrastructure.security.SecurityWebMvcConfig;
+import com.engops.platform.tenantconfig.TenantConfigQueryService;
+import com.engops.platform.tenantconfig.model.Tenant;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Optional;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Phase 207 + 208 — {@link WebController} @WebMvcTest.
+ * Phase 207–212 — {@link WebController} @WebMvcTest.
  *
- * Phase 208 da har 3 endpoint base layout'ni render qiladi (HTMX script,
- * nav, footer). Phase 207'dagi 5 ta health test'i base layout shape
- * o'zgarishi tufayli kichik adjust qilindi (Phase 208 marker), va 8 ta
- * yangi test qo'shildi (login, dashboard, base layout invariants).
+ * <p>Phase 212 polish: tenant displayName subtitle, nav preserve tenantId,
+ * Health page modernized (Phase 208 marker olib tashlandi). WebController
+ * endi {@code TenantConfigQueryService} (@MockBean) ga bog'liq.</p>
  */
 @WebMvcTest(WebController.class)
 @Import({SecurityConfig.class, SecurityWebMvcConfig.class})
@@ -29,6 +36,17 @@ class WebControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockBean
+    private TenantConfigQueryService tenantConfigQueryService;
+
+    @BeforeEach
+    void setUp() {
+        // Default tenant lookup — unknown tenant returns empty.
+        // Specific tests override per-UUID below.
+        when(tenantConfigQueryService.findTenantById(any(UUID.class)))
+                .thenReturn(Optional.empty());
+    }
 
     // ========== /web/health (P207 surface, now layout-aware) ==========
 
@@ -41,20 +59,26 @@ class WebControllerTest {
 
     @Test
     void health_renderedHtml_containsStatusOK() throws Exception {
+        // Phase 212 — info-grid bilan render qilingan; "OK" label info-item
+        // ichida. "Status:" plain prefix endi yo'q (info-label "Status"
+        // capitalized va separator yo'q). "Status" + "OK" hali ham bor.
         mockMvc.perform(get("/web/health"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Status:")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Status")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("OK")));
     }
 
     @Test
-    void health_renderedHtml_containsPhase208Marker() throws Exception {
-        // Phase 208 updated PHASE constant to "208"; layout wraps
-        // "Platform Web — Phase <span>208</span>".
+    void health_renderedHtml_containsSystemStatusHeading() throws Exception {
+        // Phase 212 D3 — Phase 208 marker o'chirildi. Yangi h1 "System status".
         mockMvc.perform(get("/web/health"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Platform Web")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString(">208<")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "System status")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("Phase 208"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString(">208<"))));
     }
 
     @Test
@@ -64,11 +88,13 @@ class WebControllerTest {
     }
 
     @Test
-    void health_renderedHtml_containsUzbekConfirmationSentence() throws Exception {
+    void health_rendersActuatorPointer() throws Exception {
+        // Phase 212 D3 — Uzbek confirmation sentence olib tashlandi. O'rniga
+        // structured info-grid + actuator pointer ko'rsatilgan.
         mockMvc.perform(get("/web/health"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
-                        "Web rendering stack ishlamoqda")));
+                        "/actuator/health")));
     }
 
     // ========== /web/login (P208 NEW) ==========
@@ -252,5 +278,127 @@ class WebControllerTest {
                     .andExpect(content().string(org.hamcrest.Matchers.containsString(
                             ">Work items</a>")));
         }
+    }
+
+    // ========== Phase 212 — tenant displayName + nav preserve + health modernize ==========
+
+    @Test
+    void dashboard_withValidTenantId_rendersTenantNameAndUuid() throws Exception {
+        UUID tenantId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        Tenant tenant = mock(Tenant.class);
+        when(tenant.getName()).thenReturn("Demo Tenant");
+        when(tenantConfigQueryService.findTenantById(tenantId))
+                .thenReturn(Optional.of(tenant));
+
+        mockMvc.perform(get("/web/dashboard").queryParam("tenantId", tenantId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "<strong>Demo Tenant</strong>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "class=\"tenant-id-pill\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        tenantId.toString())));
+    }
+
+    @Test
+    void dashboard_withUnknownTenantId_rendersUnknownTenantFallback() throws Exception {
+        // setUp default: findTenantById returns empty for any UUID
+        UUID unknown = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        mockMvc.perform(get("/web/dashboard").queryParam("tenantId", unknown.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "<strong>Unknown tenant</strong>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        unknown.toString())));
+    }
+
+    @Test
+    void workItems_withValidTenantId_rendersTenantNameAndUuid() throws Exception {
+        UUID tenantId = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        Tenant tenant = mock(Tenant.class);
+        when(tenant.getName()).thenReturn("Acme Corp");
+        when(tenantConfigQueryService.findTenantById(tenantId))
+                .thenReturn(Optional.of(tenant));
+
+        mockMvc.perform(get("/web/work-items").queryParam("tenantId", tenantId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "<strong>Acme Corp</strong>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "class=\"tenant-id-pill\"")));
+    }
+
+    @Test
+    void navLinks_preserveTenantIdAcrossPages() throws Exception {
+        // Phase 212 D2 — har 3 nav link tenantId param'ini saqlaydi.
+        UUID tenantId = UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        Tenant tenant = mock(Tenant.class);
+        when(tenant.getName()).thenReturn("T");
+        when(tenantConfigQueryService.findTenantById(tenantId))
+                .thenReturn(Optional.of(tenant));
+
+        String body = mockMvc.perform(get("/web/dashboard")
+                        .queryParam("tenantId", tenantId.toString()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        // Har bir nav link tenantId ?param bilan ko'rsatilgan bo'lishi shart.
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("/web/dashboard?tenantId=" + tenantId)
+                .contains("/web/work-items?tenantId=" + tenantId)
+                .contains("/web/health?tenantId=" + tenantId);
+    }
+
+    @Test
+    void navLinks_noTenantIdParam_whenTenantIdNull() throws Exception {
+        // tenantId yo'q bo'lganda Thymeleaf @{(name=null)} param'ni
+        // URL'ga qo'shmaydi → nav link'lar toza href'lar bilan keladi.
+        // Faqat <a href="..."> attributelarini tekshiramiz — login.html
+        // dagi inline JS string literal'lari (`'/web/dashboard?tenantId='`)
+        // bu tekshiruvga aralashmasligi uchun.
+        String body = mockMvc.perform(get("/web/login"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("href=\"/web/dashboard\"")
+                .contains("href=\"/web/work-items\"")
+                .contains("href=\"/web/health\"");
+    }
+
+    @Test
+    void health_modernized_noPhase208Marker() throws Exception {
+        // Phase 212 D3 — Phase 208 marker olib tashlandi.
+        mockMvc.perform(get("/web/health"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("Phase 208"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("Platform Web —"))));
+    }
+
+    @Test
+    void health_rendersSystemStatusGrid() throws Exception {
+        // Phase 212 D3 — info-grid bilan 4 ta info-item ko'rsatiladi.
+        mockMvc.perform(get("/web/health"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "class=\"info-grid\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "class=\"info-item\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "class=\"info-label\"")));
+    }
+
+    @Test
+    void health_rendersBuildVersionAndProfile() throws Exception {
+        // Phase 212 D3 — 4 ta label: Status, Version, Profile, JWT decoder.
+        mockMvc.perform(get("/web/health"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Status")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Version")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Profile")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("JWT decoder")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("v0.1")));
     }
 }

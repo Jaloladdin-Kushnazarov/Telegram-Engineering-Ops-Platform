@@ -2,9 +2,39 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="uz">
 <body>
     <div th:fragment="content">
-        <h1>Platform Web — Phase <span th:text="${phase}">?</span></h1>
-        <p>Status: <strong th:text="${status}">?</strong></p>
-        <p>Web rendering stack ishlamoqda (Spring MVC + Thymeleaf).</p>
+        <div class="page-header">
+            <div>
+                <h1>System status</h1>
+                <div class="page-subtitle" th:if="${tenantId != null}">
+                    Tenant: <strong th:text="${tenantName}">Demo Tenant</strong>
+                    <code class="tenant-id-pill" th:text="${tenantId}">uuid</code>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-item">
+                <span class="info-label">Status</span>
+                <strong th:text="${status}">OK</strong>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Version</span>
+                <span th:text="${appVersion}">v0.1</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Profile</span>
+                <code th:text="${activeProfile}">dev</code>
+            </div>
+            <div class="info-item">
+                <span class="info-label">JWT decoder</span>
+                <span th:text="${jwtDecoderEnabled} ? 'enabled' : 'disabled'">enabled</span>
+            </div>
+        </div>
+
+        <p class="page-subtitle" style="margin-top: 1.5rem;">
+            Real-time health metrics:
+            <code>/actuator/health</code> (JSON, authenticated).
+        </p>
     </div>
 </body>
 </html>

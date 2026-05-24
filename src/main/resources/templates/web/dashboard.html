@@ -6,7 +6,8 @@
         <div>
             <h1>Dashboard</h1>
             <div class="page-subtitle" th:if="${tenantId != null}">
-                Tenant: <code th:text="${tenantId}">...</code>
+                Tenant: <strong th:text="${tenantName}">Demo Tenant</strong>
+                <code class="tenant-id-pill" th:text="${tenantId}">uuid</code>
             </div>
             <div class="page-subtitle" th:unless="${tenantId != null}">
                 No tenant selected. Add <code>?tenantId=&lt;uuid&gt;</code>
