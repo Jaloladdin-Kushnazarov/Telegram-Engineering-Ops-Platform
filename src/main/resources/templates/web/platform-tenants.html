@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+<div th:fragment="content">
+    <div class="page-header">
+        <div>
+            <h1>Platform tenants</h1>
+            <p class="page-subtitle">All tenants across the platform.</p>
+        </div>
+    </div>
+
+    <div class="platform-tenants-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Slug</th>
+                    <th>Status</th>
+                    <th>Timezone</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody hx-get="/web/api/platform/tenants"
+                   hx-trigger="load"
+                   hx-swap="innerHTML">
+                <tr>
+                    <td colspan="6" class="loading">Loading tenants…</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>

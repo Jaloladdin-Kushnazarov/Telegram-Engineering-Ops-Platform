@@ -26,6 +26,13 @@
            th:classappend="${activeNav == 'work-items' ? 'active' : ''}">Work items</a>
         <a th:href="${tenantId != null} ? @{/web/health(tenantId=${tenantId})} : @{/web/health}"
            th:classappend="${activeNav == 'health' ? 'active' : ''}">Health</a>
+        <!-- Phase 217b — PLATFORM_OWNER nav link. style="display:none;"
+             default; auth.js detectPlatformOwner() probe muvaffaqiyatli
+             bo'lsa show qiladi. -->
+        <a th:href="@{/web/platform/tenants}"
+           th:classappend="${activeNav == 'platform' ? 'active' : ''}"
+           id="nav-link-platform"
+           style="display: none;">Platform</a>
     </div>
     <div class="topnav-right">
         <a th:href="@{/web/onboarding}" id="onboarding-link" class="nav-action">+ New tenant</a>

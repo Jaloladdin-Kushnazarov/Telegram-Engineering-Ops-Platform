@@ -68,4 +68,32 @@
         params.set('tenantId', saved);
         window.location.replace(path + '?' + params.toString());
     });
+
+    // ===== Phase 217b: detect PLATFORM_OWNER + show Platform nav link =====
+    //
+    // Strategy — async probe. JWT claim decode JS'da qilinmaydi (browser
+    // tokenni ishonchli decode qila olmaydi: signature verify yo'q,
+    // payload schema'ni qo'lda parse qilish risk). O'rniga server-side
+    // PLATFORM_TENANT_LIST tekshiruvini qaytadan ishlatamiz —
+    // GET /web/api/platform/tenants 200 → ko'rsat, 403/4xx → yashir.
+    function detectPlatformOwner() {
+        const link = document.getElementById('nav-link-platform');
+        if (!link) return;
+        const jwt = getJwt();
+        if (!jwt) return;
+        fetch('/web/api/platform/tenants', {
+            method: 'GET',
+            headers: { 'Authorization': 'Bearer ' + jwt }
+        }).then(function(response) {
+            if (response.ok) {
+                link.style.display = '';
+            }
+        }).catch(function() { /* silent — link yashirinligicha qoladi */ });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', detectPlatformOwner);
+    } else {
+        detectPlatformOwner();
+    }
 })();

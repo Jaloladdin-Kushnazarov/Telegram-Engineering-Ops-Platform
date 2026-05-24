@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+<th:block th:fragment="denied">
+    <tr>
+        <td colspan="6" class="denied-state">
+            <span th:text="${error}">Access denied</span>
+        </td>
+    </tr>
+</th:block>
+</body>
+</html>

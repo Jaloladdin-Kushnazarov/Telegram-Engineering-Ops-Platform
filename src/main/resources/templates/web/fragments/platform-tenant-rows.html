@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+<th:block th:fragment="rows">
+    <tr th:each="tenant : ${tenants}">
+        <td>
+            <strong th:text="${tenant.name()}">Tenant Name</strong>
+        </td>
+        <td>
+            <code th:text="${tenant.slug()}">slug</code>
+        </td>
+        <td>
+            <span th:class="'status-tag status-' + ${tenant.status().toLowerCase()}"
+                  th:text="${tenant.status()}">ACTIVE</span>
+        </td>
+        <td th:text="${tenant.timezone()}">UTC</td>
+        <td th:text="${tenant.createdAt() != null
+                       ? #temporals.format(tenant.createdAt(), 'yyyy-MM-dd HH:mm')
+                       : ''}">2026-01-01 00:00</td>
+        <td>
+            <a th:href="@{/web/dashboard(tenantId=${tenant.id()})}"
+               class="action-link">View</a>
+            <button type="button" class="action-button" disabled
+                    title="Phase 218'da qo'shiladi">Suspend</button>
+            <button type="button" class="action-button action-danger" disabled
+                    title="Phase 218'da qo'shiladi">Delete</button>
+        </td>
+    </tr>
+    <tr th:if="${count == 0}">
+        <td colspan="6" class="empty-state">
+            Hech qanday tenant topilmadi.
+        </td>
+    </tr>
+</th:block>
+</body>
+</html>
