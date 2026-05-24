@@ -1,13 +1,15 @@
 package com.engops.platform.workitem;
 
 import com.engops.platform.identity.IdentityQueryService;
-import com.engops.platform.identity.model.Membership;
-import com.engops.platform.identity.model.MembershipStatus;
-import com.engops.platform.identity.repository.MembershipRepository;
+import com.engops.platform.identity.model.AppUserRoleBinding;
+import com.engops.platform.identity.model.RolePermission;
+import com.engops.platform.identity.repository.AppUserRoleBindingRepository;
+import com.engops.platform.identity.repository.RolePermissionRepository;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Set;
@@ -53,12 +55,15 @@ public class OperationalAuthorizationService {
     public static final String WORK_ITEM_ASSIGN = "WORK_ITEM_ASSIGN";
 
     private final IdentityQueryService identityQueryService;
-    private final MembershipRepository membershipRepository;
+    private final AppUserRoleBindingRepository appUserRoleBindingRepository;
+    private final RolePermissionRepository rolePermissionRepository;
 
     public OperationalAuthorizationService(IdentityQueryService identityQueryService,
-                                            MembershipRepository membershipRepository) {
+                                            AppUserRoleBindingRepository appUserRoleBindingRepository,
+                                            RolePermissionRepository rolePermissionRepository) {
         this.identityQueryService = identityQueryService;
-        this.membershipRepository = membershipRepository;
+        this.appUserRoleBindingRepository = appUserRoleBindingRepository;
+        this.rolePermissionRepository = rolePermissionRepository;
     }
 
     /**
@@ -107,22 +112,38 @@ public class OperationalAuthorizationService {
     }
 
     /**
-     * Phase 199 — "global" authorization tekshiruvi: actor'ning HER QANDAY
-     * aktiv membership'ida ko'rsatilgan permission kodi bo'lsa, ruxsat
-     * beriladi. Tenant onboarding (POST /api/admin/tenants) uchun ishlatiladi —
-     * yangi tenant yaratayotgan actor hali shu tenantning a'zosi emas, lekin
-     * boshqa biror tenantida {@code TENANT_ONBOARD} ruxsatiga ega bo'lishi
-     * shart.
+     * Phase 216 — "global" authorization tekshiruvi: platform-level
+     * {@link AppUserRoleBinding} orqali biriktirilgan role'lardan kerakli
+     * ruxsat kelib chiqadimi tekshiradi.
      *
-     * Fail-closed:
-     * - actorUserId null → 403
-     * - actor'da bironta aktiv membership yo'q → 403
-     * - bironta aktiv membership permissionga ega emas → 403
+     * <p><strong>Old behavior (Phase 199, REMOVED):</strong> actor'ning har
+     * qanday aktiv membership'idagi role permissions'larni cascade qilib
+     * tekshirgan edi. Bu har bir tenant admin'iga {@code TENANT_ONBOARD}'ni
+     * cascade qilib bergan (tenant izolyatsiyasi sindiq edi).</p>
+     *
+     * <p><strong>New behavior (Phase 216):</strong> faqat
+     * {@code app_user_role_binding} (V9 jadval) — platform-level rollar.
+     * Bootstrap admin'ga {@code PLATFORM_OWNER} role
+     * {@code DevBootstrapInitializer.seedPlatformOwners()} orqali
+     * biriktiriladi. Per-tenant {@code ADMIN}/{@code TENANT_OWNER} role
+     * binding'lari endi {@code TENANT_ONBOARD}'ni cascade qilmaydi.</p>
+     *
+     * <p><strong>Fail-closed:</strong></p>
+     * <ul>
+     *   <li>actorUserId null → 403</li>
+     *   <li>actor'da platform-level binding yo'q → 403</li>
+     *   <li>platform-level binding'lar permissionga ega emas → 403</li>
+     * </ul>
+     *
+     * <p><strong>Lazy navigation:</strong> {@code @Transactional(readOnly=true)}
+     * — {@code spring.jpa.open-in-view=false} sharoitida {@code RolePermission}
+     * va {@code Permission} lazy proxy'larini xavfsiz traversal qilish uchun.</p>
      *
      * @param actorUserId joriy actor identifikatori
      * @param permissionCode kerakli ruxsat kodi (masalan "TENANT_ONBOARD")
      * @throws AccessDeniedException ruxsat bo'lmasa
      */
+    @Transactional(readOnly = true)
     public void authorizeGlobal(UUID actorUserId, String permissionCode) {
         if (actorUserId == null) {
             log.warn("Global authorization rad etildi: actorUserId taqdim etilmadi, kerakli ruxsat={}",
@@ -130,22 +151,45 @@ public class OperationalAuthorizationService {
             throw new AccessDeniedException("Actor identifikatsiyasi talab qilinadi");
         }
 
-        List<Membership> memberships = membershipRepository.findByUserId(actorUserId);
-        for (Membership membership : memberships) {
-            if (membership.getStatus() != MembershipStatus.ACTIVE) {
-                continue;
-            }
-            Set<String> permissions = identityQueryService.resolvePermissionCodes(
-                    membership.getTenantId(), actorUserId);
-            if (permissions.contains(permissionCode)) {
+        List<AppUserRoleBinding> bindings =
+                appUserRoleBindingRepository.findByUserId(actorUserId);
+        if (bindings.isEmpty()) {
+            log.warn("Global authorization rad etildi: actor={}, platform-level role yo'q, "
+                    + "kerakli ruxsat={}", actorUserId, permissionCode);
+            throw new AccessDeniedException(
+                    "Bu operatsiya uchun " + permissionCode + " ruxsati talab qilinadi");
+        }
+
+        for (AppUserRoleBinding binding : bindings) {
+            if (rolePermitsCode(binding.getRoleId(), permissionCode)) {
                 return;
             }
         }
 
-        log.warn("Global authorization rad etildi: actor={}, kerakli ruxsat={} (aktiv membership'larda topilmadi)",
+        log.warn("Global authorization rad etildi: actor={}, kerakli ruxsat={} "
+                + "(platform-level role'lar ichida topilmadi)",
                 actorUserId, permissionCode);
         throw new AccessDeniedException(
                 "Bu operatsiya uchun " + permissionCode + " ruxsati talab qilinadi");
+    }
+
+    /**
+     * Phase 216 — yordamchi: berilgan role'ning aktiv ekanini va so'ralgan
+     * permission kodiga ega ekanligini tekshiradi. Role inactive bo'lsa
+     * (Phase 77 {@code active=FALSE}), permission'lar e'tibordan chetda
+     * qoldiriladi.
+     */
+    private boolean rolePermitsCode(UUID roleId, String permissionCode) {
+        List<RolePermission> bindings = rolePermissionRepository.findByRoleId(roleId);
+        for (RolePermission rp : bindings) {
+            if (!rp.getRole().isActive()) {
+                return false;
+            }
+            if (permissionCode.equals(rp.getPermission().getCode())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void requirePermission(UUID tenantId, UUID actorUserId, String permissionCode) {

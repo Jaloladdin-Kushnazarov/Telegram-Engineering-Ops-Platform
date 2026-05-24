@@ -1,0 +1,54 @@
+-- =====================================================================
+-- Phase 216: ADMIN role'idan TENANT_ONBOARD permission'ini olib tashlash
+-- =====================================================================
+-- Security gap fix: Phase 199 (V8) TENANT_ONBOARD'ni ADMIN'ga biriktirgan
+-- edi, bu esa har bir tenant admini boshqa tenantlarni yarata olish
+-- imkonini bergan edi (tenant izolyatsiyasi sindiq). Phase 215 V9
+-- PLATFORM_OWNER role'ini qo'shdi va TENANT_ONBOARD'ni unga biriktirdi.
+--
+-- Bu migration V8 binding'ini DELETE qiladi. Platform-level tenant
+-- yaratish endi faqat PLATFORM_OWNER role bilan kelgan AppUserRoleBinding
+-- (V9 jadvali) orqali bo'ladi.
+--
+-- =====================================================================
+-- ATOMIC NOTE
+-- =====================================================================
+-- Bu migration MUTLAQO single commit'da Phase 216 service o'zgarishlari
+-- (DevBootstrapInitializer.seedPlatformOwners +
+-- OperationalAuthorizationService.authorizeGlobal rewrite) bilan birga
+-- deploy qilinishi shart. Faqat migration'ni qo'llab service'larni
+-- yangilamaslik = bootstrap admin dev mode'da tenant yarata olmaydi
+-- (PLATFORM_OWNER binding hali yo'q va eski cascade ham yo'q).
+--
+-- Migration commit hash bilan bog'liq:
+-- - DevBootstrapInitializer.seedPlatformOwners() property orqali
+--   bootstrap admin'ga AppUserRoleBinding(PLATFORM_OWNER) yaratadi
+-- - OperationalAuthorizationService.authorizeGlobal endi
+--   AppUserRoleBindingRepository.findByUserId orqali tekshiradi
+-- =====================================================================
+
+DELETE FROM role_permission
+WHERE role_id      = 'b0000000-0000-0000-0000-000000000001'  -- ADMIN
+  AND permission_id = 'a0000000-0000-0000-0000-00000000000e'; -- TENANT_ONBOARD
+
+-- =====================================================================
+-- Sanity check (operator manual psql'da tasdiqlash uchun)
+-- =====================================================================
+-- 1) ADMIN role uchun TENANT_ONBOARD binding mavjud emasligini tasdiqlash:
+--    SELECT COUNT(*) FROM role_permission rp
+--    JOIN role r ON r.id = rp.role_id
+--    JOIN permission p ON p.id = rp.permission_id
+--    WHERE r.code = 'ADMIN' AND p.code = 'TENANT_ONBOARD';
+--    -- Expected: 0
+--
+-- 2) ADMIN role total permission count 14 → 13:
+--    SELECT COUNT(*) FROM role_permission
+--    WHERE role_id = 'b0000000-0000-0000-0000-000000000001';
+--    -- Expected: 13 (was 14 after V8, 13 after V10)
+--
+-- 3) PLATFORM_OWNER hali ham TENANT_ONBOARD'ga ega:
+--    SELECT COUNT(*) FROM role_permission rp
+--    JOIN role r ON r.id = rp.role_id
+--    JOIN permission p ON p.id = rp.permission_id
+--    WHERE r.code = 'PLATFORM_OWNER' AND p.code = 'TENANT_ONBOARD';
+--    -- Expected: 1

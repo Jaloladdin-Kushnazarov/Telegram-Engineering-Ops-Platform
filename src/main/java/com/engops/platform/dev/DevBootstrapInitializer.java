@@ -1,10 +1,12 @@
 package com.engops.platform.dev;
 
 import com.engops.platform.identity.model.AppUser;
+import com.engops.platform.identity.model.AppUserRoleBinding;
 import com.engops.platform.identity.model.Membership;
 import com.engops.platform.identity.model.MembershipRoleBinding;
 import com.engops.platform.identity.model.Role;
 import com.engops.platform.identity.repository.AppUserRepository;
+import com.engops.platform.identity.repository.AppUserRoleBindingRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
 import com.engops.platform.identity.repository.RoleRepository;
@@ -17,6 +19,7 @@ import com.engops.platform.workitem.model.WorkItemType;
 import com.engops.platform.workitem.repository.WorkItemRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -25,64 +28,48 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Phase 211 — DEV PROFILE bootstrap seed.
+ * Phase 216 — per-step idempotency + seedPlatformOwners() property-driven seed.
  *
  * <p>Faqat {@code app.security.dev-mode.enabled=true} bo'lganda bean
  * yaratiladi. Production'da property o'rnatilmagan — bean yo'q, seed
  * bajarilmaydi.</p>
  *
- * <p><strong>Idempotent:</strong> Bootstrap admin UUID
- * ({@link #BOOTSTRAP_ADMIN_USER_ID}) bo'yicha tekshiriladi. AppUser allaqachon
- * mavjud bo'lsa, seed butunlay o'tkazib yuboriladi (log INFO + return).
- * Birinchi marta yoki database drop'dan keyin clean ravishda re-seed.</p>
+ * <p><strong>Phase 216 atomic cutover:</strong> ADMIN role'idan
+ * TENANT_ONBOARD V10 migration'da olib tashlanadi va platform-level
+ * tenant yaratish faqat {@code PLATFORM_OWNER} role bilan kelgan
+ * {@link AppUserRoleBinding} orqali ishlaydi. {@link #seedPlatformOwners()}
+ * metodi bootstrap admin'ga shu binding'ni yaratadi (yangi property
+ * {@code app.security.bootstrap.platform-owner-telegram-ids} orqali).</p>
  *
- * <p><strong>Seed mazmuni:</strong></p>
- * <ul>
- *   <li>1 ta AppUser (fixed UUID, telegram_user_id = 100000001)</li>
- *   <li>1 ta Tenant (fixed UUID, slug = "demo")</li>
- *   <li>1 ta ACTIVE Membership</li>
- *   <li>1 ta ADMIN role binding (V2'da seeded ADMIN role)</li>
- *   <li>3 ta WorkflowDefinition (BUG / INCIDENT / TASK uchun bittadan)</li>
- *   <li>10 ta WorkItem — D5 spec bo'yicha (4 BUG / 3 INCIDENT / 3 TASK)</li>
- * </ul>
- *
- * <p><strong>Audit bypass (D15):</strong> Bootstrap operatsiyalari audit
- * event yozmaydi. Sabab — bootstrap actor-driven emas, infrastructure setup.
- * {@code audit_event.actor_user_id} NULL accepted, lekin operatsion semantik
- * nuqtai nazaridan "system seed" audit trail'iga aralashtirmaslik to'g'ri.</p>
- *
- * <p><strong>Workflow templates bypass:</strong> TenantOnboardingService
- * Phase 198 WorkflowTemplateCatalog'idan to'liq workflow + statuses +
- * transitions seed qiladi. Demo uchun minimal WorkflowDefinition yetarli —
- * WorkItem.current_status_code plain VARCHAR, workflow_status'ga FK yo'q.
- * Status transition demo'da kerak emas (read-only dashboard).</p>
+ * <p><strong>Idempotency model (Phase 216 refactor):</strong> har bir
+ * seed metod o'zining state'ini tekshirib skip qilishi mumkin. Avval
+ * "admin user mavjud bo'lsa hamma narsani skip" pattern'i bor edi —
+ * bu yangi seedPlatformOwners() chaqirilmasligiga olib kelardi. Endi
+ * har metod alohida idempotent.</p>
  *
  * <h3>Demo'ni ishga tushirish</h3>
  * <pre>
  *   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
  * </pre>
- * yoki:
+ *
+ * Startup log namunasi:
  * <pre>
- *   SPRING_PROFILES_ACTIVE=dev java -jar target/*.jar
+ *   Dev bootstrap: starting seed...
+ *   Dev bootstrap: admin user yaratildi user_id=00000000-...
+ *   ...
+ *   Dev bootstrap: user 00000000-... (telegram 100000001) PLATFORM_OWNER granted
+ *   Dev bootstrap: seedPlatformOwners — 1 new bindings
+ *   Dev bootstrap: seed complete
  * </pre>
- * Keyin browser'da:
- * <ol>
- *   <li>{@code http://localhost:8080/web/login} — "Get dev token" tugmasi
- *       avtomatik ko'rinadi (JS dev mode'ni detect qiladi)</li>
- *   <li>Tugmani bosing — JWT olinadi, localStorage'ga saqlanadi, tenant ham
- *       saqlanadi va /web/dashboard'ga redirect</li>
- *   <li>Dashboard real chart bilan render — 10 work item bo'yicha analytics</li>
- *   <li>"Work items" sahifasiga o'ting — 10-row jadval severity tag'lar bilan</li>
- * </ol>
  *
  * <h3>Production posture</h3>
- * <p>Property o'rnatilmagan → bean yo'q → seed bajarilmaydi → ZERO production
- * o'zgarishi. SecurityConfig'dagi {@code /api/dev/**} permitAll matcher
- * faqat dev mode'da yaratilgan controller orqali endpoint surface beradi —
- * controller yo'q bo'lsa, matcher hech narsani himoyalamaydi (Spring MVC 404).</p>
+ * <p>Property o'rnatilmagan → bean yo'q → seed bajarilmaydi → ZERO
+ * production o'zgarishi.</p>
  */
 @Component
 @ConditionalOnProperty(name = "app.security.dev-mode.enabled", havingValue = "true")
@@ -90,7 +77,7 @@ public class DevBootstrapInitializer implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DevBootstrapInitializer.class);
 
-    // ========== Stable UUID sentinels (bookmarkable URLs) ==========
+    // ========== Stable UUID sentinels ==========
     public static final UUID BOOTSTRAP_ADMIN_USER_ID =
             UUID.fromString("00000000-0000-0000-0000-000000000001");
     public static final UUID BOOTSTRAP_TENANT_ID =
@@ -101,6 +88,10 @@ public class DevBootstrapInitializer implements ApplicationRunner {
             UUID.fromString("00000000-0000-0000-0000-0000000000b2");
     static final UUID BOOTSTRAP_WORKFLOW_TASK_ID =
             UUID.fromString("00000000-0000-0000-0000-0000000000b3");
+
+    /** Phase 215 V9 — PLATFORM_OWNER role sentinel UUID. */
+    static final UUID PLATFORM_OWNER_ROLE_ID =
+            UUID.fromString("b0000000-0000-0000-0000-000000000005");
 
     static final long BOOTSTRAP_ADMIN_TELEGRAM_USER_ID = 100_000_001L;
     static final String BOOTSTRAP_TENANT_SLUG = "demo";
@@ -115,6 +106,8 @@ public class DevBootstrapInitializer implements ApplicationRunner {
     private final RoleRepository roleRepository;
     private final WorkflowDefinitionRepository workflowDefinitionRepository;
     private final WorkItemRepository workItemRepository;
+    private final AppUserRoleBindingRepository appUserRoleBindingRepository;
+    private final String platformOwnerTelegramIdsRaw;
 
     public DevBootstrapInitializer(AppUserRepository appUserRepository,
                                     TenantRepository tenantRepository,
@@ -122,7 +115,10 @@ public class DevBootstrapInitializer implements ApplicationRunner {
                                     MembershipRoleBindingRepository membershipRoleBindingRepository,
                                     RoleRepository roleRepository,
                                     WorkflowDefinitionRepository workflowDefinitionRepository,
-                                    WorkItemRepository workItemRepository) {
+                                    WorkItemRepository workItemRepository,
+                                    AppUserRoleBindingRepository appUserRoleBindingRepository,
+                                    @Value("${app.security.bootstrap.platform-owner-telegram-ids:}")
+                                    String platformOwnerTelegramIdsRaw) {
         this.appUserRepository = appUserRepository;
         this.tenantRepository = tenantRepository;
         this.membershipRepository = membershipRepository;
@@ -130,27 +126,48 @@ public class DevBootstrapInitializer implements ApplicationRunner {
         this.roleRepository = roleRepository;
         this.workflowDefinitionRepository = workflowDefinitionRepository;
         this.workItemRepository = workItemRepository;
+        this.appUserRoleBindingRepository = appUserRoleBindingRepository;
+        this.platformOwnerTelegramIdsRaw = platformOwnerTelegramIdsRaw;
     }
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (appUserRepository.findById(BOOTSTRAP_ADMIN_USER_ID).isPresent()) {
-            log.info("Dev bootstrap: admin user mavjud, seed o'tkazib yuborildi ({})",
-                    BOOTSTRAP_ADMIN_USER_ID);
-            return;
-        }
+        log.info("Dev bootstrap: starting seed...");
 
-        // ADMIN role'ni avval tekshiramiz. Production'da V2 migration uni
-        // seed qiladi va bu lookup hech qachon bo'sh qaytmaydi. Test
-        // profile'da H2 + Flyway off — ADMIN row yo'q. Graceful skip:
-        // bootstrap startup'ni fail qilmaydi, ApplicationContext yuklanadi,
-        // testlar ADMIN role'ni qo'lda seed qilib initializer.run(null) ni
-        // qayta chaqirishi mumkin.
+        // ADMIN role lookup — production'da V2 migration uni seed qiladi.
+        // Test profile'da Flyway off — test'lar uni qo'lda yaratadi.
+        // Agar yo'q bo'lsa, faqat tenant/admin/membership/role-binding/
+        // workflows seed'ini skip qilamiz — seedPlatformOwners hali ham
+        // ishlab ko'rilishi mumkin (faqat AppUser mavjud bo'lsa).
         Role adminRole = roleRepository.findByCode(ADMIN_ROLE_CODE).orElse(null);
         if (adminRole == null) {
-            log.warn("Dev bootstrap: ADMIN role global katalog'da topilmadi "
-                    + "(Flyway disabled?). Seed o'tkazib yuborildi.");
+            log.warn("Dev bootstrap: ADMIN role topilmadi (Flyway disabled?). "
+                    + "Tenant/admin/workflows seed o'tkazib yuborildi.");
+        } else {
+            seedAdminAndDemoTenant(adminRole);
+        }
+
+        // Platform owner seed — alohida idempotent, ADMIN role'dan mustaqil.
+        // Phase 216 yangi yo'l: PLATFORM_OWNER role V9 migration'da seed
+        // qilinadi va bootstrap admin (yoki property'da ko'rsatilgan boshqa
+        // foydalanuvchilar) AppUserRoleBinding orqali biriktiriladi.
+        seedPlatformOwners();
+
+        log.info("Dev bootstrap: seed complete");
+    }
+
+    // ========== Seed steps (per-step idempotent) ==========
+
+    /**
+     * Bootstrap admin + Demo tenant + membership + role binding + workflow
+     * definitions + 10 work items. Admin user fixed UUID bo'yicha early
+     * return — barchasi atomik (Phase 211 semantikasi).
+     */
+    private void seedAdminAndDemoTenant(Role adminRole) {
+        if (appUserRepository.findById(BOOTSTRAP_ADMIN_USER_ID).isPresent()) {
+            log.info("Dev bootstrap: admin user mavjud, demo seed o'tkazib yuborildi ({})",
+                    BOOTSTRAP_ADMIN_USER_ID);
             return;
         }
 
@@ -166,11 +183,9 @@ public class DevBootstrapInitializer implements ApplicationRunner {
                 BOOTSTRAP_WORKFLOW_TASK_ID, "Demo Task Workflow", WorkItemType.TASK);
         seedWorkItems(tenant, admin, wfBug, wfIncident, wfTask);
 
-        log.info("Dev bootstrap to'liq: admin={}, tenant={}, work items={}",
+        log.info("Dev bootstrap: admin={}, tenant={}, work items={}",
                 admin.getId(), tenant.getId(), DEMO_WORK_ITEM_COUNT);
     }
-
-    // ========== Seed steps ==========
 
     private AppUser seedAdminUser() {
         AppUser admin = new AppUser(BOOTSTRAP_ADMIN_USER_ID,
@@ -197,21 +212,9 @@ public class DevBootstrapInitializer implements ApplicationRunner {
 
     private WorkflowDefinition seedWorkflowDefinition(Tenant tenant, UUID id,
                                                        String name, WorkItemType type) {
-        // Fixed UUID — workflow_definition_id WorkItem FK
-        // uchun barqaror referans. Constructor BaseEntity(UUID) bilan
-        // o'rnatish uchun reflection emas, manual id set kerak — buning
-        // o'rniga JPA save'dan keyin id pre-set qilamiz emas — Tenant +
-        // AppUser kabi yondashuv yo'q (WorkflowDefinition uchun (UUID, ...)
-        // ctor yo'q). Shuning uchun id'ni @PrePersist'da o'rnatib bo'lmaydi,
-        // entityni save qilib id ni qaytarib olib WorkItem.workflowDefinitionId
-        // sifatida ishlatamiz.
         WorkflowDefinition wf = new WorkflowDefinition(tenant.getId(), name, type.name());
         wf.setDescription("Phase 211 dev bootstrap demo workflow");
-        WorkflowDefinition saved = workflowDefinitionRepository.save(wf);
-        // Fixed id constant'lar test stability uchun — ishlatilmaydi bu yerda,
-        // chunki yangi UUID auto-generated. Test fix qilingan UUID'ni emas,
-        // tenant + name lookup bo'yicha tekshiradi.
-        return saved;
+        return workflowDefinitionRepository.save(wf);
     }
 
     private void seedWorkItems(Tenant tenant, AppUser admin,
@@ -232,6 +235,66 @@ public class DevBootstrapInitializer implements ApplicationRunner {
             items.add(item);
         }
         workItemRepository.saveAll(items);
+    }
+
+    /**
+     * Phase 216 — property orqali ko'rsatilgan telegram_user_id'lar uchun
+     * {@link AppUserRoleBinding}({@code PLATFORM_OWNER}) seed qiladi.
+     *
+     * <p><strong>Idempotent:</strong>
+     * {@link AppUserRoleBindingRepository#existsByUserIdAndRoleId} tekshiruvi
+     * orqali takror seed bo'lmaydi. Birinchi runda binding yaratiladi,
+     * keyingi runlarda skip.</p>
+     *
+     * <p><strong>Graceful skip:</strong></p>
+     * <ul>
+     *   <li>Property bo'sh → log INFO + return (hech kim seed qilinmaydi)</li>
+     *   <li>Format xato (non-numeric) → log WARN + skip shu item</li>
+     *   <li>AppUser telegram_user_id bo'yicha topilmadi → log WARN + skip
+     *       (admin hali yaratilmagan, masalan)</li>
+     * </ul>
+     */
+    void seedPlatformOwners() {
+        if (platformOwnerTelegramIdsRaw == null || platformOwnerTelegramIdsRaw.isBlank()) {
+            log.info("Dev bootstrap: platform-owner-telegram-ids bo'sh, seedPlatformOwners skip");
+            return;
+        }
+
+        String[] ids = platformOwnerTelegramIdsRaw.split(",");
+        int granted = 0;
+        for (String idStr : ids) {
+            String trimmed = idStr.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            long telegramId;
+            try {
+                telegramId = Long.parseLong(trimmed);
+            } catch (NumberFormatException ex) {
+                log.warn("Dev bootstrap: invalid telegram id '{}', skip", trimmed);
+                continue;
+            }
+            Optional<AppUser> userOpt = appUserRepository.findByTelegramUserId(telegramId);
+            if (userOpt.isEmpty()) {
+                log.warn("Dev bootstrap: telegram_user_id={} uchun AppUser topilmadi, "
+                        + "PLATFORM_OWNER seed skip", telegramId);
+                continue;
+            }
+            AppUser user = userOpt.get();
+            if (appUserRoleBindingRepository.existsByUserIdAndRoleId(
+                    user.getId(), PLATFORM_OWNER_ROLE_ID)) {
+                log.info("Dev bootstrap: user {} (telegram {}) allaqachon "
+                        + "PLATFORM_OWNER, skip", user.getId(), telegramId);
+                continue;
+            }
+            AppUserRoleBinding binding = new AppUserRoleBinding(
+                    user.getId(), PLATFORM_OWNER_ROLE_ID);
+            appUserRoleBindingRepository.save(binding);
+            granted++;
+            log.info("Dev bootstrap: user {} (telegram {}) PLATFORM_OWNER granted",
+                    user.getId(), telegramId);
+        }
+        log.info("Dev bootstrap: seedPlatformOwners — {} new bindings", granted);
     }
 
     private static List<DemoWorkItemSpec> demoSpecs() {
