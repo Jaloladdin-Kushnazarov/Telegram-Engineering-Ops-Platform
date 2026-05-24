@@ -84,6 +84,12 @@ public class WebController {
     public String login(Model model) {
         model.addAttribute("pageTitle", "Login");
         model.addAttribute("contentFragment", "web/login :: content");
+        // Phase 218b — Telegram Login Widget bot username (dev mode'da
+        // application-dev.properties orqali sozlanadi). Bo'sh string
+        // bo'lsa, Thymeleaf th:if = false → widget render qilinmaydi va
+        // Phase 211 dev token tugmasi fallback sifatida ko'rinadi.
+        model.addAttribute("telegramBotUsername",
+                environment.getProperty("app.security.telegram.bot-username", ""));
         addTenantContext(model, null);
         return "web/layout/base";
     }

@@ -3,6 +3,22 @@
 <body>
     <div th:fragment="content">
         <h1>Login</h1>
+
+        <!-- Phase 218b — Telegram Login Widget. Faqat bot-username
+             sozlangan bo'lsa render qilinadi. data-onauth callback
+             auth.js'dagi window.onTelegramAuth funksiyasiga ulanadi. -->
+        <div th:if="${telegramBotUsername != null and !#strings.isEmpty(telegramBotUsername)}"
+             class="telegram-login-container">
+            <h3>Telegram orqali kirish</h3>
+            <script async
+                    src="https://telegram.org/js/telegram-widget.js?22"
+                    th:attr="data-telegram-login=${telegramBotUsername},
+                             data-size=large,
+                             data-onauth='onTelegramAuth(user)',
+                             data-request-access=write"></script>
+            <p class="login-message" id="login-message"></p>
+        </div>
+
         <p>JWT'ni quyiga joylashtiring va Login tugmasini bosing. JWT
            token avval CI / API tokenidan olinishi kerak.</p>
         <form onsubmit="handleLoginSubmit(event)">
@@ -10,7 +26,9 @@
             <textarea id="jwt-input" rows="6" cols="80" required></textarea><br>
             <button type="submit">Login</button>
         </form>
-        <p id="login-message" class="login-message"></p>
+        <p id="login-message"
+           th:unless="${telegramBotUsername != null and !#strings.isEmpty(telegramBotUsername)}"
+           class="login-message"></p>
         <button type="button" id="dev-token-button" class="dev-token-button"
                 style="display: none;">
             Get dev token (dev mode)

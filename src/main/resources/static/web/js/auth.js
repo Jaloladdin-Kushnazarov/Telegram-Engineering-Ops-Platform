@@ -69,6 +69,52 @@
         window.location.replace(path + '?' + params.toString());
     });
 
+    // ===== Phase 218b: Telegram Login Widget callback =====
+    //
+    // Telegram widget'ning data-onauth atribut'i window.onTelegramAuth
+    // chaqiradi. User payload (id, first_name, last_name, username,
+    // photo_url, auth_date, hash) backend'ga JSON sifatida yuboriladi —
+    // Telegram'ning snake_case'ini camelCase'ga aylantirib (Phase 218a
+    // TelegramLoginPayload record talab qiladi).
+    window.onTelegramAuth = function(user) {
+        fetch('/api/auth/telegram-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: user.id,
+                firstName: user.first_name,
+                lastName: user.last_name || null,
+                username: user.username || null,
+                photoUrl: user.photo_url || null,
+                authDate: user.auth_date,
+                hash: user.hash
+            })
+        }).then(function(response) {
+            if (!response.ok) {
+                return response.json().then(function(body) {
+                    throw new Error(body && body.error
+                            ? body.error
+                            : 'HTTP ' + response.status);
+                });
+            }
+            return response.json();
+        }).then(function(data) {
+            if (data && data.token) {
+                setJwt(data.token);
+                window.location.href = '/web/dashboard';
+            } else {
+                throw new Error('Token javob ichida yo\'q');
+            }
+        }).catch(function(error) {
+            var msg = document.getElementById('login-message');
+            if (msg) {
+                msg.textContent = 'Telegram login xatolik: ' + error.message;
+            } else {
+                console.error('Telegram login error:', error);
+            }
+        });
+    };
+
     // ===== Phase 217b: detect PLATFORM_OWNER + show Platform nav link =====
     //
     // Strategy — async probe. JWT claim decode JS'da qilinmaydi (browser
