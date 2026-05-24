@@ -11,6 +11,10 @@
             <button type="submit">Login</button>
         </form>
         <p id="login-message" class="login-message"></p>
+        <button type="button" id="dev-token-button" class="dev-token-button"
+                style="display: none;">
+            Get dev token (dev mode)
+        </button>
         <script>
             function handleLoginSubmit(e) {
                 e.preventDefault();
@@ -23,6 +27,27 @@
                 window.setJwt(jwt);
                 window.location.href = '/web/dashboard';
             }
+
+            // Phase 211: dev mode auto-detection. Production'da
+            // /api/dev/auth/info 404 qaytaradi → button yashirinligicha qoladi.
+            async function tryEnableDevMode() {
+                try {
+                    const r = await fetch('/api/dev/auth/info');
+                    if (!r.ok) return;
+                    const info = await r.json();
+                    if (!info.devMode) return;
+                    const btn = document.getElementById('dev-token-button');
+                    btn.style.display = '';
+                    btn.onclick = async () => {
+                        const tokenRes = await fetch('/api/dev/auth/bootstrap-admin-token');
+                        const data = await tokenRes.json();
+                        window.setJwt(data.token);
+                        window.setActiveTenant(info.firstTenantId);
+                        window.location.href = '/web/dashboard?tenantId=' + info.firstTenantId;
+                    };
+                } catch (e) { /* dev mode emas, jim yashirinaversin */ }
+            }
+            document.addEventListener('DOMContentLoaded', tryEnableDevMode);
         </script>
     </div>
 </body>

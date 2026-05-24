@@ -142,6 +142,14 @@ public class SecurityConfig {
                         // fail-closed himoya qiladi (Phase 158 token-activation
                         // bilan bir xil pattern).
                         .requestMatchers(HttpMethod.POST, "/api/telegram/webhook").permitAll()
+                        // Phase 211: dev profile token issuer endpoints — faqat
+                        // app.security.dev-mode.enabled=true bo'lganda
+                        // DevAuthController bean yaratiladi. Property
+                        // o'rnatilmagan (production default) — controller yo'q
+                        // va Spring MVC 404 qaytaradi; bu permitAll matcher
+                        // hech qanday endpoint surface'ini ochmaydi. ZERO
+                        // production impact. MUST precede /api/** authenticated.
+                        .requestMatchers("/api/dev/**").permitAll()
                         // Phase 146: barcha business API endpoint'lari default-deny.
                         .requestMatchers("/api/**").authenticated()
                         // Phase 209: web-side analytics shim endpoints — JWT-protected.

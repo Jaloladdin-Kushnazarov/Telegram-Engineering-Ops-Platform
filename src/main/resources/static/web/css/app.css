@@ -522,3 +522,24 @@ footer {
     border: 1px dashed var(--border-strong);
     font-weight: 500;
 }
+
+/* ===================================================================
+   Phase 211 — dev mode token button (login.html, JS-revealed)
+   =================================================================== */
+.dev-token-button {
+    display: inline-block;
+    margin-top: 1rem;
+    background: transparent;
+    border: 1px dashed var(--border-strong);
+    color: var(--text-muted);
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.dev-token-button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}

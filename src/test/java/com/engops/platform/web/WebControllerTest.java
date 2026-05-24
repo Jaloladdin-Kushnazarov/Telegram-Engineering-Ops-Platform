@@ -253,4 +253,21 @@ class WebControllerTest {
                             ">Work items</a>")));
         }
     }
+
+    @Test
+    void login_pageContainsDevTokenButtonMarkup() throws Exception {
+        // Phase 211 — login page renders dev token button (hidden by default;
+        // JS reveals it when /api/dev/auth/info returns devMode=true). Markup
+        // is profile-independent; visibility is JS-driven.
+        mockMvc.perform(get("/web/login"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "id=\"dev-token-button\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "class=\"dev-token-button\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "/api/dev/auth/info")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "/api/dev/auth/bootstrap-admin-token")));
+    }
 }
