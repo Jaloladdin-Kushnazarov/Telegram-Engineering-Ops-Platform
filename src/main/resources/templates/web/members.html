@@ -8,9 +8,13 @@
             <p class="page-subtitle">Tenant a'zolarini boshqarish.</p>
         </div>
         <div>
-            <!-- Phase 219c — invite form modal'ga ko'chirildi; tugma uni ochadi. -->
+            <!-- Phase 219c — invite form modal'ga ko'chirildi; tugma uni ochadi.
+                 Phase 219d — belt-and-suspenders: ochishdan oldin form'ni reset
+                 qilamiz (close listener bo'lmasa ham bo'sh ochiladi). -->
             <button type="button" class="primary-button"
-                    onclick="document.getElementById('invite-dialog').showModal()">
+                    onclick="document.getElementById('invite-form').reset();
+                             document.getElementById('invite-error').innerHTML='';
+                             document.getElementById('invite-dialog').showModal()">
                 + Invite member
             </button>
         </div>
@@ -39,74 +43,101 @@
         </table>
     </div>
 
-    <!-- Phase 219c — invite modal: native <dialog>, JS minimal,
-         accessibility (focus trap, ESC yopish) built-in. -->
-    <dialog id="invite-dialog" class="invite-dialog">
-        <div class="dialog-header">
-            <h3>Yangi a'zo qo'shish</h3>
-            <button type="button" class="dialog-close"
-                    onclick="document.getElementById('invite-dialog').close()"
-                    aria-label="Close">&times;</button>
-        </div>
-        <form id="invite-form"
-              th:hx-post="@{|/web/api/tenants/${tenantId}/members|}"
-              hx-target="#member-tbody"
-              hx-swap="innerHTML"
-              class="invite-form-modal">
-            <div class="form-field">
-                <label for="invite-tg-id">Telegram user ID
-                    <span class="required">*</span>
-                </label>
-                <input id="invite-tg-id" type="number" name="telegramUserId"
-                       required min="1" placeholder="123456789">
-                <p class="field-help">@userinfobot orqali oling.</p>
-            </div>
-            <div class="form-field">
-                <label for="invite-display-name">Display name
-                    <span class="required">*</span>
-                </label>
-                <input id="invite-display-name" type="text" name="displayName"
-                       required placeholder="Bobur Karimov" maxlength="120">
-            </div>
-            <div class="form-field">
-                <label for="invite-username">Username
-                    <span class="optional">(ixtiyoriy)</span>
-                </label>
-                <input id="invite-username" type="text" name="username"
-                       placeholder="bobur_k" maxlength="60">
-            </div>
-            <div class="form-field">
-                <label for="invite-role">Role
-                    <span class="required">*</span>
-                </label>
-                <select id="invite-role" name="roleCode" required>
-                    <option value="ENGINEER">Engineer</option>
-                    <option value="TESTER">Tester</option>
-                    <option value="VIEWER">Viewer</option>
-                    <option value="ADMIN">Admin</option>
-                </select>
-            </div>
-            <div id="invite-error" class="invite-error"></div>
-            <div class="dialog-actions">
-                <button type="button" class="secondary-button"
-                        onclick="document.getElementById('invite-dialog').close()">
-                    Cancel
-                </button>
-                <button type="submit" class="primary-button">Invite</button>
-            </div>
-        </form>
-    </dialog>
+    <!-- Phase 219d — Bug 1 fix: form tag dialog'dan TASHQARIda (HTML5 form
+         attribute pattern). Submit button dialog ichida, lekin form parent
+         element bo'lgani uchun unga implicit bog'langan. HTMX hx-* attributelar
+         form tag'da turadi → POST so'rovi to'g'ri yuboriladi (defer load race
+         yo'q). style="display: contents;" — form layout'ga ta'sir qilmaydi. -->
+    <form id="invite-form"
+          th:hx-post="@{|/web/api/tenants/${tenantId}/members|}"
+          hx-target="#member-tbody"
+          hx-swap="innerHTML"
+          style="display: contents;">
 
-    <!-- Muvaffaqiyatli invite'dan keyin (HX-Trigger memberInvited): modal'ni
-         yopish + form'ni reset + error'ni tozalash. -->
+        <dialog id="invite-dialog" class="invite-dialog">
+            <div class="dialog-header">
+                <h3>Yangi a'zo qo'shish</h3>
+                <button type="button" class="dialog-close"
+                        onclick="closeInviteDialog()"
+                        aria-label="Close">&times;</button>
+            </div>
+            <div class="invite-form-modal">
+                <div class="form-field">
+                    <label for="invite-tg-id">Telegram user ID
+                        <span class="required">*</span>
+                    </label>
+                    <input id="invite-tg-id" type="number" name="telegramUserId"
+                           required min="1" placeholder="123456789">
+                    <p class="field-help">@userinfobot orqali oling.</p>
+                </div>
+                <div class="form-field">
+                    <label for="invite-display-name">Display name
+                        <span class="required">*</span>
+                    </label>
+                    <input id="invite-display-name" type="text" name="displayName"
+                           required placeholder="Bobur Karimov" maxlength="120">
+                </div>
+                <div class="form-field">
+                    <label for="invite-username">Username
+                        <span class="optional">(ixtiyoriy)</span>
+                    </label>
+                    <input id="invite-username" type="text" name="username"
+                           placeholder="bobur_k" maxlength="60">
+                </div>
+                <div class="form-field">
+                    <label for="invite-role">Role
+                        <span class="required">*</span>
+                    </label>
+                    <select id="invite-role" name="roleCode" required>
+                        <option value="ENGINEER">Engineer</option>
+                        <option value="TESTER">Tester</option>
+                        <option value="VIEWER">Viewer</option>
+                        <option value="ADMIN">Admin</option>
+                    </select>
+                </div>
+                <div id="invite-error" class="invite-error"></div>
+                <div class="dialog-actions">
+                    <button type="button" class="secondary-button"
+                            onclick="closeInviteDialog()">
+                        Cancel
+                    </button>
+                    <button type="submit" class="primary-button">Invite</button>
+                </div>
+            </div>
+        </dialog>
+    </form>
+
     <script>
+        // Phase 219d — modal yopish va form'ni reset qilish. Cancel/× tugmasi
+        // bilan yopilganda eski qiymatlar qolmaydi (Bug 2 fix).
+        function closeInviteDialog() {
+            const dialog = document.getElementById('invite-dialog');
+            const form = document.getElementById('invite-form');
+            const err = document.getElementById('invite-error');
+            if (dialog) dialog.close();
+            if (form) form.reset();
+            if (err) err.innerHTML = '';
+        }
+
+        // Modal 'close' event har holatda chaqiriladi (close() / ESC /
+        // backdrop). Reset'ni universal qilish uchun shu yerda ham bog'laymiz.
+        document.addEventListener('DOMContentLoaded', function() {
+            const dialog = document.getElementById('invite-dialog');
+            if (dialog) {
+                dialog.addEventListener('close', function() {
+                    const form = document.getElementById('invite-form');
+                    const err = document.getElementById('invite-error');
+                    if (form) form.reset();
+                    if (err) err.innerHTML = '';
+                });
+            }
+        });
+
+        // Phase 219c — HX-Trigger memberInvited (muvaffaqiyatli invite).
+        // dialog.close() → 'close' event reset'ni chaqiradi (yuqoridagi listener).
         document.body.addEventListener('memberInvited', function() {
             const dialog = document.getElementById('invite-dialog');
             if (dialog) dialog.close();
-            const form = document.getElementById('invite-form');
-            if (form) form.reset();
-            const err = document.getElementById('invite-error');
-            if (err) err.innerHTML = '';
         });
     </script>
 </div>

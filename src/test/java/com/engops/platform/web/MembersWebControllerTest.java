@@ -138,6 +138,48 @@ class MembersWebControllerTest {
                                 org.hamcrest.Matchers.containsString("class=\"invite-form-container\""))));
     }
 
+    // ===== Phase 219d — invite modal HTMX submit + reset bug fixes =====
+
+    @Test
+    void membersPage_inviteFormOutsideDialog() throws Exception {
+        // Phase 219d Bug 1 fix: <form> <dialog> dan TASHQARIda (DOM tartibi) —
+        // HTMX hx-post race condition'siz ishlashi uchun.
+        String html = mockMvc.perform(get(PAGE))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        int formIdx = html.indexOf("<form id=\"invite-form\"");
+        int dialogIdx = html.indexOf("<dialog");
+        assertThat(formIdx).as("invite-form mavjud").isGreaterThanOrEqualTo(0);
+        assertThat(dialogIdx).as("dialog mavjud").isGreaterThanOrEqualTo(0);
+        assertThat(formIdx).as("form dialog'dan oldin keladi").isLessThan(dialogIdx);
+    }
+
+    @Test
+    void membersPage_cancelButtonCallsCloseInviteDialog() throws Exception {
+        mockMvc.perform(get(PAGE))
+                .andExpect(status().isOk())
+                .andExpect(content().string(
+                        org.hamcrest.Matchers.containsString("onclick=\"closeInviteDialog()\"")));
+    }
+
+    @Test
+    void membersPage_inviteButtonResetsFormBeforeShow() throws Exception {
+        // Phase 219d Bug 2 fix (belt-and-suspenders): "+ Invite member" tugmasi
+        // ochishdan oldin form'ni reset qiladi.
+        mockMvc.perform(get(PAGE))
+                .andExpect(status().isOk())
+                .andExpect(content().string(
+                        org.hamcrest.Matchers.containsString("invite-form').reset()")));
+    }
+
+    @Test
+    void membersPage_closeInviteDialogFunctionDefined() throws Exception {
+        mockMvc.perform(get(PAGE))
+                .andExpect(status().isOk())
+                .andExpect(content().string(
+                        org.hamcrest.Matchers.containsString("function closeInviteDialog()")));
+    }
+
     // ===== GET fragment =====
 
     @Test
