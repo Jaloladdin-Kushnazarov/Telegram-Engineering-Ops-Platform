@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+<div th:fragment="content">
+    <div class="page-header">
+        <div>
+            <h1>Members</h1>
+            <p class="page-subtitle">Tenant a'zolarini boshqarish.</p>
+        </div>
+        <div>
+            <!-- Phase 219c — invite form modal'ga ko'chirildi; tugma uni ochadi. -->
+            <button type="button" class="primary-button"
+                    onclick="document.getElementById('invite-dialog').showModal()">
+                + Invite member
+            </button>
+        </div>
+    </div>
+
+    <!-- Members table — sahifaning asosiy mazmuni -->
+    <div class="members-table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Display name</th>
+                    <th>Telegram</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="member-tbody"
+                   th:hx-get="@{|/web/api/tenants/${tenantId}/members|}"
+                   hx-trigger="load, memberInvited from:body"
+                   hx-swap="innerHTML">
+                <tr><td colspan="7" class="loading">Loading members…</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Phase 219c — invite modal: native <dialog>, JS minimal,
+         accessibility (focus trap, ESC yopish) built-in. -->
+    <dialog id="invite-dialog" class="invite-dialog">
+        <div class="dialog-header">
+            <h3>Yangi a'zo qo'shish</h3>
+            <button type="button" class="dialog-close"
+                    onclick="document.getElementById('invite-dialog').close()"
+                    aria-label="Close">&times;</button>
+        </div>
+        <form id="invite-form"
+              th:hx-post="@{|/web/api/tenants/${tenantId}/members|}"
+              hx-target="#member-tbody"
+              hx-swap="innerHTML"
+              class="invite-form-modal">
+            <div class="form-field">
+                <label for="invite-tg-id">Telegram user ID
+                    <span class="required">*</span>
+                </label>
+                <input id="invite-tg-id" type="number" name="telegramUserId"
+                       required min="1" placeholder="123456789">
+                <p class="field-help">@userinfobot orqali oling.</p>
+            </div>
+            <div class="form-field">
+                <label for="invite-display-name">Display name
+                    <span class="required">*</span>
+                </label>
+                <input id="invite-display-name" type="text" name="displayName"
+                       required placeholder="Bobur Karimov" maxlength="120">
+            </div>
+            <div class="form-field">
+                <label for="invite-username">Username
+                    <span class="optional">(ixtiyoriy)</span>
+                </label>
+                <input id="invite-username" type="text" name="username"
+                       placeholder="bobur_k" maxlength="60">
+            </div>
+            <div class="form-field">
+                <label for="invite-role">Role
+                    <span class="required">*</span>
+                </label>
+                <select id="invite-role" name="roleCode" required>
+                    <option value="ENGINEER">Engineer</option>
+                    <option value="TESTER">Tester</option>
+                    <option value="VIEWER">Viewer</option>
+                    <option value="ADMIN">Admin</option>
+                </select>
+            </div>
+            <div id="invite-error" class="invite-error"></div>
+            <div class="dialog-actions">
+                <button type="button" class="secondary-button"
+                        onclick="document.getElementById('invite-dialog').close()">
+                    Cancel
+                </button>
+                <button type="submit" class="primary-button">Invite</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Muvaffaqiyatli invite'dan keyin (HX-Trigger memberInvited): modal'ni
+         yopish + form'ni reset + error'ni tozalash. -->
+    <script>
+        document.body.addEventListener('memberInvited', function() {
+            const dialog = document.getElementById('invite-dialog');
+            if (dialog) dialog.close();
+            const form = document.getElementById('invite-form');
+            if (form) form.reset();
+            const err = document.getElementById('invite-error');
+            if (err) err.innerHTML = '';
+        });
+    </script>
+</div>
+</body>
+</html>

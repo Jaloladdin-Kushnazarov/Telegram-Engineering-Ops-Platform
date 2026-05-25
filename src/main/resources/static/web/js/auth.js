@@ -6,6 +6,17 @@
 
     const USER_DISPLAY_NAME_KEY = 'platform.userDisplayName';
 
+    // Phase 219c — nav link visibility cache (flash'ni yo'q qilish uchun).
+    // Async probe natijasi shu yerda saqlanadi; keyingi page load'da link
+    // DARHOL ko'rsatiladi va probe fonda cache'ni yangilaydi/invalidate qiladi.
+    const NAV_CACHE_PLATFORM_OWNER = 'platform.navCache.platformOwner';
+    const NAV_CACHE_MEMBER_MANAGER = 'platform.navCache.memberManager';
+
+    function clearNavCache() {
+        localStorage.removeItem(NAV_CACHE_PLATFORM_OWNER);
+        localStorage.removeItem(NAV_CACHE_MEMBER_MANAGER);
+    }
+
     function getJwt() { return localStorage.getItem(JWT_KEY); }
     function setJwt(value) { localStorage.setItem(JWT_KEY, value); }
     function clearJwt() {
@@ -15,6 +26,7 @@
         localStorage.removeItem(JWT_KEY);
         localStorage.removeItem(USER_DISPLAY_NAME_KEY);
         localStorage.removeItem('platform.tenantId');
+        clearNavCache();  // Phase 219c — security invariant: nav cache'ni ham tozalash
         window.location.href = '/web/login';
     }
 
@@ -118,12 +130,23 @@
         if (!link) return;
         const jwt = getJwt();
         if (!jwt) return;
+
+        // Phase 219c — cache'dan darhol ko'rsatish (flash yo'q).
+        if (localStorage.getItem(NAV_CACHE_PLATFORM_OWNER) === 'true') {
+            link.style.display = '';
+        }
+
+        // Async probe — cache'ni yangilash yoki invalidate qilish.
         fetch('/web/api/platform/tenants', {
             method: 'GET',
             headers: { 'Authorization': 'Bearer ' + jwt }
         }).then(function(response) {
             if (response.ok) {
+                localStorage.setItem(NAV_CACHE_PLATFORM_OWNER, 'true');
                 link.style.display = '';
+            } else {
+                localStorage.removeItem(NAV_CACHE_PLATFORM_OWNER);
+                link.style.display = 'none';
             }
         }).catch(function() { /* silent — link yashirinligicha qoladi */ });
     }
@@ -132,5 +155,65 @@
         document.addEventListener('DOMContentLoaded', detectPlatformOwner);
     } else {
         detectPlatformOwner();
+    }
+
+    // ===== Phase 219b — show "Members" nav link if MEMBER_MANAGE in tenant =====
+    //
+    // Tenant-scoped probe (detectPlatformOwner'dan farqli — u global).
+    // tenantId URL query param (Phase 210) yoki localStorage'dan olinadi.
+    // /web/api/tenants/{tenantId}/members denied holatda ham 200 qaytaradi
+    // (HTMX swap UX), shuning uchun response.ok yetarli emas — body ichidagi
+    // 'denied-state' marker tekshiriladi: bo'lmasa = MEMBER_MANAGE bor.
+    function detectMemberManager() {
+        const link = document.getElementById('nav-link-members');
+        if (!link) return;
+        const jwt = getJwt();
+        if (!jwt) return;
+
+        // Tenant resolve: URL query (Phase 210) → localStorage → BO'SH bo'lsa
+        // link yashirin (members context tenant ichida ma'noli).
+        const urlParams = new URLSearchParams(window.location.search);
+        const tenantId = urlParams.get('tenantId') || getActiveTenant();
+        if (!tenantId) {
+            link.style.display = 'none';
+            return;
+        }
+
+        // Phase 219c — href'ni dynamically set qilish (base.html endi
+        // tenantId=null sahifalarda ham elementni render qiladi, lekin href="#").
+        link.setAttribute('href', '/web/tenants/' + tenantId + '/members');
+
+        // Cache'dan darhol ko'rsatish (flash yo'q).
+        if (localStorage.getItem(NAV_CACHE_MEMBER_MANAGER) === 'true') {
+            link.style.display = '';
+        }
+
+        // Async probe — denied holatda ham 200 qaytadi, shuning uchun body
+        // ichidagi 'denied-state' marker tekshiriladi.
+        fetch('/web/api/tenants/' + tenantId + '/members', {
+            method: 'GET',
+            headers: { 'Authorization': 'Bearer ' + jwt }
+        }).then(function(response) {
+            if (!response.ok) {
+                localStorage.removeItem(NAV_CACHE_MEMBER_MANAGER);
+                link.style.display = 'none';
+                return;
+            }
+            return response.text().then(function(html) {
+                if (html.indexOf('denied-state') === -1) {
+                    localStorage.setItem(NAV_CACHE_MEMBER_MANAGER, 'true');
+                    link.style.display = '';
+                } else {
+                    localStorage.removeItem(NAV_CACHE_MEMBER_MANAGER);
+                    link.style.display = 'none';
+                }
+            });
+        }).catch(function() { /* silent — link yashirinligicha qoladi */ });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', detectMemberManager);
+    } else {
+        detectMemberManager();
     }
 })();

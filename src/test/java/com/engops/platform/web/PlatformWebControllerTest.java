@@ -104,6 +104,16 @@ class PlatformWebControllerTest {
                 .andExpect(content().string(containsString("active\">Platform")));
     }
 
+    @Test
+    void platformTenantsPage_topnav_includesMembersNavLink() throws Exception {
+        // Phase 219c — base.html'dan Members link th:if olib tashlandi:
+        // tenantId=null bo'lgan Platform sahifada ham element DOM'da bo'lishi
+        // kerak (server-rendered, display:none default; auth.js show qiladi).
+        mockMvc.perform(get("/web/platform/tenants"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("id=\"nav-link-members\"")));
+    }
+
     // ========== GET /web/api/platform/tenants (HTMX fragment) ==========
 
     @Test

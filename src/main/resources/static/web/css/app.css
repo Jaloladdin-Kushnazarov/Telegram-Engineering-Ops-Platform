@@ -777,3 +777,202 @@ footer {
     font-weight: 500;
     padding: 0.4rem 0.5rem;
 }
+
+/* ===================================================================
+   Phase 219b — members management (invite form + members table).
+   Mavjud color token'lar qayta ishlatiladi (--text-strong yo'q →
+   --text ishlatiladi). Yangi color token kiritilmaydi.
+   =================================================================== */
+.invite-form-container {
+    max-width: 1100px;
+    margin: 24px auto 16px;
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+.invite-form-container h3 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+}
+.invite-form {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr) auto;
+    gap: 12px;
+    align-items: end;
+}
+.invite-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.invite-form input,
+.invite-form select {
+    padding: 6px 10px;
+    font-size: 13.5px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: var(--surface);
+}
+.invite-form .primary-button {
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.invite-form .primary-button:hover {
+    opacity: 0.9;
+}
+.invite-error {
+    margin-top: 10px;
+    color: var(--critical);
+    font-size: 13px;
+    min-height: 1.4em;
+}
+.members-table-container {
+    max-width: 1100px;
+    margin: 16px auto 24px;
+}
+.role-select {
+    padding: 3px 6px;
+    font-size: 12px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* ===== Phase 219c — invite dialog modal ===== */
+.invite-dialog {
+    max-width: 480px;
+    width: 90%;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(15, 23, 42, 0.15),
+                0 2px 8px rgba(15, 23, 42, 0.08);
+    background: var(--surface);
+}
+.invite-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.35);
+    backdrop-filter: blur(2px);
+}
+.dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+}
+.dialog-header h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+}
+.dialog-close {
+    background: transparent;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 0 4px;
+    margin: 0;
+}
+.dialog-close:hover {
+    color: var(--text);
+}
+.invite-form-modal {
+    padding: 20px;
+    margin: 0;
+}
+.invite-form-modal .form-field {
+    margin-bottom: 16px;
+}
+.invite-form-modal .form-field:last-of-type {
+    margin-bottom: 12px;
+}
+.invite-form-modal input,
+.invite-form-modal select {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13.5px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: var(--surface);
+    font-family: inherit;
+    box-sizing: border-box;
+}
+.invite-form-modal input:focus,
+.invite-form-modal select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+.dialog-actions .primary-button {
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    margin: 0;
+}
+.dialog-actions .primary-button:hover {
+    opacity: 0.9;
+}
+.dialog-actions .secondary-button {
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 4px;
+    cursor: pointer;
+    margin: 0;
+    font-family: inherit;
+}
+.dialog-actions .secondary-button:hover {
+    background: var(--bg);
+}
+
+/* Page header'da "+ Invite member" tugmasi */
+.page-header .primary-button {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+}
+.page-header .primary-button:hover {
+    opacity: 0.9;
+}
+
+/* Phase 219b invite-form-container (sahifa-level form) endi ishlatilmaydi —
+   modal'ga ko'chirildi. Saqlanadi (legacy css), sahifa render qilmaydi.
+   Kelajakda Phase X polish'da olib tashlanadi. */

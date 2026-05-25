@@ -33,6 +33,17 @@
            th:classappend="${activeNav == 'platform' ? 'active' : ''}"
            id="nav-link-platform"
            style="display: none;">Platform</a>
+        <!-- Phase 219c — tenant-scoped MEMBER_MANAGE nav link. th:if OLIB
+             TASHLANDI: element har sahifada (Platform sahifa tenantId=null
+             bo'lsa ham) DOM'da render qilinadi. Server-side: display:none +
+             href="#" fallback. auth.js detectMemberManager() tenantId'ni
+             URL/localStorage'dan resolve qilib href'ni set qiladi va probe
+             muvaffaqiyatli (denied emas) bo'lsa show qiladi. -->
+        <a href="#"
+           th:href="${tenantId != null} ? @{|/web/tenants/${tenantId}/members|} : '#'"
+           th:classappend="${activeNav == 'members' ? 'active' : ''}"
+           id="nav-link-members"
+           style="display: none;">Members</a>
     </div>
     <div class="topnav-right">
         <a th:href="@{/web/onboarding}" id="onboarding-link" class="nav-action">+ New tenant</a>
