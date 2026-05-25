@@ -20,6 +20,8 @@ import java.util.UUID;
  * @param priorityCode ustuvorlik kodi (nullable — domain ruxsat beradi)
  * @param severityCode jiddiylik kodi (nullable — domain ruxsat beradi)
  * @param currentOwnerUserId hozirgi egasi (nullable — tayinlanmagan bo'lishi mumkin)
+ * @param ownerDisplayName egasining ko'rsatiladigan ismi (Phase 220a; nullable —
+ *        owner null bo'lsa yoki user topilmasa null)
  * @param openedAt ochilgan vaqt
  * @param lastTransitionAt oxirgi holat o'tkazish vaqti (nullable)
  * @param resolvedAt yechilgan vaqt (nullable)
@@ -35,6 +37,7 @@ public record WorkItemSummaryItem(
         String priorityCode,
         String severityCode,
         UUID currentOwnerUserId,
+        String ownerDisplayName,
         Instant openedAt,
         Instant lastTransitionAt,
         Instant resolvedAt,

@@ -304,6 +304,16 @@ class WebControllerTest {
     }
 
     @Test
+    void workItems_withTenantId_rendersAssigneeColumnHeader() throws Exception {
+        // Phase 220a — jadval header'iga Assignee ustuni qo'shildi.
+        UUID tenantId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/web/work-items").queryParam("tenantId", tenantId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "<th>Assignee</th>")));
+    }
+
+    @Test
     void allPages_includeTenantSelectWrapper() throws Exception {
         // Phase 210 — base.html nav must contain the tenant-select wrapper
         // div for the HTMX-loaded dropdown across all pages.

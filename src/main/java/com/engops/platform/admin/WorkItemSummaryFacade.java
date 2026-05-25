@@ -1,11 +1,15 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.identity.IdentityQueryService;
 import com.engops.platform.workitem.WorkItemQueryService;
 import com.engops.platform.workitem.model.WorkItem;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -42,9 +46,12 @@ public class WorkItemSummaryFacade {
     static final int MAX_LIMIT = 50;
 
     private final WorkItemQueryService workItemQueryService;
+    private final IdentityQueryService identityQueryService;
 
-    public WorkItemSummaryFacade(WorkItemQueryService workItemQueryService) {
+    public WorkItemSummaryFacade(WorkItemQueryService workItemQueryService,
+                                 IdentityQueryService identityQueryService) {
         this.workItemQueryService = workItemQueryService;
+        this.identityQueryService = identityQueryService;
     }
 
     /**
@@ -67,12 +74,31 @@ public class WorkItemSummaryFacade {
 
         List<WorkItem> workItems = workItemQueryService.listActiveByTenant(tenantId, limit);
 
+        // Phase 220a — owner displayName resolution. Har bir UNIKAL owner UUID
+        // bir martagina lookup qilinadi (distinct + toMap). Worst-case ≤ limit
+        // (50) lookup; ko'pincha kamroq (bir owner'da bir nechta item). Kelajak
+        // optimizatsiya: AppUserRepository.findAllById(Set<UUID>) batch.
+        // toMap ishlatilmaydi — u null qiymatda NPE tashlaydi (orphan owner →
+        // displayName null). HashMap.put null'ga ruxsat beradi.
+        Map<UUID, String> ownerDisplayNames = new HashMap<>();
+        workItems.stream()
+                .map(WorkItem::getCurrentOwnerUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .forEach(userId -> ownerDisplayNames.put(userId,
+                        identityQueryService.findUserById(userId)
+                                .map(u -> u.getDisplayName())
+                                .orElse(null)));
+
         return workItems.stream()
-                .map(this::toSummaryItem)
+                .map(wi -> toSummaryItem(wi, ownerDisplayNames))
                 .toList();
     }
 
-    private WorkItemSummaryItem toSummaryItem(WorkItem workItem) {
+    private WorkItemSummaryItem toSummaryItem(WorkItem workItem,
+                                              Map<UUID, String> ownerDisplayNames) {
+        UUID ownerId = workItem.getCurrentOwnerUserId();
+        String ownerDisplayName = (ownerId != null) ? ownerDisplayNames.get(ownerId) : null;
         return new WorkItemSummaryItem(
                 workItem.getId(),
                 workItem.getWorkItemCode(),
@@ -82,6 +108,7 @@ public class WorkItemSummaryFacade {
                 workItem.getPriorityCode(),
                 workItem.getSeverityCode(),
                 workItem.getCurrentOwnerUserId(),
+                ownerDisplayName,
                 workItem.getOpenedAt(),
                 workItem.getLastTransitionAt(),
                 workItem.getResolvedAt(),

@@ -1,16 +1,23 @@
 package com.engops.platform.admin;
 
+import com.engops.platform.identity.IdentityQueryService;
+import com.engops.platform.identity.model.AppUser;
 import com.engops.platform.workitem.WorkItemQueryService;
 import com.engops.platform.workitem.model.WorkItem;
 import com.engops.platform.workitem.model.WorkItemType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -30,7 +37,9 @@ class WorkItemSummaryFacadeTest {
     private static final UUID OWNER_USER_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
 
     private final WorkItemQueryService queryService = mock(WorkItemQueryService.class);
-    private final WorkItemSummaryFacade facade = new WorkItemSummaryFacade(queryService);
+    private final IdentityQueryService identityQueryService = mock(IdentityQueryService.class);
+    private final WorkItemSummaryFacade facade =
+            new WorkItemSummaryFacade(queryService, identityQueryService);
 
     @Test
     void returnsCompactMappedList() {
@@ -124,5 +133,74 @@ class WorkItemSummaryFacadeTest {
         assertThat(item.currentOwnerUserId()).isNull();
         assertThat(item.lastTransitionAt()).isNull();
         assertThat(item.resolvedAt()).isNull();
+    }
+
+    // ===== Phase 220a — owner displayName resolution =====
+
+    @Test
+    void summaryList_includesOwnerDisplayName_whenOwnerExists() {
+        WorkItem wi = new WorkItem(TENANT_ID, "BUG-1", WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Login xato", "BUGS", null);
+        wi.assignOwner(OWNER_USER_ID);
+        when(queryService.listActiveByTenant(TENANT_ID, 20)).thenReturn(List.of(wi));
+
+        AppUser owner = mock(AppUser.class);
+        when(owner.getDisplayName()).thenReturn("Bobur Karimov");
+        when(identityQueryService.findUserById(OWNER_USER_ID)).thenReturn(Optional.of(owner));
+
+        List<WorkItemSummaryItem> result = facade.getSummaryList(TENANT_ID, 20);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).ownerDisplayName()).isEqualTo("Bobur Karimov");
+    }
+
+    @Test
+    void summaryList_ownerDisplayNameNull_whenNoOwner() {
+        WorkItem wi = new WorkItem(TENANT_ID, "TASK-1", WorkItemType.TASK,
+                WORKFLOW_DEF_ID, "No owner", "OPEN", null);
+        when(queryService.listActiveByTenant(TENANT_ID, 20)).thenReturn(List.of(wi));
+
+        List<WorkItemSummaryItem> result = facade.getSummaryList(TENANT_ID, 20);
+
+        assertThat(result.get(0).ownerDisplayName()).isNull();
+        verify(identityQueryService, never()).findUserById(any());
+    }
+
+    @Test
+    void summaryList_ownerDisplayNameNull_whenUserNotFound() {
+        WorkItem wi = new WorkItem(TENANT_ID, "BUG-2", WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Orphan owner", "BUGS", null);
+        wi.assignOwner(OWNER_USER_ID);
+        when(queryService.listActiveByTenant(TENANT_ID, 20)).thenReturn(List.of(wi));
+        when(identityQueryService.findUserById(OWNER_USER_ID)).thenReturn(Optional.empty());
+
+        List<WorkItemSummaryItem> result = facade.getSummaryList(TENANT_ID, 20);
+
+        assertThat(result.get(0).ownerDisplayName()).isNull();
+    }
+
+    @Test
+    void summaryList_dedupsLookups_whenMultipleItemsSameOwner() {
+        WorkItem wi1 = new WorkItem(TENANT_ID, "BUG-1", WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Bug 1", "BUGS", null);
+        WorkItem wi2 = new WorkItem(TENANT_ID, "BUG-2", WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Bug 2", "BUGS", null);
+        WorkItem wi3 = new WorkItem(TENANT_ID, "BUG-3", WorkItemType.BUG,
+                WORKFLOW_DEF_ID, "Bug 3", "BUGS", null);
+        wi1.assignOwner(OWNER_USER_ID);
+        wi2.assignOwner(OWNER_USER_ID);
+        wi3.assignOwner(OWNER_USER_ID);
+        when(queryService.listActiveByTenant(TENANT_ID, 20)).thenReturn(List.of(wi1, wi2, wi3));
+
+        AppUser owner = mock(AppUser.class);
+        when(owner.getDisplayName()).thenReturn("Sariga");
+        when(identityQueryService.findUserById(OWNER_USER_ID)).thenReturn(Optional.of(owner));
+
+        List<WorkItemSummaryItem> result = facade.getSummaryList(TENANT_ID, 20);
+
+        assertThat(result).hasSize(3);
+        assertThat(result).allMatch(i -> "Sariga".equals(i.ownerDisplayName()));
+        // Dedup: bir owner UUID bir martagina lookup qilinadi.
+        verify(identityQueryService, times(1)).findUserById(OWNER_USER_ID);
     }
 }

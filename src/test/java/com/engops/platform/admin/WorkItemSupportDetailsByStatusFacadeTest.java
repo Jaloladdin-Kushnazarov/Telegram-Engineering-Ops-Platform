@@ -282,6 +282,7 @@ class WorkItemSupportDetailsByStatusFacadeTest {
                 id, code, "Title " + code,
                 WorkItemType.BUG, "BUGS",
                 null, null, null,
+                null,
                 Instant.parse("2026-03-18T10:00:00Z"),
                 null, null, 0, false);
     }

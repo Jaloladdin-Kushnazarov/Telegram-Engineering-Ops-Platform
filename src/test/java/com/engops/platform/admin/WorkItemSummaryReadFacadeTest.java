@@ -59,6 +59,7 @@ class WorkItemSummaryReadFacadeTest {
         var item = new WorkItemSummaryItem(
                 WI_ID_1, "BUG-1", "Login xato",
                 WorkItemType.BUG, "BUGS", null, null, null,
+                null,
                 Instant.parse("2026-03-18T10:00:00Z"), null, null, 0, false);
 
         when(summaryFacade.getSummaryList(TENANT_ID, 20)).thenReturn(List.of(item));
@@ -72,6 +73,23 @@ class WorkItemSummaryReadFacadeTest {
         verify(authorizationService).authorizeRead(TENANT_ID, ACTOR_USER_ID);
         verify(summaryFacade).getSummaryList(TENANT_ID, 20);
         verifyNoMoreInteractions(authorizationService, summaryFacade);
+    }
+
+    @Test
+    void successPath_ownerDisplayNamePassedThrough() {
+        // Phase 220a — read facade pass-through: inner facade resolve qilgan
+        // ownerDisplayName o'zgarmasdan qaytariladi.
+        var item = new WorkItemSummaryItem(
+                WI_ID_1, "BUG-1", "Login xato",
+                WorkItemType.BUG, "BUGS", null, null, null,
+                "Sariga",
+                Instant.parse("2026-03-18T10:00:00Z"), null, null, 0, false);
+        when(summaryFacade.getSummaryList(TENANT_ID, 20)).thenReturn(List.of(item));
+
+        var result = facade.getSummaryList(TENANT_ID, 20, ACTOR_USER_ID);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).ownerDisplayName()).isEqualTo("Sariga");
     }
 
     @Test

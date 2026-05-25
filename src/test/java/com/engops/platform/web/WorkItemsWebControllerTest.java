@@ -83,6 +83,11 @@ class WorkItemsWebControllerTest {
 
     private WorkItemSummaryItem item(String code, String title, WorkItemType type,
                                       String status, String severity) {
+        return item(code, title, type, status, severity, null);
+    }
+
+    private WorkItemSummaryItem item(String code, String title, WorkItemType type,
+                                      String status, String severity, String ownerDisplayName) {
         return new WorkItemSummaryItem(
                 UUID.randomUUID(),
                 code,
@@ -92,6 +97,7 @@ class WorkItemsWebControllerTest {
                 null, // priorityCode
                 severity,
                 null, // currentOwnerUserId
+                ownerDisplayName, // Phase 220a
                 Instant.parse("2026-05-24T00:00:00Z"),
                 null, null,
                 0,
@@ -131,7 +137,35 @@ class WorkItemsWebControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("No work items yet")))
                 .andExpect(content().string(containsString("empty-state")))
-                .andExpect(content().string(containsString("colspan=\"5\"")));
+                .andExpect(content().string(containsString("colspan=\"6\"")));  // Phase 220a — 6 columns
+    }
+
+    // ========== Phase 220a — assignee column render ==========
+
+    @Test
+    void list_rendersOwnerDisplayName_inAssigneeColumn() throws Exception {
+        when(workItemSummaryReadFacade.getSummaryList(TENANT_ID, 50, ACTOR_ID))
+                .thenReturn(List.of(item("BUG-1", "Login crash", WorkItemType.BUG,
+                        "PROCESSING", "HIGH", "Bobur Karimov")));
+
+        mockMvc.perform(get("/web/api/work-items/list")
+                        .with(withActor(ACTOR_ID))
+                        .queryParam("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Bobur Karimov")));
+    }
+
+    @Test
+    void list_rendersDashForNullAssignee() throws Exception {
+        when(workItemSummaryReadFacade.getSummaryList(TENANT_ID, 50, ACTOR_ID))
+                .thenReturn(List.of(item("BUG-2", "No owner", WorkItemType.BUG,
+                        "PROCESSING", "LOW", null)));
+
+        mockMvc.perform(get("/web/api/work-items/list")
+                        .with(withActor(ACTOR_ID))
+                        .queryParam("tenantId", TENANT_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("—")));
     }
 
     @Test

@@ -60,6 +60,7 @@ class WorkItemSummaryByOwnerReadFacadeTest {
         var item = new WorkItemSummaryItem(
                 WI_ID_1, "BUG-1", "Login xato",
                 WorkItemType.BUG, "BUGS", null, null, null,
+                null,
                 Instant.parse("2026-03-18T10:00:00Z"), null, null, 0, false);
 
         when(summaryFacade.getSummaryList(TENANT_ID, OWNER_USER_ID, 20)).thenReturn(List.of(item));

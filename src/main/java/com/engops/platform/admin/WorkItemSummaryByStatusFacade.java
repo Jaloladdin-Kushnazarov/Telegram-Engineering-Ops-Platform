@@ -84,6 +84,7 @@ public class WorkItemSummaryByStatusFacade {
                 workItem.getPriorityCode(),
                 workItem.getSeverityCode(),
                 workItem.getCurrentOwnerUserId(),
+                null,  // Phase 220a — ownerDisplayName bu facade'da resolve qilinmaydi (faqat web list facade)
                 workItem.getOpenedAt(),
                 workItem.getLastTransitionAt(),
                 workItem.getResolvedAt(),

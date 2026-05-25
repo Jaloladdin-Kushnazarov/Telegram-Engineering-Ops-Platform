@@ -7,6 +7,7 @@
         <td th:text="${item.title()}">Title</td>
         <td><span class="type-tag" th:text="${item.typeCode()}">TYPE</span></td>
         <td th:text="${item.currentStatusCode()}">STATUS</td>
+        <td th:text="${item.ownerDisplayName() != null ? item.ownerDisplayName() : '—'}">Assignee</td>
         <td>
             <span th:if="${item.severityCode() != null}"
                   th:class="|severity-tag ${item.severityCode().toLowerCase()}|"
@@ -15,7 +16,7 @@
         </td>
     </tr>
     <tr th:if="${items.isEmpty()}">
-        <td colspan="5" class="empty-state">No work items yet for this tenant.</td>
+        <td colspan="6" class="empty-state">No work items yet for this tenant.</td>
     </tr>
 </th:block>
 

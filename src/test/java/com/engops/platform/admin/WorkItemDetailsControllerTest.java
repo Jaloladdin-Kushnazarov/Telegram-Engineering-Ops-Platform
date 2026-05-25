@@ -305,6 +305,7 @@ class WorkItemDetailsControllerTest {
                 WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 "HIGH", "CRITICAL", OWNER_USER_ID,
+                null,
                 java.time.Instant.parse("2026-03-18T10:00:00Z"),
                 java.time.Instant.parse("2026-03-18T11:00:00Z"),
                 null, 0, false);
@@ -531,6 +532,7 @@ class WorkItemDetailsControllerTest {
                 WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 "HIGH", "CRITICAL", OWNER_USER_ID,
+                null,
                 Instant.parse("2026-03-18T10:00:00Z"),
                 Instant.parse("2026-03-18T11:00:00Z"),
                 null, 0, false);
@@ -839,6 +841,7 @@ class WorkItemDetailsControllerTest {
                 WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 "HIGH", "CRITICAL", OWNER_USER_ID,
+                null,
                 Instant.parse("2026-03-18T10:00:00Z"),
                 Instant.parse("2026-03-18T11:00:00Z"),
                 null, 0, false);
@@ -929,6 +932,7 @@ class WorkItemDetailsControllerTest {
                 WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 "HIGH", "CRITICAL", OWNER_USER_ID,
+                null,
                 Instant.parse("2026-03-18T10:00:00Z"),
                 Instant.parse("2026-03-18T11:00:00Z"),
                 null, 0, false);
@@ -1018,6 +1022,7 @@ class WorkItemDetailsControllerTest {
                 WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 "HIGH", "CRITICAL", OWNER_USER_ID,
+                null,
                 Instant.parse("2026-03-18T10:00:00Z"),
                 Instant.parse("2026-03-18T11:00:00Z"),
                 null, 0, false);
@@ -1122,6 +1127,7 @@ class WorkItemDetailsControllerTest {
                 WORK_ITEM_ID, WORK_ITEM_CODE, "Login xato",
                 WorkItemType.BUG, "BUGS",
                 "HIGH", "CRITICAL", OWNER_USER_ID,
+                null,
                 Instant.parse("2026-03-18T10:00:00Z"),
                 Instant.parse("2026-03-18T11:00:00Z"),
                 null, 0, false);
