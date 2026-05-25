@@ -919,6 +919,24 @@ footer {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-soft);
 }
+
+/* Phase 220b — work item modal textarea (description) */
+.invite-form-modal textarea {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13.5px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: var(--surface);
+    font-family: inherit;
+    resize: vertical;
+    box-sizing: border-box;
+}
+.invite-form-modal textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
 .dialog-actions {
     display: flex;
     justify-content: flex-end;

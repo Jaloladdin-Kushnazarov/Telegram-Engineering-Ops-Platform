@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -110,6 +111,13 @@ public class WebController {
         model.addAttribute("pageTitle", "Work items");
         model.addAttribute("contentFragment", "web/work-items :: content");
         model.addAttribute("activeNav", "work-items");
+        // Phase 220b — create modal dropdown qiymatlari. Statik bounded
+        // ro'yxatlar (WorkItemType enum + WorkItemCommandService
+        // ALLOWED_SEVERITY_CODES bilan mos). Aktyor talab qilinmaydi —
+        // /web/** permitAll bo'lib qoladi (server-side authorization yo'q;
+        // create POST /web/api/** ostida JWT bilan himoyalangan).
+        model.addAttribute("workItemTypes", List.of("BUG", "INCIDENT", "TASK"));
+        model.addAttribute("severities", List.of("CRITICAL", "HIGH", "MEDIUM", "LOW"));
         addTenantContext(model, tenantId);
         return "web/layout/base";
     }

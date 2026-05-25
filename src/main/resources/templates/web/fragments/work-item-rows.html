@@ -18,5 +18,10 @@
         <td colspan="5" class="empty-state">No work items yet for this tenant.</td>
     </tr>
 </th:block>
+
+<!-- Phase 220b — create modal inline error (HX-Retarget=#work-item-error). -->
+<th:block th:fragment="createError">
+    <span th:text="${error}">Error</span>
+</th:block>
 </body>
 </html>

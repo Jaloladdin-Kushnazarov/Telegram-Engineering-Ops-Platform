@@ -14,6 +14,13 @@
                 or add <code>?tenantId=&lt;uuid&gt;</code> to the URL.
             </div>
         </div>
+        <!-- Phase 220b — create modal trigger (faqat tenant tanlanganda). -->
+        <div th:if="${tenantId != null}">
+            <button type="button" class="primary-button"
+                    onclick="openCreateWorkItemDialog()">
+                + New work item
+            </button>
+        </div>
     </div>
 
     <div class="card" th:if="${tenantId != null}">
@@ -38,6 +45,103 @@
             </tbody>
         </table>
     </div>
+
+    <!-- Phase 220b — create modal. Phase 219d pattern: form <dialog> dan
+         TASHQARIda (HTMX hx-post race'siz), submit button dialog ichida.
+         Assignee dropdown hozircha faqat "Tayinlanmagan" (a'zolar ro'yxatini
+         autentifikatsiyalangan HTMX bilan hydrate qilish — keyingi phase;
+         /web/work-items permitAll bo'lgani uchun server-side render qilib
+         bo'lmaydi). hx-target="tbody" mavjud jadval bilan bir xil — jadval
+         tuzilishi tegilmaydi. -->
+    <form th:if="${tenantId != null}"
+          id="create-work-item-form"
+          th:hx-post="@{/web/api/work-items}"
+          hx-target="tbody"
+          hx-swap="innerHTML"
+          style="display: contents;">
+        <!-- tenantId forma ichida — HTMX POST'ga avtomatik qo'shiladi. -->
+        <input type="hidden" name="tenantId" th:value="${tenantId}">
+
+        <dialog id="create-work-item-dialog" class="invite-dialog">
+            <div class="dialog-header">
+                <h3>Yangi work item</h3>
+                <button type="button" class="dialog-close"
+                        onclick="closeCreateWorkItemDialog()"
+                        aria-label="Close">&times;</button>
+            </div>
+            <div class="invite-form-modal">
+                <div class="form-field">
+                    <label for="wi-type">Type <span class="required">*</span></label>
+                    <select id="wi-type" name="type" required>
+                        <option th:each="t : ${workItemTypes}"
+                                th:value="${t}" th:text="${t}">BUG</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="wi-severity">Severity <span class="required">*</span></label>
+                    <select id="wi-severity" name="severity" required>
+                        <option th:each="s : ${severities}"
+                                th:value="${s}" th:text="${s}">MEDIUM</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="wi-title">Title <span class="required">*</span></label>
+                    <input id="wi-title" type="text" name="title"
+                           required maxlength="200"
+                           placeholder="Login button broken">
+                </div>
+                <div class="form-field">
+                    <label for="wi-description">Description
+                        <span class="optional">(ixtiyoriy)</span>
+                    </label>
+                    <textarea id="wi-description" name="description"
+                              rows="3" maxlength="2000"
+                              placeholder="Reproduce steps, context..."></textarea>
+                </div>
+                <div class="form-field">
+                    <label for="wi-assignee">Assignee
+                        <span class="optional">(ixtiyoriy)</span>
+                    </label>
+                    <select id="wi-assignee" name="assigneeUserId">
+                        <option value="">— Tayinlanmagan —</option>
+                    </select>
+                </div>
+                <div id="work-item-error" class="invite-error"></div>
+                <div class="dialog-actions">
+                    <button type="button" class="secondary-button"
+                            onclick="closeCreateWorkItemDialog()">Cancel</button>
+                    <button type="submit" class="primary-button">Create</button>
+                </div>
+            </div>
+        </dialog>
+    </form>
+
+    <script>
+        function openCreateWorkItemDialog() {
+            document.getElementById('create-work-item-form').reset();
+            document.getElementById('work-item-error').innerHTML = '';
+            document.getElementById('create-work-item-dialog').showModal();
+        }
+        function closeCreateWorkItemDialog() {
+            const dialog = document.getElementById('create-work-item-dialog');
+            if (dialog) dialog.close();
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            const dialog = document.getElementById('create-work-item-dialog');
+            if (dialog) {
+                dialog.addEventListener('close', function() {
+                    const form = document.getElementById('create-work-item-form');
+                    const err = document.getElementById('work-item-error');
+                    if (form) form.reset();
+                    if (err) err.innerHTML = '';
+                });
+            }
+        });
+        document.body.addEventListener('workItemCreated', function() {
+            const dialog = document.getElementById('create-work-item-dialog');
+            if (dialog) dialog.close();
+        });
+    </script>
 </div>
 </body>
 </html>

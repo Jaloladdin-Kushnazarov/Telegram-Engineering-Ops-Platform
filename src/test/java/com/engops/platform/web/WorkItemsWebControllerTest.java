@@ -5,9 +5,13 @@ import com.engops.platform.admin.WorkItemSummaryReadFacade;
 import com.engops.platform.infrastructure.security.AuthenticatedActor;
 import com.engops.platform.infrastructure.security.SecurityConfig;
 import com.engops.platform.infrastructure.security.SecurityWebMvcConfig;
+import com.engops.platform.intake.IntakeApplicationService;
+import com.engops.platform.intake.IntakeCommand;
 import com.engops.platform.sharedkernel.exception.AccessDeniedException;
+import com.engops.platform.sharedkernel.exception.BusinessRuleException;
 import com.engops.platform.workitem.model.WorkItemType;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -25,15 +29,21 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 /**
  * Phase 210 — {@link WorkItemsWebController} @WebMvcTest.
@@ -50,6 +60,12 @@ class WorkItemsWebControllerTest {
 
     @MockBean
     private WorkItemSummaryReadFacade workItemSummaryReadFacade;
+
+    @MockBean
+    private IntakeApplicationService intakeApplicationService;
+
+    private static final UUID ASSIGNEE_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
+    private static final String CREATE_API = "/web/api/work-items";
 
     private static RequestPostProcessor withActor(UUID actorUserId) {
         return request -> {
@@ -169,5 +185,134 @@ class WorkItemsWebControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(not(containsString("<html"))))
                 .andExpect(content().string(not(containsString("<body"))));
+    }
+
+    // ========== Phase 220b — POST create (intake-based) ==========
+
+    @Test
+    void createWorkItem_valid_returnsRowsAndSetsHxTrigger() throws Exception {
+        when(workItemSummaryReadFacade.getSummaryList(TENANT_ID, 50, ACTOR_ID))
+                .thenReturn(List.of(item("BUG-1", "Login crash", WorkItemType.BUG,
+                        "PROCESSING", "HIGH")));
+
+        mockMvc.perform(post(CREATE_API)
+                        .with(withActor(ACTOR_ID))
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("type", "BUG")
+                        .param("severity", "HIGH")
+                        .param("title", "Login crash")
+                        .param("description", "Steps to reproduce")
+                        .param("assigneeUserId", ASSIGNEE_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(view().name("web/fragments/work-item-rows :: rows"))
+                .andExpect(header().string("HX-Trigger", "workItemCreated"))
+                .andExpect(content().string(containsString("Login crash")));
+    }
+
+    @Test
+    void createWorkItem_withAssignee_passedAsOwnerUserId() throws Exception {
+        when(workItemSummaryReadFacade.getSummaryList(any(), anyInt(), any()))
+                .thenReturn(List.of());
+
+        mockMvc.perform(post(CREATE_API)
+                        .with(withActor(ACTOR_ID))
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("type", "TASK")
+                        .param("severity", "LOW")
+                        .param("title", "Do thing")
+                        .param("assigneeUserId", ASSIGNEE_ID.toString()))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<IntakeCommand> captor = ArgumentCaptor.forClass(IntakeCommand.class);
+        verify(intakeApplicationService).submit(captor.capture());
+        IntakeCommand cmd = captor.getValue();
+        assertThat(cmd.getOwnerUserId()).isEqualTo(ASSIGNEE_ID);
+        assertThat(cmd.getTypeCode()).isEqualTo(WorkItemType.TASK);
+        assertThat(cmd.getSeverityCode()).isEqualTo("LOW");
+        assertThat(cmd.getCreatedByUserId()).isEqualTo(ACTOR_ID);
+        assertThat(cmd.getActionSource()).isEqualTo("WEB_UI");
+    }
+
+    @Test
+    void createWorkItem_noAssignee_ownerUserIdNull() throws Exception {
+        when(workItemSummaryReadFacade.getSummaryList(any(), anyInt(), any()))
+                .thenReturn(List.of());
+
+        mockMvc.perform(post(CREATE_API)
+                        .with(withActor(ACTOR_ID))
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("type", "BUG")
+                        .param("severity", "MEDIUM")
+                        .param("title", "No owner")
+                        .param("assigneeUserId", "   "))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<IntakeCommand> captor = ArgumentCaptor.forClass(IntakeCommand.class);
+        verify(intakeApplicationService).submit(captor.capture());
+        assertThat(captor.getValue().getOwnerUserId()).isNull();
+    }
+
+    @Test
+    void createWorkItem_emptyDescription_normalizedToNull() throws Exception {
+        when(workItemSummaryReadFacade.getSummaryList(any(), anyInt(), any()))
+                .thenReturn(List.of());
+
+        mockMvc.perform(post(CREATE_API)
+                        .with(withActor(ACTOR_ID))
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("type", "BUG")
+                        .param("severity", "MEDIUM")
+                        .param("title", "Blank desc")
+                        .param("description", "   "))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<IntakeCommand> captor = ArgumentCaptor.forClass(IntakeCommand.class);
+        verify(intakeApplicationService).submit(captor.capture());
+        assertThat(captor.getValue().getDescription()).isNull();
+    }
+
+    @Test
+    void createWorkItem_businessRule_returnsCreateErrorFragment() throws Exception {
+        doThrow(new BusinessRuleException("INVALID_OWNER", "Foydalanuvchi faol a'zo emas"))
+                .when(intakeApplicationService).submit(any(IntakeCommand.class));
+
+        mockMvc.perform(post(CREATE_API)
+                        .with(withActor(ACTOR_ID))
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("type", "BUG")
+                        .param("severity", "HIGH")
+                        .param("title", "Bad owner")
+                        .param("assigneeUserId", ASSIGNEE_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(view().name("web/fragments/work-item-rows :: createError"))
+                .andExpect(header().string("HX-Retarget", "#work-item-error"))
+                .andExpect(content().string(containsString("Foydalanuvchi")));
+    }
+
+    @Test
+    void createWorkItem_accessDenied_returnsCreateErrorFragment() throws Exception {
+        doThrow(new AccessDeniedException("WORK_ITEM_CREATE talab qilinadi"))
+                .when(intakeApplicationService).submit(any(IntakeCommand.class));
+
+        mockMvc.perform(post(CREATE_API)
+                        .with(withActor(ACTOR_ID))
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("type", "BUG")
+                        .param("severity", "HIGH")
+                        .param("title", "No perm"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("web/fragments/work-item-rows :: createError"))
+                .andExpect(header().string("HX-Retarget", "#work-item-error"));
+    }
+
+    @Test
+    void createWorkItem_anonymous_returns401() throws Exception {
+        mockMvc.perform(post(CREATE_API)
+                        .param("tenantId", TENANT_ID.toString())
+                        .param("type", "BUG")
+                        .param("severity", "HIGH")
+                        .param("title", "Anon"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(intakeApplicationService);
     }
 }

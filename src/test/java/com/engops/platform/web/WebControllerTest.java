@@ -255,6 +255,54 @@ class WebControllerTest {
                         "active\">Work items")));
     }
 
+    // ========== Phase 220b — create work item modal ==========
+
+    @Test
+    void workItems_withTenantId_rendersNewWorkItemButton() throws Exception {
+        UUID tenantId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/web/work-items").queryParam("tenantId", tenantId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "+ New work item")));
+    }
+
+    @Test
+    void workItems_withTenantId_rendersCreateDialog() throws Exception {
+        UUID tenantId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        mockMvc.perform(get("/web/work-items").queryParam("tenantId", tenantId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "id=\"create-work-item-dialog\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "showModal()")));
+    }
+
+    @Test
+    void workItems_withTenantId_rendersTypeAndSeverityOptions() throws Exception {
+        // Phase 220b — WebController model'idan workItemTypes + severities
+        // dropdown'larda render qilinadi.
+        UUID tenantId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        String body = mockMvc.perform(get("/web/work-items")
+                        .queryParam("tenantId", tenantId.toString()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("value=\"BUG\"")
+                .contains("value=\"INCIDENT\"")
+                .contains("value=\"TASK\"")
+                .contains("value=\"CRITICAL\"")
+                .contains("value=\"LOW\"");
+    }
+
+    @Test
+    void workItems_withoutTenantId_doesNotRenderCreateButton() throws Exception {
+        // Modal + tugma th:if="${tenantId != null}" bilan himoyalangan.
+        mockMvc.perform(get("/web/work-items"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("+ New work item"))));
+    }
+
     @Test
     void allPages_includeTenantSelectWrapper() throws Exception {
         // Phase 210 — base.html nav must contain the tenant-select wrapper
