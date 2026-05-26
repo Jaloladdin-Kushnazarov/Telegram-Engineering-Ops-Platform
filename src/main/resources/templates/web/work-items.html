@@ -103,9 +103,14 @@
                     <label for="wi-assignee">Assignee
                         <span class="optional">(ixtiyoriy)</span>
                     </label>
+                    <!-- Phase 223 — hx-target="this" ATAYLAB explicit: ota <form>
+                         hx-target="tbody"'ni inherit qilmaslik uchun. Aks holda
+                         assignee options javobi tbody'ga swap qilinib jadvalni
+                         buzar edi (HTMX 2.x hx-target'ni ota elementdan meros oladi). -->
                     <select id="wi-assignee" name="assigneeUserId"
                             th:hx-get="@{|/web/api/tenants/${tenantId}/members/options|}"
                             hx-trigger="open-create-work-item from:body"
+                            hx-target="this"
                             hx-swap="innerHTML">
                         <option value="">— Tayinlanmagan —</option>
                     </select>

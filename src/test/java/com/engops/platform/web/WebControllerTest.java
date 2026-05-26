@@ -327,6 +327,38 @@ class WebControllerTest {
     }
 
     @Test
+    void createDialog_assigneeSelect_declaresExplicitHxTargetThis_phase223Regression() throws Exception {
+        // Phase 223 regression lock. P220c added the #wi-assignee select inside
+        // the create-work-item form. The select had no hx-target, so HTMX 2.x
+        // inherited hx-target="tbody" from the enclosing form. When the modal
+        // opened, the assignee options response was swapped into the work items
+        // <tbody>, corrupting the table (visible after Cancel). Fix: explicit
+        // hx-target="this" on the select. This reads the rendered page HTML and
+        // asserts the select's opening tag declares hx-target="this".
+        UUID tenantId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        String html = mockMvc.perform(get("/web/work-items")
+                        .queryParam("tenantId", tenantId.toString()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        int selectOpenIdx = html.indexOf("id=\"wi-assignee\"");
+        org.assertj.core.api.Assertions.assertThat(selectOpenIdx)
+                .as("rendered HTML must contain the assignee select")
+                .isGreaterThanOrEqualTo(0);
+
+        int selectTagEnd = html.indexOf(">", selectOpenIdx);
+        org.assertj.core.api.Assertions.assertThat(selectTagEnd)
+                .as("assignee select opening tag must terminate")
+                .isGreaterThan(selectOpenIdx);
+
+        String selectOpeningTag = html.substring(selectOpenIdx, selectTagEnd);
+        org.assertj.core.api.Assertions.assertThat(selectOpeningTag)
+                .as("wi-assignee must declare explicit hx-target=\"this\" to "
+                        + "block inheritance of hx-target=\"tbody\" from the form")
+                .contains("hx-target=\"this\"");
+    }
+
+    @Test
     void allPages_includeTenantSelectWrapper() throws Exception {
         // Phase 210 — base.html nav must contain the tenant-select wrapper
         // div for the HTMX-loaded dropdown across all pages.

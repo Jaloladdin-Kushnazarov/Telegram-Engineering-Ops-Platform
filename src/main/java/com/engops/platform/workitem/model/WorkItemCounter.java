@@ -74,6 +74,22 @@ public class WorkItemCounter {
         return current;
     }
 
+    /**
+     * Counter'ning {@code nextValue}'ini kamida berilgan qiymatga oshiradi.
+     * Agar joriy {@code nextValue} allaqachon >= {@code minimumNextValue}
+     * bo'lsa — no-op (idempotent). Bu seed/repair yo'llari uchun ishlatiladi:
+     * mavjud counter'ning rivojini orqaga qaytarmasdan, oldindan band qilingan
+     * kodlardan o'tib ketkazadi.
+     *
+     * @param minimumNextValue keyingi generatsiya qiymati shu raqamdan kichik
+     *                         bo'lmasligini ta'minlaydi
+     */
+    public void advanceTo(long minimumNextValue) {
+        if (minimumNextValue > this.nextValue) {
+            this.nextValue = minimumNextValue;
+        }
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

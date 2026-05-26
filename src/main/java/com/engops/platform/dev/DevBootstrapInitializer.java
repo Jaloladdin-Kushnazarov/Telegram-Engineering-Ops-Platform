@@ -12,10 +12,14 @@ import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
 import com.engops.platform.identity.repository.RoleRepository;
 import com.engops.platform.tenantconfig.model.Tenant;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
+import com.engops.platform.tenantconfig.model.WorkflowStatus;
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
+import com.engops.platform.tenantconfig.repository.WorkflowStatusRepository;
 import com.engops.platform.workitem.model.WorkItem;
+import com.engops.platform.workitem.model.WorkItemCounter;
 import com.engops.platform.workitem.model.WorkItemType;
+import com.engops.platform.workitem.repository.WorkItemCounterRepository;
 import com.engops.platform.workitem.repository.WorkItemRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -105,7 +110,9 @@ public class DevBootstrapInitializer implements ApplicationRunner {
     private final MembershipRoleBindingRepository membershipRoleBindingRepository;
     private final RoleRepository roleRepository;
     private final WorkflowDefinitionRepository workflowDefinitionRepository;
+    private final WorkflowStatusRepository workflowStatusRepository;
     private final WorkItemRepository workItemRepository;
+    private final WorkItemCounterRepository workItemCounterRepository;
     private final AppUserRoleBindingRepository appUserRoleBindingRepository;
     private final String platformOwnerTelegramIdsRaw;
 
@@ -115,7 +122,9 @@ public class DevBootstrapInitializer implements ApplicationRunner {
                                     MembershipRoleBindingRepository membershipRoleBindingRepository,
                                     RoleRepository roleRepository,
                                     WorkflowDefinitionRepository workflowDefinitionRepository,
+                                    WorkflowStatusRepository workflowStatusRepository,
                                     WorkItemRepository workItemRepository,
+                                    WorkItemCounterRepository workItemCounterRepository,
                                     AppUserRoleBindingRepository appUserRoleBindingRepository,
                                     @Value("${app.security.bootstrap.platform-owner-telegram-ids:}")
                                     String platformOwnerTelegramIdsRaw) {
@@ -125,7 +134,9 @@ public class DevBootstrapInitializer implements ApplicationRunner {
         this.membershipRoleBindingRepository = membershipRoleBindingRepository;
         this.roleRepository = roleRepository;
         this.workflowDefinitionRepository = workflowDefinitionRepository;
+        this.workflowStatusRepository = workflowStatusRepository;
         this.workItemRepository = workItemRepository;
+        this.workItemCounterRepository = workItemCounterRepository;
         this.appUserRoleBindingRepository = appUserRoleBindingRepository;
         this.platformOwnerTelegramIdsRaw = platformOwnerTelegramIdsRaw;
     }
@@ -147,6 +158,15 @@ public class DevBootstrapInitializer implements ApplicationRunner {
         } else {
             seedAdminAndDemoTenant(adminRole);
         }
+
+        // Phase 221 — oldingi bootstrap runlari (bu Phase'dan oldin) demo
+        // workflow'larni status'siz yaratgan bo'lishi mumkin. Mavjud-DB repair
+        // yo'li: status'larni backfill qiladi (idempotent).
+        repairDemoWorkflowStatuses();
+
+        // Phase 222 — oldingi runlar work_item_counter'ni yaratmagan bo'lishi
+        // mumkin (demo item'lar aniq kod bilan kiritilgan). Backfill (idempotent).
+        repairDemoWorkItemCounters();
 
         // Platform owner seed — alohida idempotent, ADMIN role'dan mustaqil.
         // Phase 216 yangi yo'l: PLATFORM_OWNER role V9 migration'da seed
@@ -175,13 +195,25 @@ public class DevBootstrapInitializer implements ApplicationRunner {
         Tenant tenant = seedTenant();
         Membership membership = seedMembership(tenant, admin);
         seedRoleBinding(membership, adminRole);
+        Map<WorkItemType, List<DemoStatusSpec>> statusSpecs = demoStatusSpecs();
         WorkflowDefinition wfBug = seedWorkflowDefinition(tenant,
                 BOOTSTRAP_WORKFLOW_BUG_ID, "Demo Bug Workflow", WorkItemType.BUG);
+        seedWorkflowStatusesIfMissing(wfBug, statusSpecs.get(WorkItemType.BUG));
         WorkflowDefinition wfIncident = seedWorkflowDefinition(tenant,
                 BOOTSTRAP_WORKFLOW_INCIDENT_ID, "Demo Incident Workflow", WorkItemType.INCIDENT);
+        seedWorkflowStatusesIfMissing(wfIncident, statusSpecs.get(WorkItemType.INCIDENT));
         WorkflowDefinition wfTask = seedWorkflowDefinition(tenant,
                 BOOTSTRAP_WORKFLOW_TASK_ID, "Demo Task Workflow", WorkItemType.TASK);
+        seedWorkflowStatusesIfMissing(wfTask, statusSpecs.get(WorkItemType.TASK));
         seedWorkItems(tenant, admin, wfBug, wfIncident, wfTask);
+
+        // Phase 222 — work_item_counter'ni oldindan band qilingan demo
+        // kodlardan o'tkazib qo'yamiz (aks holda generator BUG-1 ni qayta
+        // beradi va UNIQUE constraint buziladi).
+        List<DemoWorkItemSpec> specs = demoSpecs();
+        for (WorkItemType type : List.of(WorkItemType.BUG, WorkItemType.INCIDENT, WorkItemType.TASK)) {
+            seedOrAdvanceWorkItemCounter(tenant.getId(), type, specs);
+        }
 
         log.info("Dev bootstrap: admin={}, tenant={}, work items={}",
                 admin.getId(), tenant.getId(), DEMO_WORK_ITEM_COUNT);
@@ -297,6 +329,137 @@ public class DevBootstrapInitializer implements ApplicationRunner {
         log.info("Dev bootstrap: seedPlatformOwners — {} new bindings", granted);
     }
 
+    /**
+     * Demo workflow uchun status'larni seed qiladi (idempotent).
+     * Har bir status nomi uchun {@code existsByWorkflowDefinition_IdAndName}
+     * pre-check qilinadi — mavjud bo'lsa skip, yo'q bo'lsa qo'shadi.
+     *
+     * <p>Bu metod ikki yo'ldan chaqiriladi:</p>
+     * <ul>
+     *   <li>Fresh-DB path: {@link #seedAdminAndDemoTenant} ichida har bir
+     *       {@code seedWorkflowDefinition} chaqiruvidan keyin.</li>
+     *   <li>Existing-DB repair path: {@link #repairDemoWorkflowStatuses} orqali,
+     *       oldingi runlarda status'siz yaratilgan workflow'larni puchqalash uchun.</li>
+     * </ul>
+     */
+    private void seedWorkflowStatusesIfMissing(WorkflowDefinition workflow,
+                                               List<DemoStatusSpec> specs) {
+        List<WorkflowStatus> toInsert = specs.stream()
+                .filter(s -> !workflowStatusRepository
+                        .existsByWorkflowDefinition_IdAndName(workflow.getId(), s.name()))
+                .map(s -> new WorkflowStatus(workflow, s.name(), s.order(),
+                        s.initial(), s.terminal()))
+                .toList();
+        if (!toInsert.isEmpty()) {
+            workflowStatusRepository.saveAll(toInsert);
+        }
+        log.info("Dev bootstrap: '{}' workflow uchun {} ta status qo'shildi",
+                workflow.getName(), toInsert.size());
+    }
+
+    /**
+     * Phase 221 — mavjud-DB repair: oldingi bootstrap runlari demo
+     * workflow'larni status'siz yaratgan bo'lsa, status'larni backfill qiladi.
+     * Idempotent — {@link #seedWorkflowStatusesIfMissing} pre-check qiladi.
+     *
+     * <p>Demo tenant yo'q bo'lsa (masalan ADMIN role topilmagan fresh test)
+     * darhol qaytadi. Workflow topilmasa WARN log — bu yerda yaratilmaydi,
+     * u {@link #seedAdminAndDemoTenant}'ning vazifasi.</p>
+     */
+    private void repairDemoWorkflowStatuses() {
+        if (tenantRepository.findById(BOOTSTRAP_TENANT_ID).isEmpty()) {
+            return;
+        }
+        Map<WorkItemType, List<DemoStatusSpec>> statusSpecs = demoStatusSpecs();
+        for (WorkItemType type : List.of(WorkItemType.BUG, WorkItemType.INCIDENT, WorkItemType.TASK)) {
+            Optional<WorkflowDefinition> workflow = workflowDefinitionRepository
+                    .findByTenantIdAndWorkItemType(BOOTSTRAP_TENANT_ID, type.name());
+            if (workflow.isPresent()) {
+                seedWorkflowStatusesIfMissing(workflow.get(), statusSpecs.get(type));
+            } else {
+                log.warn("Dev bootstrap: {} demo workflow topilmadi — status backfill skip", type);
+            }
+        }
+        log.info("Dev bootstrap: repairDemoWorkflowStatuses tugadi");
+    }
+
+    /**
+     * Demo tenant uchun {@link WorkItemCounter}'ni seed qiladi va oldindan band
+     * qilingan {@link #demoSpecs()} kodlaridan o'tkazib qo'yadi. Idempotent —
+     * mavjud counter {@link WorkItemCounter#advanceTo(long)} orqali faqat
+     * oldinga qarab siljiydi.
+     *
+     * <p>{@code minimumNextValue} hisoblash qoidasi: generator
+     * ({@link WorkItemCodeGenerator#generate}) {@code typeCode.name() + "-"}
+     * prefiksini ishlatadi. Faqat shu prefiks bilan boshlangan demo kodlar
+     * to'qnashuvga sabab bo'ladi — boshqa prefiksdagi kodlar (masalan INCIDENT
+     * uchun "INC-") generatordan kelmaydi, shuning uchun hisobga olinmaydi.</p>
+     *
+     * <p>Ikki yo'ldan chaqiriladi: fresh-DB ({@link #seedAdminAndDemoTenant},
+     * {@link #seedWorkItems}'dan keyin) va existing-DB repair
+     * ({@link #repairDemoWorkItemCounters}).</p>
+     */
+    private void seedOrAdvanceWorkItemCounter(UUID tenantId, WorkItemType type,
+                                              List<DemoWorkItemSpec> specs) {
+        String prefix = type.name() + "-";
+        long minimumNextValue = specs.stream()
+                .filter(s -> s.type() == type && s.code().startsWith(prefix))
+                .mapToLong(s -> Long.parseLong(s.code().substring(prefix.length())))
+                .max()
+                .orElse(0L) + 1L;
+
+        WorkItemCounter counter = workItemCounterRepository
+                .findByTenantIdAndTypeCode(tenantId, type)
+                .orElseGet(() -> workItemCounterRepository.save(
+                        new WorkItemCounter(tenantId, type)));
+        counter.advanceTo(minimumNextValue);
+        workItemCounterRepository.save(counter);
+
+        log.info("Dev bootstrap: '{}' counter nextValue >= {} (tenant={})",
+                type, minimumNextValue, tenantId);
+    }
+
+    /**
+     * Phase 222 — mavjud-DB repair: oldingi bootstrap runlari
+     * {@link WorkItemCounter}'larni umuman yaratmasdan demo work item'larni
+     * oldindan band qilingan kodlar bilan kiritgan. Bu yerda counter'larni
+     * yaratamiz/oshiramiz (idempotent).
+     *
+     * <p>Demo tenant yo'q bo'lsa darhol qaytadi.</p>
+     */
+    private void repairDemoWorkItemCounters() {
+        if (tenantRepository.findById(BOOTSTRAP_TENANT_ID).isEmpty()) {
+            return;
+        }
+        List<DemoWorkItemSpec> specs = demoSpecs();
+        for (WorkItemType type : List.of(WorkItemType.BUG, WorkItemType.INCIDENT, WorkItemType.TASK)) {
+            seedOrAdvanceWorkItemCounter(BOOTSTRAP_TENANT_ID, type, specs);
+        }
+        log.info("Dev bootstrap: repairDemoWorkItemCounters tugadi");
+    }
+
+    /**
+     * Demo workflow status spetsifikatsiyalari (type bo'yicha). Status nomlari
+     * {@link #demoSpecs()} ishlatadigan {@code current_status_code}'lar bilan
+     * mos — shu sababli mavjud 10 demo work item orphan-status bo'lib qolmaydi.
+     */
+    private static Map<WorkItemType, List<DemoStatusSpec>> demoStatusSpecs() {
+        return Map.of(
+                WorkItemType.BUG, List.of(
+                        new DemoStatusSpec("REPORTED", 0, true, false),
+                        new DemoStatusSpec("IN_PROGRESS", 1, false, false),
+                        new DemoStatusSpec("RESOLVED", 2, false, false),
+                        new DemoStatusSpec("CLOSED", 3, false, true)),
+                WorkItemType.INCIDENT, List.of(
+                        new DemoStatusSpec("REPORTED", 0, true, false),
+                        new DemoStatusSpec("IN_PROGRESS", 1, false, false),
+                        new DemoStatusSpec("RESOLVED", 2, false, true)),
+                WorkItemType.TASK, List.of(
+                        new DemoStatusSpec("REPORTED", 0, true, false),
+                        new DemoStatusSpec("IN_PROGRESS", 1, false, false),
+                        new DemoStatusSpec("DONE", 2, false, true)));
+    }
+
     private static List<DemoWorkItemSpec> demoSpecs() {
         return List.of(
                 new DemoWorkItemSpec("BUG-1", WorkItemType.BUG, "CRITICAL", "IN_PROGRESS",
@@ -323,5 +486,9 @@ public class DevBootstrapInitializer implements ApplicationRunner {
 
     private record DemoWorkItemSpec(String code, WorkItemType type,
                                     String severity, String status, String title) {
+    }
+
+    /** Phase 221 — demo workflow status seed spetsifikatsiyasi. */
+    private record DemoStatusSpec(String name, int order, boolean initial, boolean terminal) {
     }
 }
