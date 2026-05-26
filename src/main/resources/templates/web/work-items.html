@@ -103,7 +103,10 @@
                     <label for="wi-assignee">Assignee
                         <span class="optional">(ixtiyoriy)</span>
                     </label>
-                    <select id="wi-assignee" name="assigneeUserId">
+                    <select id="wi-assignee" name="assigneeUserId"
+                            th:hx-get="@{|/web/api/tenants/${tenantId}/members/options|}"
+                            hx-trigger="open-create-work-item from:body"
+                            hx-swap="innerHTML">
                         <option value="">— Tayinlanmagan —</option>
                     </select>
                 </div>
@@ -121,6 +124,11 @@
         function openCreateWorkItemDialog() {
             document.getElementById('create-work-item-form').reset();
             document.getElementById('work-item-error').innerHTML = '';
+            // Phase 220c — assignee dropdown HTMX hydration trigger. Modal
+            // ochilishidan oldin event fire qilamiz; wi-assignee select shu
+            // event'ga ulangan (hx-trigger) va hx-get'ni amalga oshiradi
+            // (JWT header auth.js htmx:configRequest interceptor orqali).
+            document.body.dispatchEvent(new CustomEvent('open-create-work-item'));
             document.getElementById('create-work-item-dialog').showModal();
         }
         function closeCreateWorkItemDialog() {

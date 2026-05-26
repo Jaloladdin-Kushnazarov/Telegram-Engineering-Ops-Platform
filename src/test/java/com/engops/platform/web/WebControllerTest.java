@@ -314,6 +314,19 @@ class WebControllerTest {
     }
 
     @Test
+    void workItems_assigneeSelect_hasHtmxHydrationAttributes() throws Exception {
+        // Phase 220c — wi-assignee dropdown HTMX hydration (modal ochilganda).
+        UUID tenantId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        String body = mockMvc.perform(get("/web/work-items")
+                        .queryParam("tenantId", tenantId.toString()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("/web/api/tenants/" + tenantId + "/members/options")
+                .contains("open-create-work-item from:body");
+    }
+
+    @Test
     void allPages_includeTenantSelectWrapper() throws Exception {
         // Phase 210 — base.html nav must contain the tenant-select wrapper
         // div for the HTMX-loaded dropdown across all pages.

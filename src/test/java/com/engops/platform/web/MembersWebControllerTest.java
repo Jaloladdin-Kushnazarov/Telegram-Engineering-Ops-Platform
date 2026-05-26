@@ -324,11 +324,56 @@ class MembersWebControllerTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("zolikdan chiqara")));
     }
 
+    // ===== Phase 220c — assignee dropdown options fragment =====
+
+    @Test
+    void membersOptions_authorized_returnsOptionsFragment() throws Exception {
+        when(queryService.listMembers(ACTOR, TENANT)).thenReturn(List.of(
+                member("Bobur Karimov", "ENGINEER"),
+                member("Sariga", "VIEWER")));
+
+        mockMvc.perform(get(API + "/options").with(withActor(ACTOR)))
+                .andExpect(status().isOk())
+                .andExpect(view().name("web/fragments/member-options :: options"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Bobur Karimov (ENGINEER)")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("— Tayinlanmagan —")));
+    }
+
+    @Test
+    void membersOptions_deniedAccess_returnsEmptyOptionsFragment() throws Exception {
+        doThrow(new AccessDeniedException("denied")).when(queryService).listMembers(ACTOR, TENANT);
+
+        mockMvc.perform(get(API + "/options").with(withActor(ACTOR)))
+                .andExpect(status().isOk())  // yashirin failure — 4xx YO'Q
+                .andExpect(view().name("web/fragments/member-options :: options"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("— Tayinlanmagan —")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("(ENGINEER)"))));
+    }
+
+    @Test
+    void membersOptions_emptyMembership_returnsOnlyPlaceholder() throws Exception {
+        when(queryService.listMembers(ACTOR, TENANT)).thenReturn(List.of());
+
+        mockMvc.perform(get(API + "/options").with(withActor(ACTOR)))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("— Tayinlanmagan —")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("("))));
+    }
+
     // ===== security =====
 
     @Test
     void anonymous_membersFragment_returns401() throws Exception {
         mockMvc.perform(get(API))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(queryService);
+    }
+
+    @Test
+    void anonymous_membersOptions_returns401() throws Exception {
+        mockMvc.perform(get(API + "/options"))
                 .andExpect(status().isUnauthorized());
         verifyNoInteractions(queryService);
     }

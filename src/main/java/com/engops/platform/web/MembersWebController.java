@@ -92,6 +92,28 @@ public class MembersWebController {
         }
     }
 
+    /**
+     * Phase 220c — work item create modal'idagi assignee dropdown uchun
+     * {@code <option>} fragment'i. HTMX modal ochilganda hydrate qiladi.
+     *
+     * <p>AccessDenied <strong>yashirin</strong> ishlanadi: 4xx o'rniga 200 +
+     * faqat placeholder option qaytariladi (dropdown ochiq qoladi, UX
+     * buzilmaydi). Member listing 403 dropdown'ni butunlay ishlatib
+     * bo'lmaydigan qilib qo'ymasligi kerak — create POST baribir server-side
+     * {@code WORK_ITEM_CREATE} bilan himoyalangan.</p>
+     */
+    @GetMapping("/api/tenants/{tenantId}/members/options")
+    public String membersOptions(@CurrentActor UUID actorUserId,
+                                 @PathVariable UUID tenantId,
+                                 Model model) {
+        try {
+            model.addAttribute("members", queryService.listMembers(actorUserId, tenantId));
+        } catch (AccessDeniedException ex) {
+            model.addAttribute("members", List.<MemberSummary>of());
+        }
+        return "web/fragments/member-options :: options";
+    }
+
     @PostMapping("/api/tenants/{tenantId}/members")
     public String inviteMember(@CurrentActor UUID actorUserId,
                                @PathVariable UUID tenantId,

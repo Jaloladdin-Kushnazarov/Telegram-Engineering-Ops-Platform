@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="uz">
+<body>
+<th:block th:fragment="options">
+    <!-- Placeholder — tayinlanmagan, default tanlangan. -->
+    <option value="">— Tayinlanmagan —</option>
+    <!-- A'zolar — displayName + role suffix. -->
+    <option th:each="m : ${members}"
+            th:value="${m.userId()}"
+            th:text="${m.displayName() + ' (' + m.roleCode() + ')'}">
+        Bobur (ENGINEER)
+    </option>
+</th:block>
+</body>
+</html>
