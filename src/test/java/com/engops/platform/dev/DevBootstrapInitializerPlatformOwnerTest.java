@@ -168,6 +168,9 @@ class DevBootstrapInitializerPlatformOwnerTest {
                 /* workflowStatusRepository */ null,
                 /* workItemRepository */ null,
                 /* workItemCounterRepository */ null,
+                /* routingRuleRepository */ null,
+                /* telegramChatBindingRepository */ null,
+                /* telegramTopicBindingRepository */ null,
                 appUserRoleBindingRepository,
                 platformOwnerTelegramIds);
     }

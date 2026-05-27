@@ -6,7 +6,13 @@ import com.engops.platform.identity.repository.AppUserRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
 import com.engops.platform.identity.repository.RoleRepository;
+import com.engops.platform.tenantconfig.model.RoutingRule;
+import com.engops.platform.tenantconfig.model.TelegramChatBinding;
+import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
+import com.engops.platform.tenantconfig.repository.RoutingRuleRepository;
+import com.engops.platform.tenantconfig.repository.TelegramChatBindingRepository;
+import com.engops.platform.tenantconfig.repository.TelegramTopicBindingRepository;
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowStatusRepository;
@@ -68,6 +74,12 @@ class DevBootstrapInitializerTest {
     private WorkflowStatusRepository workflowStatusRepository;
     @Autowired
     private WorkItemCounterRepository workItemCounterRepository;
+    @Autowired
+    private TelegramChatBindingRepository telegramChatBindingRepository;
+    @Autowired
+    private TelegramTopicBindingRepository telegramTopicBindingRepository;
+    @Autowired
+    private RoutingRuleRepository routingRuleRepository;
 
     @BeforeEach
     void seedAdminRoleAndBootstrap() {
@@ -290,5 +302,87 @@ class DevBootstrapInitializerTest {
                         DevBootstrapInitializer.BOOTSTRAP_TENANT_ID, type)
                 .orElseThrow(() -> new AssertionError(type + " counter not found"));
         assertThat(c.getNextValue()).isEqualTo(expected);
+    }
+
+    // ========== Phase 224 — Telegram routing seed ==========
+
+    @Test
+    @Transactional
+    void bootstrap_seedsDemoChatBindingWithSupergroupId() {
+        TelegramChatBinding chat = telegramChatBindingRepository
+                .findByTenantIdAndChatId(
+                        DevBootstrapInitializer.BOOTSTRAP_TENANT_ID, -1_001_234_567_890L)
+                .orElseThrow(() -> new AssertionError("demo chat binding not seeded"));
+        assertThat(chat.getChatTitle()).isEqualTo("Demo Engineering Ops");
+        assertThat(chat.isActive()).isTrue();
+    }
+
+    @Test
+    @Transactional
+    void bootstrap_seedsThreeDemoTopicBindings() {
+        TelegramChatBinding chat = telegramChatBindingRepository
+                .findByTenantIdAndChatId(
+                        DevBootstrapInitializer.BOOTSTRAP_TENANT_ID, -1_001_234_567_890L)
+                .orElseThrow();
+        List<TelegramTopicBinding> topics = telegramTopicBindingRepository
+                .findByChatBindingId(chat.getId());
+        assertThat(topics).extracting(TelegramTopicBinding::getTopicName)
+                .containsExactlyInAnyOrder("Bugs", "Incidents", "Tasks");
+        assertThat(topics).extracting(TelegramTopicBinding::getPurpose)
+                .containsExactlyInAnyOrder("BUG_REPORTS", "INCIDENT_ALERTS", "TASK_QUEUE");
+    }
+
+    @Test
+    @Transactional
+    void bootstrap_seedsRoutingRulePerWorkItemType_targetingMatchingTopic() {
+        // Per-type rule exists, points at the matching topic.
+        assertRoutingRulePointsAtTopic("BUG", "Bugs");
+        assertRoutingRulePointsAtTopic("INCIDENT", "Incidents");
+        assertRoutingRulePointsAtTopic("TASK", "Tasks");
+    }
+
+    @Test
+    @Transactional
+    void bootstrap_idempotent_telegramRoutingCountsUnchangedOnSecondRun() {
+        long chatBefore = telegramChatBindingRepository.count();
+        long topicsBefore = telegramTopicBindingRepository.count();
+        long rulesBefore = routingRuleRepository.count();
+
+        initializer.run(null);
+
+        assertThat(telegramChatBindingRepository.count()).isEqualTo(chatBefore);
+        assertThat(telegramTopicBindingRepository.count()).isEqualTo(topicsBefore);
+        assertThat(routingRuleRepository.count()).isEqualTo(rulesBefore);
+    }
+
+    @Test
+    @Transactional
+    void bootstrap_repairsMissingTelegramRouting_onExistingData() {
+        routingRuleRepository.deleteAll();
+        telegramTopicBindingRepository.deleteAll();
+        telegramChatBindingRepository.deleteAll();
+        telegramChatBindingRepository.flush();
+
+        initializer.run(null);
+
+        assertThat(telegramChatBindingRepository.findByTenantIdAndChatId(
+                DevBootstrapInitializer.BOOTSTRAP_TENANT_ID, -1_001_234_567_890L))
+                .isPresent();
+        assertRoutingRulePointsAtTopic("BUG", "Bugs");
+    }
+
+    private void assertRoutingRulePointsAtTopic(String workItemType, String expectedTopicName) {
+        List<RoutingRule> rules = routingRuleRepository
+                .findByTenantIdAndWorkItemType(
+                        DevBootstrapInitializer.BOOTSTRAP_TENANT_ID, workItemType);
+        assertThat(rules).hasSize(1);
+        RoutingRule rule = rules.get(0);
+        assertThat(rule.getPriority()).isEqualTo(100);
+        assertThat(rule.getConditionExpression()).isNull();
+        assertThat(rule.getTargetTopicBindingId()).isNotNull();
+
+        TelegramTopicBinding target = telegramTopicBindingRepository
+                .findById(rule.getTargetTopicBindingId()).orElseThrow();
+        assertThat(target.getTopicName()).isEqualTo(expectedTopicName);
     }
 }

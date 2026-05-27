@@ -10,9 +10,15 @@ import com.engops.platform.identity.repository.AppUserRoleBindingRepository;
 import com.engops.platform.identity.repository.MembershipRepository;
 import com.engops.platform.identity.repository.MembershipRoleBindingRepository;
 import com.engops.platform.identity.repository.RoleRepository;
+import com.engops.platform.tenantconfig.model.RoutingRule;
 import com.engops.platform.tenantconfig.model.Tenant;
+import com.engops.platform.tenantconfig.model.TelegramChatBinding;
+import com.engops.platform.tenantconfig.model.TelegramTopicBinding;
 import com.engops.platform.tenantconfig.model.WorkflowDefinition;
 import com.engops.platform.tenantconfig.model.WorkflowStatus;
+import com.engops.platform.tenantconfig.repository.RoutingRuleRepository;
+import com.engops.platform.tenantconfig.repository.TelegramChatBindingRepository;
+import com.engops.platform.tenantconfig.repository.TelegramTopicBindingRepository;
 import com.engops.platform.tenantconfig.repository.TenantRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowDefinitionRepository;
 import com.engops.platform.tenantconfig.repository.WorkflowStatusRepository;
@@ -104,6 +110,14 @@ public class DevBootstrapInitializer implements ApplicationRunner {
 
     static final int DEMO_WORK_ITEM_COUNT = 10;
 
+    // ========== Phase 224 — demo Telegram routing natural keys ==========
+    // -1001... — Telegram supergroup ID format prefiksi (fake, lekin formatga mos).
+    // topicId=1 Telegram "General" topic uchun rezerv — biz 2 dan boshlaymiz.
+    private static final long DEMO_CHAT_ID = -1_001_234_567_890L;
+    private static final long DEMO_TOPIC_BUGS_ID = 2L;
+    private static final long DEMO_TOPIC_INCIDENTS_ID = 3L;
+    private static final long DEMO_TOPIC_TASKS_ID = 4L;
+
     private final AppUserRepository appUserRepository;
     private final TenantRepository tenantRepository;
     private final MembershipRepository membershipRepository;
@@ -113,6 +127,9 @@ public class DevBootstrapInitializer implements ApplicationRunner {
     private final WorkflowStatusRepository workflowStatusRepository;
     private final WorkItemRepository workItemRepository;
     private final WorkItemCounterRepository workItemCounterRepository;
+    private final RoutingRuleRepository routingRuleRepository;
+    private final TelegramChatBindingRepository telegramChatBindingRepository;
+    private final TelegramTopicBindingRepository telegramTopicBindingRepository;
     private final AppUserRoleBindingRepository appUserRoleBindingRepository;
     private final String platformOwnerTelegramIdsRaw;
 
@@ -125,6 +142,9 @@ public class DevBootstrapInitializer implements ApplicationRunner {
                                     WorkflowStatusRepository workflowStatusRepository,
                                     WorkItemRepository workItemRepository,
                                     WorkItemCounterRepository workItemCounterRepository,
+                                    RoutingRuleRepository routingRuleRepository,
+                                    TelegramChatBindingRepository telegramChatBindingRepository,
+                                    TelegramTopicBindingRepository telegramTopicBindingRepository,
                                     AppUserRoleBindingRepository appUserRoleBindingRepository,
                                     @Value("${app.security.bootstrap.platform-owner-telegram-ids:}")
                                     String platformOwnerTelegramIdsRaw) {
@@ -137,6 +157,9 @@ public class DevBootstrapInitializer implements ApplicationRunner {
         this.workflowStatusRepository = workflowStatusRepository;
         this.workItemRepository = workItemRepository;
         this.workItemCounterRepository = workItemCounterRepository;
+        this.routingRuleRepository = routingRuleRepository;
+        this.telegramChatBindingRepository = telegramChatBindingRepository;
+        this.telegramTopicBindingRepository = telegramTopicBindingRepository;
         this.appUserRoleBindingRepository = appUserRoleBindingRepository;
         this.platformOwnerTelegramIdsRaw = platformOwnerTelegramIdsRaw;
     }
@@ -167,6 +190,10 @@ public class DevBootstrapInitializer implements ApplicationRunner {
         // Phase 222 — oldingi runlar work_item_counter'ni yaratmagan bo'lishi
         // mumkin (demo item'lar aniq kod bilan kiritilgan). Backfill (idempotent).
         repairDemoWorkItemCounters();
+
+        // Phase 224 — oldingi runlar Telegram routing seed'ini bajarmagan
+        // bo'lsa (chat/topic/routing rule), idempotent backfill qiladi.
+        repairDemoTelegramRouting();
 
         // Platform owner seed — alohida idempotent, ADMIN role'dan mustaqil.
         // Phase 216 yangi yo'l: PLATFORM_OWNER role V9 migration'da seed
@@ -214,6 +241,11 @@ public class DevBootstrapInitializer implements ApplicationRunner {
         for (WorkItemType type : List.of(WorkItemType.BUG, WorkItemType.INCIDENT, WorkItemType.TASK)) {
             seedOrAdvanceWorkItemCounter(tenant.getId(), type, specs);
         }
+
+        // Phase 224 — demo Telegram routing infrastrukturasi (chat + topic +
+        // routing rule), shunda RoutingDecisionService.resolve none() emas
+        // matched(...) qaytaradi va AFTER_COMMIT listener dispatch'ni boshlaydi.
+        seedDemoTelegramRouting(tenant.getId());
 
         log.info("Dev bootstrap: admin={}, tenant={}, work items={}",
                 admin.getId(), tenant.getId(), DEMO_WORK_ITEM_COUNT);
@@ -436,6 +468,99 @@ public class DevBootstrapInitializer implements ApplicationRunner {
             seedOrAdvanceWorkItemCounter(BOOTSTRAP_TENANT_ID, type, specs);
         }
         log.info("Dev bootstrap: repairDemoWorkItemCounters tugadi");
+    }
+
+    /**
+     * Phase 224 — demo tenant uchun Telegram routing infrastrukturasini
+     * seed qiladi (idempotent):
+     * <ul>
+     *   <li>1 ta {@link TelegramChatBinding} ("Demo Engineering Ops"
+     *       supergroup) — chat_id = -1001234567890 (fake, lekin Telegram
+     *       supergroup format'iga mos)</li>
+     *   <li>3 ta {@link TelegramTopicBinding}: Bugs, Incidents, Tasks</li>
+     *   <li>3 ta {@link RoutingRule}: BUG → Bugs, INCIDENT → Incidents,
+     *       TASK → Tasks (hammasi unconditional, priority=100)</li>
+     * </ul>
+     *
+     * <p>Natijada {@link com.engops.platform.routing.RoutingDecisionService#resolve}
+     * demo tenant uchun {@code none()} emas {@code matched(...)} qaytaradi va
+     * AFTER_COMMIT event listener'i dispatch attempt'ini bajara oladi.
+     * Real Telegram HTTP traffic'i bu Phase scope'ida emas — real bot
+     * token + chat ID konfiguratsiyasi P225'da keladi.</p>
+     *
+     * <p>Idempotency: natural key bo'yicha tekshiruv —
+     * {@code findByTenantIdAndChatId}, {@code findByChatBindingIdAndTopicId},
+     * va RoutingRule uchun {@code findByTenantIdAndWorkItemType} +
+     * nom bo'yicha filter.</p>
+     */
+    private void seedDemoTelegramRouting(UUID tenantId) {
+        // 1. Chat binding (natural key: tenantId + chatId)
+        TelegramChatBinding chat = telegramChatBindingRepository
+                .findByTenantIdAndChatId(tenantId, DEMO_CHAT_ID)
+                .orElseGet(() -> {
+                    TelegramChatBinding cb = new TelegramChatBinding(
+                            tenantId, DEMO_CHAT_ID, "Demo Engineering Ops");
+                    return telegramChatBindingRepository.save(cb);
+                });
+
+        // 2. Topic bindings (natural key: chatBindingId + topicId)
+        TelegramTopicBinding bugsTopic = seedTopicIfMissing(
+                chat, DEMO_TOPIC_BUGS_ID, "Bugs", "BUG_REPORTS");
+        TelegramTopicBinding incidentsTopic = seedTopicIfMissing(
+                chat, DEMO_TOPIC_INCIDENTS_ID, "Incidents", "INCIDENT_ALERTS");
+        TelegramTopicBinding tasksTopic = seedTopicIfMissing(
+                chat, DEMO_TOPIC_TASKS_ID, "Tasks", "TASK_QUEUE");
+
+        // 3. Routing rules (natural key: tenantId + workItemType + name)
+        seedRoutingRuleIfMissing(tenantId, "BUG",
+                "Demo BUG → Bugs topic", bugsTopic.getId());
+        seedRoutingRuleIfMissing(tenantId, "INCIDENT",
+                "Demo INCIDENT → Incidents topic", incidentsTopic.getId());
+        seedRoutingRuleIfMissing(tenantId, "TASK",
+                "Demo TASK → Tasks topic", tasksTopic.getId());
+
+        log.info("Dev bootstrap: demo Telegram routing seed tugadi (tenant={})", tenantId);
+    }
+
+    private TelegramTopicBinding seedTopicIfMissing(TelegramChatBinding chat,
+                                                     long topicId,
+                                                     String topicName,
+                                                     String purpose) {
+        return telegramTopicBindingRepository
+                .findByChatBindingIdAndTopicId(chat.getId(), topicId)
+                .orElseGet(() -> {
+                    TelegramTopicBinding tb = new TelegramTopicBinding(
+                            chat, topicId, topicName, purpose);
+                    return telegramTopicBindingRepository.save(tb);
+                });
+    }
+
+    private void seedRoutingRuleIfMissing(UUID tenantId, String workItemType,
+                                           String ruleName, UUID targetTopicBindingId) {
+        boolean exists = routingRuleRepository
+                .findByTenantIdAndWorkItemType(tenantId, workItemType)
+                .stream().anyMatch(r -> ruleName.equals(r.getName()));
+        if (exists) {
+            return;
+        }
+        RoutingRule rule = new RoutingRule(tenantId, ruleName, workItemType);
+        rule.setTargetTopicBindingId(targetTopicBindingId);
+        rule.setPriority(100);
+        routingRuleRepository.save(rule);
+    }
+
+    /**
+     * Phase 224 — mavjud-DB repair: oldingi runlar Telegram routing
+     * seed'ini bajarmagan bo'lsa, idempotent backfill qiladi.
+     *
+     * <p>Demo tenant yo'q bo'lsa darhol qaytadi.</p>
+     */
+    private void repairDemoTelegramRouting() {
+        if (tenantRepository.findById(BOOTSTRAP_TENANT_ID).isEmpty()) {
+            return;
+        }
+        seedDemoTelegramRouting(BOOTSTRAP_TENANT_ID);
+        log.info("Dev bootstrap: repairDemoTelegramRouting tugadi");
     }
 
     /**

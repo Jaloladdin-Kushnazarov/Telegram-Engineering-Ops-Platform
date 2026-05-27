@@ -5,6 +5,8 @@ import com.engops.platform.identity.repository.RoleRepository;
 import com.engops.platform.intake.IntakeApplicationService;
 import com.engops.platform.intake.IntakeCommand;
 import com.engops.platform.intake.IntakeResult;
+import com.engops.platform.routing.RoutingDecision;
+import com.engops.platform.routing.RoutingDecisionService;
 import com.engops.platform.workitem.OperationalAuthorizationService;
 import com.engops.platform.workitem.model.WorkItem;
 import com.engops.platform.workitem.model.WorkItemType;
@@ -61,6 +63,8 @@ class DevBootstrapWorkflowStatusIntegrationTest {
     private WorkItemRepository workItemRepository;
     @Autowired
     private WorkItemCounterRepository workItemCounterRepository;
+    @Autowired
+    private RoutingDecisionService routingDecisionService;
 
     /** Auth bypass — status resolution + code generation'ga fokus. */
     @MockBean
@@ -122,6 +126,21 @@ class DevBootstrapWorkflowStatusIntegrationTest {
         assertThat(submitDemo(WorkItemType.TASK).getWorkItemCode()).isEqualTo("TASK-12");
         assertThat(submitDemo(WorkItemType.TASK).getWorkItemCode()).isEqualTo("TASK-13");
         assertThat(submitDemo(WorkItemType.TASK).getWorkItemCode()).isEqualTo("TASK-14");
+    }
+
+    @Test
+    void afterBootstrap_routingDecisionForBugResolvesToBugsTopic() {
+        // P224 regression lock: the demo tenant's routing should now produce
+        // a matched RoutingDecision pointing at the "Bugs" topic for BUG type.
+        // Before P224 this returned RoutingDecision.none() because no
+        // routing_rule rows existed for the demo tenant.
+        RoutingDecision decision = routingDecisionService.resolve(
+                DevBootstrapInitializer.BOOTSTRAP_TENANT_ID, "BUG");
+
+        assertThat(decision.isPrepared())
+                .as("after P224 seed, demo BUG routing must resolve to a matched target")
+                .isTrue();
+        assertThat(decision.getTargetTopicId()).isEqualTo(2L); // "Bugs" topic
     }
 
     private IntakeResult submitDemo(WorkItemType type) {
